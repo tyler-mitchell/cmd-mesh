@@ -30,12 +30,17 @@ difference; never “correct” it by switching.
 ## Closed distribution commands
 
 Every CI, repository setup, branch promotion, release, trust, publication,
-verification, and recovery operation uses a named root `package.json` script.
-Never run the underlying `gh`, `bumpy`, `fledgling`, `npm`, or
-distribution-related `git` command directly. Never improvise a shell pipeline,
-watcher, wrapper, or alternate command. If the required operation has no script,
-stop before performing it and repair the project command contract first.
-Read-only Git inspection and local commits remain ordinary development actions.
+verification, and recovery operation uses a named root `package.json` script,
+invoked bare (`pnpm run <script>` plus the script's own arguments) — never
+piped, grepped, wrapped, timed out, fed input, or looped. Never run the
+underlying `gh`, `bumpy`, `fledgling`, `npm`, or distribution-related `git`
+command directly, and never improvise a shell pipeline, watcher, wrapper, or
+alternate command. If the required operation has no script, stop before
+performing it and repair the project command contract first. Never assert
+that the user must perform a step: the agent runs everything, and a genuinely
+blocked command is reported as the specific gate (a login prompt or a runtime
+permission), not converted into a user task. Read-only Git inspection and
+local commits remain ordinary development actions.
 
 ## Daily changes
 
@@ -89,8 +94,10 @@ release workflows, poll CI, or read successful-job logs.
 After publication, synchronize `main` forward from
 `release` only when the worktree is clean and no parallel agent has
 uncommitted work. Run `pnpm run release:sync`, then
-`pnpm run release:sync:push`. Never rebase, force-push, or switch branches to
-synchronize.
+`pnpm run release:sync:push`. When `release:sync` refuses because history
+diverged (normal after the squash-merged version PR when the working branch
+advanced), run `pnpm run release:sync:merge`, then `release:sync:push`.
+Never rebase, force-push, or switch branches to synchronize.
 
 Complete that synchronization before the next daily change and confirm Bumpy's
 consumed bump files are absent. Address review findings in code; resolve the
