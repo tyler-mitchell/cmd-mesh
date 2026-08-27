@@ -7,15 +7,26 @@ description: Record and release package changes through the repository's local B
 
 For a consumer-visible package change, follow
 `node_modules/@varlock/bumpy/skills/add-change/SKILL.md` and commit its bump file
-with the implementation on the human-owned base branch. Pushing that branch makes
-Bumpy create or update `bumpy/version-packages`; it does not publish.
+with the implementation on the checked-out working branch.
 
-An explicit release request authorizes:
+An explicit release request authorizes this exact sequence:
 
 ```sh
+pnpm run release:push
+pnpm run release:promote:pr
+pnpm run release:promote:create # only when the previous command found no PR
+pnpm run release:promote:merge
+```
+
+Return to useful work. After GitHub reports the promotion merge:
+
+```sh
+pnpm run release:pr
 pnpm run release:merge
 ```
 
-The command enables auto-merge; required checks gate the merge. Return to useful
-work. GitHub owns publication and public verification. Inspect the workflow only
-when GitHub reports failure. Never version, publish, dispatch, or poll locally.
+Run `release:merge` only when `release:pr` returned the version PR. Required
+checks gate both merges. GitHub owns publication and public verification. After
+publication, on the clean working branch run `release:sync` and
+`release:sync:push`. Inspect workflows only after failure. Never version,
+publish, dispatch, or poll locally.
