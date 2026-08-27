@@ -1,0 +1,20 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+allowBuilds:
+  esbuild: true
+  msgpackr-extract: false
+
+catalog:
+  "@ark/attest": 0.56.3
+  '@effect/platform-node': 4.0.0-rc.112
+  '@modelcontextprotocol/sdk': ^1.29.0
+  '@openai/codex-sdk': ^0.144.6
+  "@types/node": 24.13.3
+  '@effect/vitest': 4.0.0-rc.112
+  arktype: 2.2.3
+  effect: 4.0.0-rc.112
+  tsx: 4.23.1
+  typescript: 6.0.3
+  vitest: ^4.1.11

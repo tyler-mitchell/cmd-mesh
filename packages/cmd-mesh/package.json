@@ -1,0 +1,51 @@
+{
+  "name": "cmd-mesh",
+  "version": "0.0.0",
+  "description": "Fig-rich, ArkType-typed command mesh: one declarative program model, invocable as a CLI, as an MCP server, or as plain typed functions.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tyler-mitchell/cmd-mesh.git",
+    "directory": "packages/cmd-mesh"
+  },
+  "files": [
+    "CHANGELOG.md",
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json",
+    "check": "pnpm run typecheck && pnpm run test && pnpm run test:types",
+    "prepack": "pnpm run build",
+    "test": "vitest run",
+    "test:types": "tsx contract.attest.ts",
+    "typecheck": "tsc --project tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@effect/platform-node": "catalog:",
+    "@modelcontextprotocol/sdk": "catalog:",
+    "arktype": "catalog:",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@ark/attest": "catalog:",
+    "@effect/vitest": "catalog:",
+    "tsx": "catalog:",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

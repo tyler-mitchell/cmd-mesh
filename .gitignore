@@ -1,0 +1,16 @@
+node_modules/
+
+.DS_Store
+.env
+.env.*
+!.env.example
+
+coverage/
+dist/
+.attest/
+*.tsbuildinfo
+
+.turbo/
+.pnpm-debug.log*
+
+packages/spine

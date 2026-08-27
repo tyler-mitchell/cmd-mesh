@@ -1,0 +1,27 @@
+{
+  "name": "repokit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "repository operations for humans and agents — the @cmd-mesh/core dogfood app",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "repokit": "./dist/bin.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json",
+    "dev": "tsx src/bin.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --project tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "cmd-mesh": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "catalog:",
+    "vitest": "catalog:"
+  }
+}

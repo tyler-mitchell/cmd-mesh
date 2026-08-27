@@ -1,0 +1,51 @@
+{
+  "name": "command-mesh",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.5.1",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=11.0.0"
+  },
+  "scripts": {
+    "build": "pnpm --recursive --if-present run build",
+    "check": "pnpm --filter cmd-mesh run check",
+    "ci:cancel": "gh run cancel",
+    "ci:dispatch": "gh workflow run ci.yml",
+    "ci:list": "gh run list --limit 10",
+    "ci:logs": "gh run view --log-failed",
+    "ci:rerun": "gh run rerun",
+    "ci:watch": "gh run watch --exit-status",
+    "release:add": "bumpy add",
+    "release:check": "bumpy check --strict",
+    "release:merge": "gh pr merge bumpy/version-packages --auto --squash",
+    "release:pr": "gh pr list --head bumpy/version-packages --base release --state open --limit 1",
+    "release:publish-and-trust-new-package": "fledgling add cmd-mesh --new",
+    "release:registry-version": "npm view cmd-mesh version",
+    "release:status": "bumpy status --json",
+    "release:trust-sync": "fledgling sync",
+    "release:update": "gh pr update-branch bumpy/version-packages",
+    "release:preflight": "node scripts/verify-package.ts",
+    "release:verify": "node scripts/verify-release.ts",
+    "setup:bumpy": "bumpy ci setup",
+    "setup:branch-protection": "gh api --silent --method PUT repos/{owner}/{repo}/branches/release/protection --input .github/branch-protection.json",
+    "setup:repository": "gh api --silent --method PATCH repos/{owner}/{repo} --field allow_auto_merge=true --field allow_update_branch=true --field delete_branch_on_merge=true",
+    "test": "pnpm --recursive --if-present run test",
+    "typecheck": "tsc --project tsconfig.json --noEmit && pnpm --recursive --if-present run typecheck",
+    "workflow:check": "go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/*.yml"
+  },
+  "fledgling": {
+    "provider": "github",
+    "workflow": "release.yml",
+    "environment": "publish",
+    "permissions": "publish"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@varlock/bumpy": "1.18.1",
+    "fledgling": "1.2.1",
+    "npm": "^11.15.0",
+    "typescript": "catalog:"
+  }
+}

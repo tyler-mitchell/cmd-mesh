@@ -1,0 +1,14 @@
+{
+  "$schema": "../node_modules/@varlock/bumpy/config-schema.json",
+  "baseBranch": "release",
+  "changedFilePatterns": [
+    "src/**",
+    "README.md",
+    "LICENSE",
+    "package.json"
+  ],
+  "updateInternalDependencies": "patch",
+  "publish": {
+    "provenance": true
+  }
+}
