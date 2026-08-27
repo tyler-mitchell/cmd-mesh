@@ -11,6 +11,10 @@
   "scripts": {
     "build": "pnpm --recursive --if-present run build",
     "check": "pnpm --filter cmd-mesh run check",
+    "dependencies:close": "gh pr close",
+    "dependencies:list": "gh pr list --state open --search 'author:app/dependabot' --limit 100",
+    "dependencies:merge": "gh pr merge --squash",
+    "dependencies:sync": "git pull --ff-only origin main",
     "ci:cancel": "gh run cancel",
     "ci:dispatch": "gh workflow run ci.yml",
     "ci:list": "gh run list --limit 10",

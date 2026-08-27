@@ -252,6 +252,7 @@ export interface McpTool {
   readonly description: string
   readonly inputSchema: unknown
   readonly outputSchema?: unknown
+  readonly annotations?: Readonly<globalThis.Record<string, unknown>>
 }
 
 export interface McpProjection {
@@ -272,8 +273,11 @@ export type ProgramModule<RootIn, RootOut, RootR, Cs, Rs> =
   }
   & Mounted
   & {
-    /** the cli projection: parse, route, run, render, resolve exit code */
-    main(argv: ReadonlyArray<string>): Promise<number>
+    /** the cli projection. bare `main()` is a complete bin entry: it reads
+     * process argv, sets the process exit code, and disposes the module.
+     * `main(argv)` is the programmatic form — parses the given tokens and
+     * resolves the exit code with no process mutation and no disposal. */
+    main(argv?: ReadonlyArray<string>): Promise<number>
     help(path?: ReadonlyArray<string>): string
     /** async because parameter completion may run a generator */
     complete(words: ReadonlyArray<string>): Promise<ReadonlyArray<string>>
@@ -288,6 +292,10 @@ export type ExternalModule<D extends ExternalDecl> =
   & Mounted
   & {
     readonly [K in keyof D["commands"]]: ExternalCommandModule<D["commands"][K]>
+  }
+  & {
+    /** release the module's runtime resources */
+    dispose(): Promise<void>
   }
 
 export type ExternalCommandModule<C extends ExternalCommandDecl> =

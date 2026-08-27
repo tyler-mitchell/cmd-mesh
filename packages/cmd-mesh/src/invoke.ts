@@ -1,5 +1,5 @@
 import { type } from "arktype"
-import { Array, Effect, Option, Predicate } from "effect"
+import { Array, Effect, Option, Predicate, String } from "effect"
 import type { AnyType, CompiledCommand, CompiledParameter } from "./compile.js"
 import { ExternalExit, HandlerFailure, InvalidInput, InvalidOutput, NoRunnableCommand } from "./errors.js"
 import { Exec } from "./exec.js"
@@ -25,22 +25,41 @@ const flagToken = (p: CompiledParameter): string =>
 
 const tokenOf = (value: unknown): string => Predicate.isObject(value) ? JSON.stringify(value) : `${value}`
 
-/** reconstruct argv tokens from parsed values, for external fulfillment */
-const externalTokens = (
+/** value-taking flags reconstruct before the subcommand path — the position
+ * binaries reserve for their global options (`git -C <dir> status`);
+ * booleans and positionals follow the subcommand in declaration order */
+const preSubcommandTokens = (
   parameters: ReadonlyArray<CompiledParameter>,
   parsed: Readonly<globalThis.Record<string, unknown>>
 ): ReadonlyArray<string> =>
   Array.flatMap(parameters, (p) => {
     const value = parsed[p.key]
-    if (value === undefined) return []
-    if (p.binding._tag === "positional") {
-      return p.binding.variadic
-        ? Array.map(value as ReadonlyArray<unknown>, tokenOf)
-        : [tokenOf(value)]
-    }
-    if (p.isBoolean) return value === true ? [flagToken(p)] : []
+    if (value === undefined || p.binding._tag !== "flag" || p.isBoolean) return []
     return [flagToken(p), tokenOf(value)]
   })
+
+/** after the subcommand: boolean flags first (`git rev-parse --verify HEAD`
+ * rejects the reverse), then positionals, declaration order within each.
+ * a positional value that looks like a flag is argv injection into the
+ * binary — fence positionals behind the end-of-options separator then */
+const postSubcommandTokens = (
+  parameters: ReadonlyArray<CompiledParameter>,
+  parsed: Readonly<globalThis.Record<string, unknown>>
+): ReadonlyArray<string> => {
+  const positionals = Array.flatMap(parameters, (p) => {
+    const value = parsed[p.key]
+    if (value === undefined || p.binding._tag !== "positional") return []
+    return p.binding.variadic
+      ? Array.map(value as ReadonlyArray<unknown>, tokenOf)
+      : [tokenOf(value)]
+  })
+  const fence = Array.some(positionals, String.startsWith("-")) ? ["--"] : []
+  return Array.appendAll(
+    Array.flatMap(parameters, (p) =>
+      p.binding._tag === "flag" && p.isBoolean && parsed[p.key] === true ? [flagToken(p)] : []),
+    Array.appendAll(fence, positionals)
+  )
+}
 
 const runExternal = Effect.fn("cmd-mesh/runExternal")(function*(
   cmd: CompiledCommand,
@@ -48,7 +67,10 @@ const runExternal = Effect.fn("cmd-mesh/runExternal")(function*(
 ) {
   const external = Option.getOrThrow(cmd.external)
   const exec = yield* Exec
-  const args = Array.appendAll(external.argPath, externalTokens(cmd.parameters, parsed))
+  const args = Array.appendAll(
+    preSubcommandTokens(cmd.parameters, parsed),
+    Array.appendAll(external.argPath, postSubcommandTokens(cmd.parameters, parsed))
+  )
   const result = yield* exec.exec(external.bin, args).pipe(
     Effect.mapError((cause) => new HandlerFailure({ path: cmd.path, cause }))
   )

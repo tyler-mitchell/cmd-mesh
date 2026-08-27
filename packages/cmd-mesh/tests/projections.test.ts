@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { compileCommand } from "../src/compile.js"
-import { candidatesFor } from "../src/completion.js"
+import { candidateValues, completionLines } from "../src/completion.js"
 import { collectTools } from "../src/mcp.js"
 import { renderResult } from "../src/render.js"
 
@@ -31,30 +31,35 @@ const root = compileCommand("tool", ["tool"], {
   }
 } as never)
 
+const candidatesFor = (words: ReadonlyArray<string>): ReadonlyArray<string> =>
+  candidateValues(completionLines(root, words, []))
+
 describe("completion candidates", () => {
   it("lists visible subcommands at the root", () => {
-    expect(candidatesFor(root, [""])).toEqual(["release", "list"])
+    expect(candidatesFor([""])).toEqual(["release", "list"])
   })
 
   it("completes enum positionals from the ArkType union", () => {
-    expect(candidatesFor(root, ["release", ""])).toContain("major")
-    expect(candidatesFor(root, ["release", "m"])).toEqual(["major", "minor"])
-    expect(candidatesFor(root, ["release", "pa"])).toEqual(["patch"])
+    expect(candidatesFor(["release", ""])).toContain("major")
+    expect(candidatesFor(["release", "m"])).toEqual(["major", "minor"])
+    expect(candidatesFor(["release", "pa"])).toEqual(["patch"])
   })
 
-  it("offers flags with aliases and boolean negation", () => {
-    const candidates = candidatesFor(root, ["release", "--"])
-    expect(candidates).toContain("--pkg")
-    expect(candidates).toContain("--dry-run")
-    expect(candidates).toContain("--no-dry-run")
+  it("offers long flags and short aliases by prefix shape", () => {
+    const long = candidatesFor(["release", "--"])
+    expect(long).toContain("--pkg")
+    expect(long).toContain("--dry-run")
+    expect(candidatesFor(["release", "-"])).toContain("-n")
   })
 
-  it("emits named-source directives for flag values", () => {
-    expect(candidatesFor(root, ["release", "--pkg", ""])).toEqual([":files"])
+  it("resolves a named filesystem source for flag values", () => {
+    const candidates = candidatesFor(["release", "--pkg", ""])
+    expect(candidates).toContain("package.json")
+    expect(candidates).toContain("src/")
   })
 
   it("stops offering a consumed positional", () => {
-    expect(candidatesFor(root, ["release", "patch", ""])).not.toContain("major")
+    expect(candidatesFor(["release", "patch", ""])).not.toContain("major")
   })
 })
 
