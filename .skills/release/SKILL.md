@@ -5,9 +5,17 @@ description: Record and release package changes through the repository's local B
 
 # Release packages
 
+Use only the repository's named root scripts for every release operation.
+Never run their underlying `gh`, `bumpy`, `npm`, `fledgling`, or `git` commands
+directly. A missing command is a project setup defect and must be added before
+release continues.
+
 For a consumer-visible package change, follow
 `node_modules/@varlock/bumpy/skills/add-change/SKILL.md` and commit its bump file
-with the implementation on the checked-out working branch.
+with the implementation on the checked-out working branch. Pushing the working
+branch only accumulates bump files; Bumpy creates or updates
+`bumpy/version-packages` when the promotion merge reaches the base branch, and
+nothing publishes until that generated PR merges.
 
 An explicit release request authorizes this exact sequence:
 
