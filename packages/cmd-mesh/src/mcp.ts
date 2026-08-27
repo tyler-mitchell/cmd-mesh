@@ -92,6 +92,10 @@ export const collectTools = (root: CompiledCommand): ReadonlyArray<NamedTool> =>
         ...Option.match(output, {
           onNone: () => ({}),
           onSome: (o) => ({ outputSchema: o.schema })
+        }),
+        ...Option.match(root.mcpAnnotations, {
+          onNone: () => ({}),
+          onSome: (annotations) => ({ annotations })
         })
       }
     }]
@@ -99,9 +103,39 @@ export const collectTools = (root: CompiledCommand): ReadonlyArray<NamedTool> =>
   return pipe(
     Record.toEntries(root.children),
     Array.flatMap(([, child]) => collectTools(child)),
-    Array.appendAll(own)
+    Array.appendAll(own),
+    uniquelyNamed
   )
 }
+
+/** an MCP server routes purely by name; flattening can collide (`cache_clear`
+ * beside `cache clear`), so later collisions get a numeric suffix rather
+ * than silently shadowing the earlier tool */
+const uniquelyNamed = (tools: ReadonlyArray<NamedTool>): ReadonlyArray<NamedTool> =>
+  pipe(
+    tools,
+    Array.reduce(
+      { seen: {} as globalThis.Record<string, number>, out: [] as ReadonlyArray<NamedTool> },
+      (state, tool) =>
+        pipe(
+          Record.get(state.seen, tool.tool.name),
+          Option.match({
+            onNone: () => ({
+              seen: { ...state.seen, [tool.tool.name]: 1 },
+              out: Array.append(state.out, tool)
+            }),
+            onSome: (count) => ({
+              seen: { ...state.seen, [tool.tool.name]: count + 1 },
+              out: Array.append(state.out, {
+                ...tool,
+                tool: { ...tool.tool, name: `${tool.tool.name}_${count + 1}` }
+              })
+            })
+          })
+        )
+    ),
+    ({ out }) => out
+  )
 
 interface ToolResult {
   readonly content: ReadonlyArray<{ readonly type: "text"; readonly text: string }>
@@ -133,10 +167,7 @@ export const serveMcp = (
         ...(t.tool.outputSchema === undefined
           ? {}
           : { outputSchema: t.tool.outputSchema as { readonly type: "object" } }),
-        ...Option.match(t.command.mcpAnnotations, {
-          onNone: () => ({}),
-          onSome: (annotations) => ({ annotations })
-        })
+        ...(t.tool.annotations === undefined ? {} : { annotations: t.tool.annotations })
       }))
     }))
     // the sdk demands async handlers: runPromise is the sanctioned bridge

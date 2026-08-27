@@ -199,6 +199,11 @@ const compileParameter = (key: string, rawDef: ParameterDef): CompiledParameter 
   const defaulted = !(probed instanceof type.errors)
   const defaultValue = defaulted ? Option.some((probed as { v: unknown }).v) : Option.none()
   const inner = probe.get("v") as AnyType
+  // a defaulted def's extracted type is the default wrapper; boolean-ness
+  // must be read off the unwrapped output side
+  const isBoolean = defaulted
+    ? (inner.out.exclude("undefined") as AnyType).extends("boolean")
+    : inner.extends("boolean")
   return {
     key,
     def: descriptor.type,
@@ -216,7 +221,7 @@ const compileParameter = (key: string, rawDef: ParameterDef): CompiledParameter 
     required: descriptor.required === true,
     defaulted,
     defaultValue,
-    isBoolean: inner.extends("boolean"),
+    isBoolean,
     inner
   }
 }
@@ -245,6 +250,13 @@ const isStringDef = (p: CompiledParameter): boolean => String.isString(p.def)
  * cli: parse the token, then pipe into the declared definition */
 const jsonToken = (p: CompiledParameter): AnyType => type("string.json.parse").to(p.def as never) as AnyType
 
+/** boolean flags cross the token boundary as presence booleans or as the
+ * literal tokens of `--flag=value`; the literal set follows the effect
+ * cli convention (true/false, yes/no, on/off, 1/0) */
+const booleanTokenType = type("boolean")
+  .or(type("'true' | '1' | 'yes' | 'on'").pipe(() => true))
+  .or(type("'false' | '0' | 'no' | 'off'").pipe(() => false))
+
 /** entry for the argv-token side: raw def strings keep ArkType-native
  * input-domain defaults; booleans default false; variadics become arrays;
  * structured defs take JSON tokens and stay optional here — requiredness
@@ -256,7 +268,12 @@ const tokenEntry = (p: CompiledParameter): readonly [string, unknown] => {
     return [`${p.key}?`, isVariadic(p) ? variadicOf(wrapped, p) : wrapped]
   }
   if (isVariadic(p)) return [p.key, variadicOf(p.inner, p)]
-  if (p.isBoolean && !p.defaulted) return [p.key, [p.inner, "=", false]]
+  // a required boolean stays required: presence is its true value and
+  // omission is a reportable error, not a silent false
+  if (p.isBoolean) {
+    if (p.defaulted) return [p.key, [booleanTokenType, "=", () => Option.getOrThrow(p.defaultValue)]]
+    return p.required ? [p.key, booleanTokenType] : [p.key, [booleanTokenType, "=", false]]
+  }
   if (isOptionalNoDefault(p)) return [`${p.key}?`, p.inner]
   return [p.key, p.def]
 }
@@ -269,7 +286,9 @@ const valueEntry = (p: CompiledParameter): readonly [string, unknown] => {
   const rawOut = p.inner.out as AnyType
   const out = p.defaulted ? (rawOut.exclude("undefined") as AnyType) : rawOut
   if (isVariadic(p)) return [p.key, variadicOf(out, p)]
-  if (p.isBoolean && !p.defaulted) return [p.key, [out, "=", false]]
+  if (p.isBoolean && !p.defaulted) {
+    return p.required ? [p.key, out] : [p.key, [out, "=", false]]
+  }
   if (p.defaulted) {
     return [p.key, [out, "=", () => Option.getOrThrow(p.defaultValue)]]
   }
@@ -285,8 +304,10 @@ const assemble = (
 const withNarrow = (t: AnyType, narrow: ((input: any, ctx: any) => boolean) | undefined): AnyType =>
   narrow === undefined ? t : (t.narrow(narrow) as AnyType)
 
+// a program module is a callable function, an external module a plain
+// object — the marker check must see both
 const isMounted = (value: unknown): value is Mounted & { readonly [mounted]: CompiledCommand } =>
-  Predicate.isObject(value) && Predicate.hasProperty(value, mounted)
+  (Predicate.isObject(value) || Predicate.isFunction(value)) && mounted in (value as object)
 
 /** rewrite the display paths of a compiled subtree when it mounts elsewhere */
 export const repath = (cmd: CompiledCommand, path: ReadonlyArray<string>): CompiledCommand => ({
@@ -372,33 +393,53 @@ export const compileCommand = (
   return command
 }
 
-const compileExternalCommand = (
+const collectExternalCommand = (
   bin: string,
   argPath: ReadonlyArray<string>,
   name: string,
   path: ReadonlyArray<string>,
   decl: ExternalCommandDecl
-): CompiledCommand => {
+): Collected => {
   const { commands: _children, ...withoutChildren } = decl
-  const base = compileCommand(name, path, withoutChildren)
-  return {
+  const [base, ownIssues] = collectCommand(name, path, withoutChildren)
+  const childPairs = Record.map(decl.commands ?? {}, (child, childName): Collected =>
+    collectExternalCommand(
+      bin,
+      // the module key stays dot-callable; the binary receives its own
+      // spelling, kebab-cased like derived flag names
+      Array.append(argPath, String.kebabCase(childName)),
+      childName,
+      Array.append(path, childName),
+      child
+    ))
+  const command: CompiledCommand = {
     ...base,
     kind: "external",
     outputType: Option.some(type((decl.output ?? "string") as never) as AnyType),
     external: Option.some({ bin, argPath }),
-    children: Record.map(decl.commands ?? {}, (child, childName) =>
-      compileExternalCommand(
-        bin,
-        Array.append(argPath, childName),
-        childName,
-        Array.append(path, childName),
-        child
-      ))
+    children: Record.map(childPairs, ([child]) => child)
   }
+  const issues = Array.appendAll(
+    ownIssues,
+    pipe(Record.toEntries(childPairs), Array.flatMap(([, [, childIssues]]) => childIssues))
+  )
+  return [command, issues] as const
 }
 
 export const compileExternal = (decl: ExternalDecl): CompiledCommand => {
   const bin = decl.bin ?? decl.name
+  const childPairs = Record.map(decl.commands, (child, childName): Collected =>
+    collectExternalCommand(
+      bin,
+      [String.kebabCase(childName)],
+      childName,
+      [decl.name, childName],
+      child
+    ))
+  const issues = pipe(Record.toEntries(childPairs), Array.flatMap(([, [, childIssues]]) => childIssues))
+  if (issues.length > 0) {
+    throw new InvalidDeclaration({ issues })
+  }
   return {
     kind: "external",
     name: decl.name,
@@ -410,11 +451,7 @@ export const compileExternal = (decl: ExternalDecl): CompiledCommand => {
     schemaType: type({}) as AnyType,
     outputType: Option.none(),
     run: Option.none(),
-    children: Record.map(
-      decl.commands,
-      (child, childName) =>
-        compileExternalCommand(bin, [childName], childName, [decl.name, childName], child)
-    ),
+    children: Record.map(childPairs, ([child]) => child),
     cliHidden: false,
     mcpHidden: false,
     mcpName: Option.none(),

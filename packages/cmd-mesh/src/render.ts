@@ -50,7 +50,7 @@ const builtinLines = (cmd: CompiledCommand): ReadonlyArray<string> =>
   Array.flatMap(
     [
       ["mcp", "serve this program's tools over stdio (mcp)"],
-      ["completion <shell>", "print a zsh or bash completion script"]
+      ["complete <shell>", "print a zsh, bash, fish, or powershell completion script"]
     ] as const,
     ([name, description]) =>
       Option.isNone(Record.get(cmd.children, pipe(name, String.split(" "), Array.headNonEmpty)))
@@ -138,7 +138,8 @@ const columnRows = (rows: ReadonlyArray<globalThis.Record<string, unknown>>): st
  * flat records as aligned rows (the grep convention), everything else as
  * pretty json. agents never see this — mcp responses carry json. */
 export const renderResult = (value: unknown): string =>
-  String.isString(value) ? value
+  value === undefined ? ""
+    : String.isString(value) ? value
     : globalThis.Array.isArray(value) && value.length > 0 && Array.every(value, isFlatRecord)
     ? columnRows(value as ReadonlyArray<globalThis.Record<string, unknown>>)
     : JSON.stringify(value, null, 2)

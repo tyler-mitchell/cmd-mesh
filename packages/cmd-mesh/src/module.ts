@@ -2,7 +2,7 @@ import { Array, Console, Effect, ManagedRuntime, Match, Option, Record, String a
 import { routeArgv, parseTokens } from "./argv.js"
 import type { AnyType, CompiledCommand } from "./compile.js"
 import { compileCommand, compileExternal } from "./compile.js"
-import { bashScript, candidatesFor, generatorFor, zshScript } from "./completion.js"
+import { candidateValues, completionLines, completionScript, generatorFor } from "./completion.js"
 import { Exec } from "./exec.js"
 import { invokeParsed, invokeValues } from "./invoke.js"
 import { collectTools, jsonSchemaOf, serveMcp } from "./mcp.js"
@@ -52,7 +52,8 @@ const buildCommandModule = (cmd: CompiledCommand, runtime: MeshRuntime): any =>
 const isGroup = (cmd: CompiledCommand): boolean =>
   Option.isNone(cmd.run) && Option.isNone(cmd.external) && !Record.isEmptyRecord(cmd.children)
 
-/** static candidates plus the active parameter's generator, if any —
+/** the tab protocol lines for a word list. an async generator on the
+ * active parameter resolves first — tab handlers are synchronous — and
  * generator failures degrade to static candidates, never to an error */
 const completeEffect = (
   runtime: MeshRuntime,
@@ -60,7 +61,6 @@ const completeEffect = (
   words: ReadonlyArray<string>
 ): Effect.Effect<ReadonlyArray<string>, never, never> =>
   Effect.gen(function*() {
-    const statics = candidatesFor(compiled, words)
     const dynamic = yield* Option.match(generatorFor(compiled, words), {
       onNone: () => Effect.succeed([] as ReadonlyArray<string>),
       onSome: (generator) =>
@@ -68,12 +68,21 @@ const completeEffect = (
           Effect.orElseSucceed(() => [] as ReadonlyArray<string>)
         )
     })
-    const current = Option.getOrElse(Array.last(words), () => "")
-    return pipe(
-      Array.appendAll(statics, Array.filter(dynamic, StringModule.startsWith(current))),
-      Array.dedupe
-    )
+    return completionLines(compiled, words, dynamic)
   })
+
+const serveEffect = (
+  runtime: MeshRuntime,
+  compiled: CompiledCommand,
+  version: string
+): Effect.Effect<never, Error> =>
+  serveMcp(
+    compiled,
+    { name: compiled.name, version },
+    (cmd, input, ctx) => invokeValues(cmd, input, ctx),
+    (effect) => runtime.runPromise(effect),
+    makeCtx(runtime, "mcp")
+  )
 
 const runCli = (
   runtime: MeshRuntime,
@@ -87,26 +96,22 @@ const runCli = (
       Match.tag("help", ({ command }) =>
         Console.log(renderHelp(command, { builtins: command === compiled })).pipe(Effect.as(0))),
       Match.tag("version", () => Console.log(version).pipe(Effect.as(0))),
-      Match.tag("mcp", () =>
-        serveMcp(
-          compiled,
-          { name: compiled.name, version },
-          (cmd, input, ctx) => invokeValues(cmd, input, ctx),
-          (effect) => runtime.runPromise(effect),
-          makeCtx(runtime, "mcp")
-        )),
+      Match.tag("mcp", () => serveEffect(runtime, compiled, version)),
       Match.tag("complete", ({ words }) =>
         Effect.gen(function*() {
-          const candidates = yield* completeEffect(runtime, compiled, words)
-          if (candidates.length > 0) {
-            yield* Console.log(Array.join(candidates, "\n"))
+          const lines = yield* completeEffect(runtime, compiled, words)
+          if (lines.length > 0) {
+            yield* Console.log(Array.join(lines, "\n"))
           }
           return 0
         })),
+      // tab prints the script itself; an unsupported shell throws and
+      // resolves through the error path as exit 1
       Match.tag("completionScript", ({ shell }) =>
-        Console.log(shell === "bash" ? bashScript(compiled.name) : zshScript(compiled.name)).pipe(
-          Effect.as(0)
-        )),
+        Effect.try({
+          try: () => completionScript(compiled, shell),
+          catch: () => new Error(`unsupported shell: ${shell} (zsh, bash, fish, powershell)`)
+        }).pipe(Effect.as(0))),
       Match.tag("run", ({ command, record, json }) =>
         isGroup(command)
           ? Console.log(renderHelp(command, { builtins: command === compiled })).pipe(Effect.as(0))
@@ -115,18 +120,23 @@ const runCli = (
             const result = yield* invokeParsed(command, parsed, makeCtx(runtime, "cli"))
             // --json > per-command render override > default human rendering
             const text = json
-              ? JSON.stringify(result, null, 2)
+              ? JSON.stringify(result, null, 2) ?? ""
               : Option.match(command.cliRender, {
                 onNone: () => renderResult(result),
-                onSome: (render) => render(result)
+                onSome: (render) => `${render(result)}`
               })
-            yield* Console.log(text)
+            if (StringModule.isNonEmpty(text)) {
+              yield* Console.log(text)
+            }
             return 0
           })),
       Match.exhaustive
     )
   }).pipe(
-    Effect.catch((error) => Console.error(`${error}`).pipe(Effect.as(1)))
+    Effect.catch((error) => Console.error(`${error}`).pipe(Effect.as(1))),
+    // a throwing render hook or narrow lands here as a defect; the cli
+    // contract is an exit code, never a rejected promise
+    Effect.catchDefect((defect: unknown) => Console.error(`${defect}`).pipe(Effect.as(1)))
   )
 
 /** interpret a program declaration into its callable module */
@@ -145,17 +155,28 @@ export const program = <
   const version = (def as { readonly version?: string }).version ?? "0.0.0"
 
   const complete = (words: ReadonlyArray<string>): Promise<ReadonlyArray<string>> =>
-    runtime.runPromise(completeEffect(runtime, compiled, words))
+    runtime.runPromise(completeEffect(runtime, compiled, words).pipe(Effect.map(candidateValues)))
 
   const helpFor = (path?: ReadonlyArray<string>): string =>
     pipe(
       path ?? [],
-      Array.reduce(compiled, (cmd: CompiledCommand, word) =>
-        pipe(
-          Record.get(cmd.children, word),
-          Option.getOrElse(() => cmd)
-        )),
-      (target) => renderHelp(target, { builtins: target === compiled })
+      Array.reduce(
+        { cmd: compiled, missing: Option.none<string>() },
+        (state, word) =>
+          Option.isSome(state.missing) ? state : pipe(
+            Record.get(state.cmd.children, word),
+            Option.match({
+              onNone: () => ({ ...state, missing: Option.some(word) }),
+              onSome: (child) => ({ cmd: child, missing: Option.none<string>() })
+            })
+          )
+      ),
+      ({ cmd, missing }) =>
+        Option.match(missing, {
+          onNone: () => renderHelp(cmd, { builtins: cmd === compiled }),
+          onSome: (word) =>
+            `unknown command: ${word}\n\n${renderHelp(cmd, { builtins: cmd === compiled })}`
+        })
     )
 
   return callableModule(
@@ -163,22 +184,27 @@ export const program = <
     {
       args: argsOf(compiled),
       ...Record.map(compiled.children, (child) => buildCommandModule(child, runtime)),
-      main: (argv: ReadonlyArray<string>) => runtime.runPromise(runCli(runtime, compiled, version, argv)),
+      // bare main() is the whole bin: process argv, exit code, disposal.
+      // explicit argv is the programmatic form — pure in, code out.
+      main: (argv?: ReadonlyArray<string>) =>
+        argv === undefined
+          ? runtime.runPromise(
+            runCli(runtime, compiled, version, Array.drop(globalThis.process.argv, 2)).pipe(
+              Effect.tap((code) => Effect.sync(() => {
+                globalThis.process.exitCode = code
+              }))
+            )
+          ).then(async (code) => {
+            await runtime.dispose()
+            return code
+          })
+          : runtime.runPromise(runCli(runtime, compiled, version, argv)),
       help: helpFor,
       complete,
       spec: commandSpec(compiled),
       mcp: {
         tools: Array.map(collectTools(compiled), (t) => t.tool),
-        serve: () =>
-          runtime.runPromise(
-            serveMcp(
-              compiled,
-              { name: compiled.name, version },
-              (cmd, input, ctx) => invokeValues(cmd, input, ctx),
-              (effect) => runtime.runPromise(effect),
-              makeCtx(runtime, "mcp")
-            )
-          ) as Promise<void>
+        serve: () => runtime.runPromise(serveEffect(runtime, compiled, version)) as Promise<void>
       },
       dispose: () => runtime.dispose(),
       [mounted]: compiled
@@ -192,6 +218,7 @@ export const external = <const D extends ExternalDecl>(def: D): ExternalModule<D
   const runtime: MeshRuntime = ManagedRuntime.make(Exec.layer)
   return {
     ...Record.map(compiled.children, (child) => buildCommandModule(child, runtime)),
+    dispose: () => runtime.dispose(),
     [mounted]: compiled
   } as ExternalModule<D>
 }

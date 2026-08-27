@@ -3,5 +3,4 @@
 //   pnpm exec tsx examples/bin.ts mcp        ← the same bin is the mcp server
 import { mesh } from "./mesh.js"
 
-process.exitCode = await mesh.main(process.argv.slice(2))
-await mesh.dispose()
+await mesh.main()

@@ -27,6 +27,21 @@ reset, or replace branches unless the human explicitly requests that exact
 operation. If a session starts on another branch, continue there and report the
 difference; never “correct” it by switching.
 
+## Closed distribution commands
+
+Every CI, repository setup, branch promotion, release, trust, publication,
+verification, and recovery operation uses a named root `package.json` script,
+invoked bare (`pnpm run <script>` plus the script's own arguments) — never
+piped, grepped, wrapped, timed out, fed input, or looped. Never run the
+underlying `gh`, `bumpy`, `fledgling`, `npm`, or distribution-related `git`
+command directly, and never improvise a shell pipeline, watcher, wrapper, or
+alternate command. If the required operation has no script, stop before
+performing it and repair the project command contract first. Never assert
+that the user must perform a step: the agent runs everything, and a genuinely
+blocked command is reported as the specific gate (a login prompt or a runtime
+permission), not converted into a user task. Read-only Git inspection and
+local commits remain ordinary development actions.
+
 ## Daily changes
 
 - Work and commit on the currently checked-out branch.
@@ -37,7 +52,7 @@ difference; never “correct” it by switching.
 - If Git reports `index.lock`, wait for the other Git operation; never delete it.
 - A request to `commit` authorizes a local commit only.
 - A request to `push` authorizes pushing the currently checked-out branch and
-  its complete unpushed commit set.
+  its complete unpushed commit set through the applicable named script.
 - Consumer-visible package changes include one maintained Bumpy bump file.
 - Follow `node_modules/@varlock/bumpy/skills/add-change/SKILL.md` for bump level
   and changelog text.
@@ -57,13 +72,16 @@ Only an explicit `release` request authorizes integrating the daily branch into
 the Bumpy base branch and merging the generated version PR.
 
 1. If intended commits remain local, perform the normal push flow.
-2. Create or update the ordinary `main → release` pull
-   request and merge it after required checks pass.
-3. Run `pnpm run release:pr` once. If the PR is absent, return to useful work;
-   GitHub owns the pending workflow.
-4. When the PR exists, run
-   `pnpm run release:merge` to queue it for auto-merge.
-5. Return to useful work. GitHub owns publication and public verification.
+2. Run `pnpm run release:push`.
+3. Run `pnpm run release:promote:pr` once. If absent, run
+   `pnpm run release:promote:create` once.
+4. Run `pnpm run release:promote:merge` once. It queues a merge commit so the
+   long-lived branches retain shared ancestry. Return to useful work.
+5. After GitHub reports that merge, run `pnpm run release:pr` once. If absent,
+   return to useful work; GitHub owns the pending workflow.
+6. When the version PR exists, run `pnpm run release:merge` once. It queues the
+   generated PR for squash auto-merge.
+7. Return to useful work. GitHub owns publication and public verification.
 
 If the version PR is behind `release`, run `pnpm run release:update`
 once and let required checks rerun. Never loop over status checks.
@@ -75,8 +93,11 @@ release workflows, poll CI, or read successful-job logs.
 
 After publication, synchronize `main` forward from
 `release` only when the worktree is clean and no parallel agent has
-uncommitted work. Never rebase or force-push shared commits, and never switch
-branches to synchronize.
+uncommitted work. Run `pnpm run release:sync`, then
+`pnpm run release:sync:push`. When `release:sync` refuses because history
+diverged (normal after the squash-merged version PR when the working branch
+advanced), run `pnpm run release:sync:merge`, then `release:sync:push`.
+Never rebase, force-push, or switch branches to synchronize.
 
 Complete that synchronization before the next daily change and confirm Bumpy's
 consumed bump files are absent. Address review findings in code; resolve the

@@ -27,7 +27,7 @@ const mesh = program({
     serve: {
       description: "serve a directory over http",
       input: {
-        directory: { type: "string", cli: { usage: "<directory>", complete: "folders" } },
+        directory: { type: "string", suggest: "folders", cli: "<directory>" },
         port: { type: "string.integer.parse = '3000'", cli: { usage: "--port, -p", env: "MESH_PORT" } },
         verbose: { type: "boolean", cli: "--verbose, -v" }
       },
@@ -43,7 +43,11 @@ One declaration, consumed three ways:
 
 ```ts
 await mesh.serve({ directory: "./public" })      // typed function; port defaults to 3000
-await mesh.main(process.argv.slice(2))           // cli: mesh serve ./public -p 8080
+
+// bin.ts — the complete cli entry point; bare main() reads process argv,
+// sets the exit code, and disposes the runtime
+await mesh.main()                                // mesh serve ./public -p 8080
+
 // claude mcp config: { "command": "mesh-bin", "args": ["mcp"] }
 //   → tools mesh_serve, mesh_git_status with ArkType-projected JSON Schemas
 ```
@@ -78,7 +82,7 @@ nested JSON Schemas to MCP.
 | --- | --- |
 | `module(input)` / `module.sub(input)` | typed direct invocation (assert semantics: invalid input throws; the argument is optional when every key is optional) |
 | `module.args` | compiled value-boundary ArkType surface |
-| `module.main(argv)` | CLI projection; routes `--help`, `--version`, and the reserved `mcp`, `completion <shell>`, and `__complete` subcommands |
+| `module.main(argv?)` | CLI projection; bare `main()` is a complete bin (process argv, exit code, disposal), `main(argv)` is the pure programmatic form. Routes `--help`, `--version`, and the reserved `mcp` and `complete` subcommands |
 | `module.mcp.tools` / `module.mcp.serve()` | MCP projection (stdio, `@modelcontextprotocol/sdk`) — tools carry `outputSchema`, calls return schema-conformant `structuredContent` (non-object outputs wrapped under `result`) |
 | `module.help(path?)` / `module.complete(words)` | rendered help (usage, Arguments/Options sections with `[possible values: …]` from ArkType unions, defaults, required markers, root Built-in section); completion candidates |
 | `module.spec` | the compiled model as pure data, functions stripped |
@@ -109,21 +113,59 @@ exit code with empty output strings).
 
 ## Shell completion
 
-The declaration drives tab completion end to end. `<bin> completion zsh`
-(or `bash`) prints an installable script; the script calls back into
-`<bin> __complete <words…>`, which answers from the compiled model:
-subcommands, flags with aliases and `--no-x` negations, literal values
-enumerated from ArkType unions (`"'patch' | 'minor' | 'major'"`
-tab-completes), and `complete: "filepaths" | "folders"` sources translated
-to the shell's native file completion. Positional slots are tracked, so a
-consumed enum stops offering itself.
+Completion runs on [`@bomb.sh/tab`](https://github.com/bombshell-dev/tab)
+— the Cobra-protocol completion engine used by Cloudflare, Nuxt, Astro,
+and Vitest. The compiled model projects into tab's registry, so the same
+declaration answers zsh, bash, fish, and powershell:
 
-`complete` also takes a Fig-style generator — `(ctx: CompleteContext) =>
-Promise<string[]>` with `ctx.exec` available — for candidates computed at
-completion time (real branch names, workspace manifests). Hoist generators
-to consts with annotated parameters: an inline arrow is context-sensitive
-and collapses the command's type inference. Generator failures degrade to
-static candidates; completion never errors.
+```sh
+# print an installable script for your shell
+mesh complete zsh
+
+# what the shell script calls back into (value, description, directive)
+mesh complete -- serve --port ""
+```
+
+```
+3000	port to bind
+:4
+```
+
+Because the protocol re-invokes the bin, candidates are computed live:
+literal values enumerate from ArkType unions (`"'patch' | 'minor'"`
+tab-completes), `suggest: "folders" | "filepaths"` lists the working
+directory at completion time, and a Fig-style generator —
+`(ctx: SuggestContext) => Promise<string[]>` with `ctx.exec` available —
+resolves real branch names or workspace manifests on demand. Generator
+failures degrade to static candidates; completion never errors. Hoist
+generators to consts with annotated parameters: an inline arrow is
+context-sensitive and collapses the command's type inference.
+
+tab also registers completion delegation for package managers, so a
+locally-installed bin completes through `pnpm exec mesh <TAB>` without
+being on `PATH`.
+
+## CLI conventions
+
+The argv grammar follows the conventions the wider ecosystem settled on
+(the suite borrows citty's own test cases, including two citty cannot
+pass):
+
+```sh
+mesh serve ./public --port=8080     # = syntax, long or short (-p=8080)
+mesh --verbose serve ./public       # flags are position-free; the
+                                    #   subcommand path is positional
+mesh serve ./public --verbose=off   # boolean literals: true/false,
+                                    #   yes/no, on/off, 1/0
+mesh build --no-minify src/a.ts     # --no-x negates any long boolean
+MESH_PORT=8080 mesh serve ./public  # argv > env > default, all three
+                                    #   validated by the same token type
+mesh run -- --help                  # after --, every token is a value
+```
+
+When a wrapped external's positional value itself starts with `-`, the
+reconstructed argv fences it behind `--` so it reaches the binary as data
+— argv injection into `git rev-parse` and friends is structurally off.
 
 ## CLI rendering
 
