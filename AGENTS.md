@@ -37,9 +37,11 @@ underlying `gh`, `bumpy`, `fledgling`, `npm`, or distribution-related `git`
 command directly, and never improvise a shell pipeline, watcher, wrapper, or
 alternate command. If the required operation has no script, stop before
 performing it and repair the project command contract first. Never assert
-that the user must perform a step: the agent runs everything, and a genuinely
-blocked command is reported as the specific gate (a login prompt or a runtime
-permission), not converted into a user task. Read-only Git inspection and
+that the user must perform a step — the sole real user step is the npm trust
+2FA session behind `release:publish-and-trust-new-package` for a new package
+name. The agent runs everything else, and a genuinely blocked command is
+reported as the specific gate (a login prompt or a runtime permission), not
+converted into a user task. Read-only Git inspection and
 local commits remain ordinary development actions.
 
 ## Daily changes
