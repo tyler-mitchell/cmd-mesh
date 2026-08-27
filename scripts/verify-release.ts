@@ -16,9 +16,20 @@ try {
     join(directory, "package.json"),
     `${JSON.stringify({ name: "cmd-mesh-verifier", private: true, type: "module" })}\n`,
   );
-  await run("npm", ["install", spec, "--no-audit", "--no-fund"], {
-    cwd: directory,
-  });
+  // a freshly published version's tarball can lag registry metadata by
+  // minutes on npm's CDN; tolerate propagation before declaring failure
+  const attempts = 10;
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      await run("npm", ["install", spec, "--no-audit", "--no-fund"], {
+        cwd: directory,
+      });
+      break;
+    } catch (error) {
+      if (attempt >= attempts) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 20_000));
+    }
+  }
   await run("npm", ["audit", "signatures"], { cwd: directory });
   await copyFile(new URL("./verify-published.mjs", import.meta.url), join(directory, "probe.mjs"));
   await run(process.execPath, ["probe.mjs"], { cwd: directory });
