@@ -21,7 +21,7 @@
     "release:check": "bumpy check --strict",
     "release:merge": "gh pr merge bumpy/version-packages --auto --squash",
     "release:pr": "gh pr list --head bumpy/version-packages --base release --state open --limit 1",
-    "release:publish-and-trust-new-package": "fledgling add cmd-mesh --new",
+    "release:publish-and-trust-new-package": "npm whoami || npm login && fledgling add cmd-mesh --new",
     "release:registry-version": "npm view cmd-mesh version",
     "release:status": "bumpy status --json",
     "release:trust-sync": "fledgling sync",
