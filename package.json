@@ -28,6 +28,7 @@
     "release:push": "git push origin main",
     "release:registry-version": "npm view cmd-mesh version",
     "release:sync": "git pull --ff-only origin release",
+    "release:sync:merge": "git pull --no-rebase --no-edit origin release",
     "release:sync:push": "git push origin main",
     "release:status": "bumpy status --json",
     "release:trust-sync": "fledgling sync",
