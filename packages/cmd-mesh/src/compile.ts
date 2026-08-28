@@ -3,9 +3,11 @@ import { Array, Effect, Option, Predicate, Record, String, pipe } from "effect"
 import type { DeclarationIssue } from "./errors.js"
 import { InvalidDeclaration } from "./errors.js"
 import type {
+  CliCommandConfig,
   CliParameterConfig,
   ExternalCommandDecl,
   ExternalDecl,
+  McpCommandConfig,
   Mounted,
   ParameterDef,
   ParameterDescriptor,
@@ -32,6 +34,8 @@ export type Binding =
     readonly _tag: "flag"
     readonly name: string
     readonly aliases: ReadonlyArray<string>
+    /** commander-style value slot (`--tag <tags...>`): occurrences append */
+    readonly variadic: boolean
   }
 
 export interface CompiledParameter {
@@ -47,11 +51,21 @@ export interface CompiledParameter {
   /** suggestion generator, run on demand */
   readonly generator: Option.Option<SuggestGenerator>
   readonly env: Option.Option<string>
+  /** hidden from help and completion; still parses */
+  readonly cliHidden: boolean
+  /** hidden from the mcp tool schema; still validates if supplied */
   readonly mcpHidden: boolean
   readonly required: boolean
   readonly defaulted: boolean
+  /** display snapshot of the default — help, spec, docs */
   readonly defaultValue: Option.Option<unknown>
+  /** fresh default per invocation: re-runs the def's own default (and
+   * factory) so one handler's mutation never bleeds into the next call */
+  readonly defaultFactory: Option.Option<() => unknown>
   readonly isBoolean: boolean
+  /** external-only: a binary-global option, emitted before the
+   * subcommand path when argv is reconstructed */
+  readonly global: boolean
   /** per-parameter token → value morph type */
   readonly inner: AnyType
 }
@@ -72,13 +86,24 @@ export interface CompiledCommand {
   readonly run: Option.Option<(input: any, ctx: any) => unknown>
   readonly children: Readonly<globalThis.Record<string, CompiledCommand>>
   readonly cliHidden: boolean
+  /** alternative cli names for reaching this command from its parent */
+  readonly cliAliases: ReadonlyArray<string>
+  /** child that runs when this group is invoked without a subcommand */
+  readonly cliDefault: Option.Option<string>
+  /** invocation lines for the help Examples section */
+  readonly cliExamples: ReadonlyArray<string>
   readonly mcpHidden: boolean
   readonly mcpName: Option.Option<string>
   readonly mcpAnnotations: Option.Option<Readonly<globalThis.Record<string, unknown>>>
   /** cli-only presentation override for the command's output */
   readonly cliRender: Option.Option<(output: unknown) => string>
-  /** present on external commands: binary plus fixed leading argv */
-  readonly external: Option.Option<{ readonly bin: string; readonly argPath: ReadonlyArray<string> }>
+  /** present on external commands: binary, fixed leading argv, and the
+   * exit codes that count as success */
+  readonly external: Option.Option<{
+    readonly bin: string
+    readonly argPath: ReadonlyArray<string>
+    readonly successCodes: ReadonlyArray<number>
+  }>
 }
 
 interface RawCommandDecl {
@@ -88,12 +113,8 @@ interface RawCommandDecl {
   readonly narrow?: (input: any, ctx: any) => boolean
   readonly run?: (input: any, ctx: any) => unknown
   readonly commands?: globalThis.Record<string, RawCommandDecl | Mounted>
-  readonly cli?: { readonly hidden?: boolean; readonly render?: (output: never) => string }
-  readonly mcp?: {
-    readonly hidden?: boolean
-    readonly name?: string
-    readonly annotations?: Readonly<globalThis.Record<string, unknown>>
-  }
+  readonly cli?: CliCommandConfig<never>
+  readonly mcp?: McpCommandConfig
 }
 
 const normalizeCli = (cli: string | CliParameterConfig | undefined): CliParameterConfig =>
@@ -105,7 +126,7 @@ const normalizeDescriptor = (def: ParameterDef): ParameterDescriptor =>
 const parseBinding = (key: string, usage: string): Binding => {
   const trimmed = String.trim(usage)
   if (String.isEmpty(trimmed)) {
-    return { _tag: "flag", name: `--${String.kebabCase(key)}`, aliases: [] }
+    return { _tag: "flag", name: `--${String.kebabCase(key)}`, aliases: [], variadic: false }
   }
   if (String.startsWith("<")(trimmed) || String.startsWith("[")(trimmed)) {
     return {
@@ -115,7 +136,14 @@ const parseBinding = (key: string, usage: string): Binding => {
       display: trimmed
     }
   }
-  const tokens = pipe(trimmed, String.split(","), Array.map(String.trim), Array.filter(String.isNonEmpty))
+  // a flag part may carry a commander-style value slot: "--tag <tags...>"
+  const tokens = pipe(
+    trimmed,
+    String.split(","),
+    Array.map(String.trim),
+    Array.filter(String.isNonEmpty),
+    Array.map((part) => pipe(part, String.split(" "), Array.headNonEmpty))
+  )
   const name = pipe(
     tokens,
     Array.findFirst(String.startsWith("--")),
@@ -123,7 +151,7 @@ const parseBinding = (key: string, usage: string): Binding => {
     Option.getOrElse(() => `--${String.kebabCase(key)}`)
   )
   const aliases = pipe(tokens, Array.filter((t) => t !== name))
-  return { _tag: "flag", name, aliases }
+  return { _tag: "flag", name, aliases, variadic: String.includes("...")(trimmed) }
 }
 
 type Attempt<A> = { readonly _tag: "ok"; readonly value: A } | { readonly _tag: "failed"; readonly problem: string }
@@ -145,6 +173,12 @@ const parameterIssues = (at: string, p: CompiledParameter): ReadonlyArray<Declar
         : [],
       p.binding._tag === "positional" && Option.isSome(p.env)
         ? [`env fallback is only meaningful on flags`]
+        : [],
+      p.binding._tag === "positional" && p.cliHidden
+        ? [`a positional cannot be cli-hidden — it would corrupt argv order`]
+        : [],
+      p.binding._tag === "flag" && p.binding.variadic && p.isBoolean
+        ? [`a boolean flag cannot take a value slot — presence is its value`]
         : []
     ],
     (problems) => Array.map(problems, (problem) => ({ at, problem }))
@@ -204,11 +238,27 @@ const compileParameter = (key: string, rawDef: ParameterDef): CompiledParameter 
   const isBoolean = defaulted
     ? (inner.out.exclude("undefined") as AnyType).extends("boolean")
     : inner.extends("boolean")
+  // authored arktype meta (`.describe(...)`) is a description source; a
+  // default wrapper hides it one level down on the unwrapped output side
+  const metaDescription = Option.fromNullishOr(
+    (inner.meta as { readonly description?: string }).description
+  ).pipe(
+    Option.orElse(() =>
+      defaulted
+        ? Option.fromNullishOr(
+          ((inner.out.exclude("undefined") as AnyType).meta as { readonly description?: string })
+            .description
+        )
+        : Option.none()
+    )
+  )
   return {
     key,
     def: descriptor.type,
     binding,
-    description: Option.fromNullishOr(descriptor.description),
+    description: Option.fromNullishOr(descriptor.description).pipe(
+      Option.orElse(() => metaDescription)
+    ),
     source: String.isString(descriptor.suggest) ? Option.some(descriptor.suggest) : Option.none(),
     staticSuggestions: globalThis.Array.isArray(descriptor.suggest)
       ? Option.some(descriptor.suggest)
@@ -217,17 +267,22 @@ const compileParameter = (key: string, rawDef: ParameterDef): CompiledParameter 
       ? Option.some(descriptor.suggest as SuggestGenerator)
       : Option.none(),
     env: Option.fromNullishOr(cli.env),
+    cliHidden: cli.hidden === true,
     mcpHidden: descriptor.mcp?.hidden === true,
     required: descriptor.required === true,
     defaulted,
     defaultValue,
+    defaultFactory: defaulted ? Option.some(() => (probe({}) as { v: unknown }).v) : Option.none(),
     isBoolean,
+    global: false,
     inner
   }
 }
 
 const isRequiredVariadic = (p: CompiledParameter): boolean =>
-  p.binding._tag === "positional" && p.binding.variadic && !p.binding.optional
+  p.binding._tag === "positional"
+    ? p.binding.variadic && !p.binding.optional
+    : p.binding.variadic && p.required
 
 const isOptionalNoDefault = (p: CompiledParameter): boolean => {
   if (p.defaulted || p.isBoolean) return false
@@ -242,13 +297,27 @@ const variadicOf = (base: AnyType, p: CompiledParameter): AnyType => {
   return isRequiredVariadic(p) ? (array.atLeastLength(1) as AnyType) : array
 }
 
-const isVariadic = (p: CompiledParameter): boolean => p.binding._tag === "positional" && p.binding.variadic
+const isVariadic = (p: CompiledParameter): boolean => p.binding.variadic
 
-const isStringDef = (p: CompiledParameter): boolean => String.isString(p.def)
+/** a parameter consumes a raw string token when its INPUT domain accepts
+ * strings — asked of the compiled type, not the def's JS representation,
+ * so Type instances classify the same as the string defs they equal */
+const takesRawToken = (p: CompiledParameter): boolean =>
+  String.isString(p.def) || Effect.runSync(
+    Effect.try(() => ((p.inner.in as AnyType).extract("string") as AnyType).expression !== "never").pipe(
+      Effect.orElseSucceed(() => false)
+    )
+  )
 
 /** a structured (non-string-def) parameter consumes a JSON token on the
- * cli: parse the token, then pipe into the declared definition */
-const jsonToken = (p: CompiledParameter): AnyType => type("string.json.parse").to(p.def as never) as AnyType
+ * cli: parse the token, then pipe into the declared definition. a
+ * defaultable def is illegal as a `.to` target — a defaulted structured
+ * param pipes into its unwrapped output type instead (defaults are the
+ * value boundary's job on this path anyway) */
+const jsonToken = (p: CompiledParameter): AnyType =>
+  type("string.json.parse").to(
+    (p.defaulted ? ((p.inner.out as AnyType).exclude("undefined")) : p.def) as never
+  ) as AnyType
 
 /** boolean flags cross the token boundary as presence booleans or as the
  * literal tokens of `--flag=value`; the literal set follows the effect
@@ -263,15 +332,23 @@ const booleanTokenType = type("boolean")
  * and defaults are enforced by the value boundary, which the cli path
  * always runs after this one */
 const tokenEntry = (p: CompiledParameter): readonly [string, unknown] => {
-  if (!isStringDef(p)) {
+  if (!takesRawToken(p)) {
     const wrapped = jsonToken(p)
     return [`${p.key}?`, isVariadic(p) ? variadicOf(wrapped, p) : wrapped]
   }
-  if (isVariadic(p)) return [p.key, variadicOf(p.inner, p)]
+  // an optional variadic (`[...xs]`) is present-and-empty when omitted;
+  // a required one (`<...xs>`) demands at least one value
+  if (isVariadic(p)) {
+    return isRequiredVariadic(p)
+      ? [p.key, variadicOf(p.inner, p)]
+      : [p.key, [variadicOf(p.inner, p), "=", () => []]]
+  }
   // a required boolean stays required: presence is its true value and
   // omission is a reportable error, not a silent false
   if (p.isBoolean) {
-    if (p.defaulted) return [p.key, [booleanTokenType, "=", () => Option.getOrThrow(p.defaultValue)]]
+    if (p.defaulted) {
+      return [p.key, [booleanTokenType, "=", () => Option.getOrThrow(p.defaultFactory)()]]
+    }
     return p.required ? [p.key, booleanTokenType] : [p.key, [booleanTokenType, "=", false]]
   }
   if (isOptionalNoDefault(p)) return [`${p.key}?`, p.inner]
@@ -285,12 +362,16 @@ const tokenEntry = (p: CompiledParameter): readonly [string, unknown] => {
 const valueEntry = (p: CompiledParameter): readonly [string, unknown] => {
   const rawOut = p.inner.out as AnyType
   const out = p.defaulted ? (rawOut.exclude("undefined") as AnyType) : rawOut
-  if (isVariadic(p)) return [p.key, variadicOf(out, p)]
+  if (isVariadic(p)) {
+    return isRequiredVariadic(p)
+      ? [p.key, variadicOf(out, p)]
+      : [p.key, [variadicOf(out, p), "=", () => []]]
+  }
   if (p.isBoolean && !p.defaulted) {
     return p.required ? [p.key, out] : [p.key, [out, "=", false]]
   }
   if (p.defaulted) {
-    return [p.key, [out, "=", () => Option.getOrThrow(p.defaultValue)]]
+    return [p.key, [out, "=", () => Option.getOrThrow(p.defaultFactory)()]]
   }
   if (isOptionalNoDefault(p)) return [`${p.key}?`, out]
   return [p.key, out]
@@ -321,18 +402,30 @@ type Collected = readonly [CompiledCommand, ReadonlyArray<DeclarationIssue>]
 const collectCommand = (
   name: string,
   path: ReadonlyArray<string>,
-  decl: RawCommandDecl
+  decl: RawCommandDecl,
+  inherited: Readonly<globalThis.Record<string, ParameterDef>> = {},
+  inheritedNarrow?: (input: any, ctx: any) => boolean
 ): Collected => {
   const at = Array.join(path, " ")
+  // program-level options (the root's input) join every command — same
+  // model as an external's binary-global options. own keys win.
+  const merged = { ...inherited, ...decl.input }
   const attempts = pipe(
-    Record.toEntries(decl.input ?? {}),
+    Record.toEntries(merged),
     Array.map(([key, def]) => ({ key, result: attempt(() => compileParameter(key, def)) } as const))
   )
-  const parameters = Array.flatMap(attempts, ({ result }) => result._tag === "ok" ? [result.value] : [])
+  const parameters = pipe(
+    Array.flatMap(attempts, ({ result }) => result._tag === "ok" ? [result.value] : []),
+    Array.map((p) =>
+      Option.isSome(Record.get(inherited, p.key)) && (decl.input?.[p.key]) === undefined
+        ? { ...p, global: true }
+        : p
+    )
+  )
   const outputAttempt = decl.output === undefined
     ? undefined
     : attempt(() => type(decl.output as never) as AnyType)
-  const ownIssues = pipe(
+  const ownIssuesBase = pipe(
     Array.flatMap(attempts, ({ key, result }) =>
       result._tag === "failed" ? [{ at: `${at} · ${key}`, problem: result.problem }] : []),
     Array.appendAll(Array.flatMap(parameters, (p) => parameterIssues(`${at} · ${p.key}`, p))),
@@ -342,17 +435,91 @@ const collectCommand = (
     )
   )
   // with a broken declaration the types are placeholders; program() throws
-  // the aggregate before anything can invoke them
-  const assembly = ownIssues.length > 0
-    ? { tokenType: type({}) as AnyType, schemaType: type({}) as AnyType }
-    : { tokenType: assemble(parameters, tokenEntry), schemaType: assemble(parameters, valueEntry) }
+  // the aggregate before anything can invoke them. assembly itself can
+  // also fail to parse — that is a declaration problem too, never a raw
+  // ParseError escaping the aggregate
+  const assemblyAttempt = ownIssuesBase.length > 0
+    ? undefined
+    : attempt(() => ({
+      tokenType: assemble(parameters, tokenEntry),
+      schemaType: assemble(parameters, valueEntry)
+    }))
+  const assemblyIssues: ReadonlyArray<DeclarationIssue> = assemblyAttempt?._tag === "failed"
+    ? [{ at, problem: assemblyAttempt.problem }]
+    : []
+  const assembly = assemblyAttempt?._tag === "ok"
+    ? assemblyAttempt.value
+    : { tokenType: type({}) as AnyType, schemaType: type({}) as AnyType }
+  const ownIssues = Array.appendAll(ownIssuesBase, assemblyIssues)
   // narrow lives on the value boundary only: the cli path runs token
-  // parsing first and the value boundary second, so it still applies once
-  const valueType = withNarrow(assembly.schemaType, decl.narrow)
+  // parsing first and the value boundary second, so it still applies
+  // once. a root narrow travels with the root's options — an invariant
+  // over program-level values holds wherever they are supplied.
+  const valueType = withNarrow(withNarrow(assembly.schemaType, inheritedNarrow), decl.narrow)
+  // only the PROGRAM root's input propagates (path length 1) — mirrors
+  // externals, where only binary-root globals join every command.
+  // mounted modules are finished programs and keep their own model.
+  const passedDown = path.length === 1 ? merged : inherited
+  const passedNarrow = path.length === 1 ? decl.narrow : inheritedNarrow
   const childPairs = Record.map(decl.commands ?? {}, (child, childName): Collected =>
     isMounted(child)
       ? [repath(child[mounted], Array.append(path, childName)), []] as const
-      : collectCommand(childName, Array.append(path, childName), child as RawCommandDecl))
+      : collectCommand(
+        childName,
+        Array.append(path, childName),
+        child as RawCommandDecl,
+        passedDown,
+        passedNarrow
+      ))
+  const children = Record.map(childPairs, ([child]) => child)
+  // a subcommand name — real or alias — must resolve to exactly one child
+  const nameClaims = pipe(
+    Record.toEntries(children),
+    Array.flatMap(([childName, child]) =>
+      Array.map(Array.prepend(child.cliAliases, childName), (token) => [token, childName] as const))
+  )
+  const aliasIssues = pipe(
+    nameClaims,
+    Array.groupBy(([token]) => token),
+    Record.toEntries,
+    Array.flatMap(([token, owners]) =>
+      owners.length > 1
+        ? [{
+          at,
+          problem: `subcommand name ${token} is claimed by ${
+            Array.join(Array.map(owners, ([, owner]) => owner), " and ")
+          }`
+        }]
+        : [])
+  )
+  // `cli.default` may be spelled as an alias — resolve it to the child's
+  // canonical name HERE, so every downstream lookup (routing, help,
+  // completion) stays a plain record access
+  const resolvedDefault = Option.fromNullishOr(decl.cli?.default).pipe(
+    Option.map((name) =>
+      Option.isSome(Record.get(children, name)) ? Option.some(name) : pipe(
+        Record.toEntries(children),
+        Array.findFirst(([, child]) => Array.contains(child.cliAliases, name)),
+        Option.map(([realName]) => realName)
+      )
+    )
+  )
+  const defaultIssues = pipe(
+    Option.fromNullishOr(decl.cli?.default),
+    Option.match({
+      onNone: () => [] as ReadonlyArray<DeclarationIssue>,
+      onSome: (name) =>
+        Array.flatMap(
+          [
+            decl.run === undefined ? [] : [`cannot declare both run and cli.default`],
+            Option.isSome(Option.flatten(resolvedDefault))
+              ? []
+              : [`cli.default names a missing subcommand: ${name}`]
+          ],
+          (problems) => Array.map(problems, (problem) => ({ at, problem }))
+        )
+    })
+  )
   const command: CompiledCommand = {
     kind: "internal",
     name,
@@ -364,17 +531,30 @@ const collectCommand = (
     schemaType: assembly.schemaType,
     outputType: outputAttempt?._tag === "ok" ? Option.some(outputAttempt.value) : Option.none(),
     run: Option.fromNullishOr(decl.run),
-    children: Record.map(childPairs, ([child]) => child),
+    children,
     cliHidden: decl.cli?.hidden === true,
+    cliAliases: pipe(
+      Option.fromNullishOr(decl.cli?.alias),
+      Option.match({
+        onNone: () => [] as ReadonlyArray<string>,
+        onSome: (alias) => String.isString(alias) ? [alias] : alias
+      })
+    ),
+    cliDefault: Option.flatten(resolvedDefault),
+    cliExamples: decl.cli?.examples ?? [],
     mcpHidden: decl.mcp?.hidden === true,
     mcpName: Option.fromNullishOr(decl.mcp?.name),
     mcpAnnotations: Option.fromNullishOr(decl.mcp?.annotations),
     cliRender: Option.fromNullishOr(decl.cli?.render as ((output: unknown) => string) | undefined),
     external: Option.none()
   }
-  const issues = Array.appendAll(
+  const issues = pipe(
     ownIssues,
-    pipe(Record.toEntries(childPairs), Array.flatMap(([, [, childIssues]]) => childIssues))
+    Array.appendAll(aliasIssues),
+    Array.appendAll(defaultIssues),
+    Array.appendAll(
+      pipe(Record.toEntries(childPairs), Array.flatMap(([, [, childIssues]]) => childIssues))
+    )
   )
   return [command, issues] as const
 }
@@ -395,16 +575,36 @@ export const compileCommand = (
 
 const collectExternalCommand = (
   bin: string,
+  globals: Readonly<globalThis.Record<string, ParameterDef>>,
   argPath: ReadonlyArray<string>,
   name: string,
   path: ReadonlyArray<string>,
   decl: ExternalCommandDecl
 ): Collected => {
   const { commands: _children, ...withoutChildren } = decl
-  const [base, ownIssues] = collectCommand(name, path, withoutChildren)
+  // a command redefining a binary-global key would make one token mean
+  // two things in a single invocation — undiagnosable from the spawn
+  const collisionIssues = pipe(
+    Record.keys(decl.input ?? {}),
+    Array.filter((key) => Option.isSome(Record.get(globals, key))),
+    Array.map((key) => ({
+      at: Array.join(path, " "),
+      problem: `parameter ${key} redefines a binary-global option`
+    }))
+  )
+  // the binary's global options join every command's own input at compile
+  // time, so typed calls, schemas, help, and the cli walk need no extra
+  // machinery — only spawn-time reconstruction reads the marker below
+  const [base, ownIssues] = collectCommand(name, path, {
+    ...withoutChildren,
+    input: { ...globals, ...decl.input }
+  })
+  const marked = Array.map(base.parameters, (p) =>
+    Option.isSome(Record.get(globals, p.key)) ? { ...p, global: true } : p)
   const childPairs = Record.map(decl.commands ?? {}, (child, childName): Collected =>
     collectExternalCommand(
       bin,
+      globals,
       // the module key stays dot-callable; the binary receives its own
       // spelling, kebab-cased like derived flag names
       Array.append(argPath, String.kebabCase(childName)),
@@ -415,13 +615,17 @@ const collectExternalCommand = (
   const command: CompiledCommand = {
     ...base,
     kind: "external",
+    parameters: marked,
     outputType: Option.some(type((decl.output ?? "string") as never) as AnyType),
-    external: Option.some({ bin, argPath }),
+    external: Option.some({ bin, argPath, successCodes: decl.successCodes ?? [0] }),
     children: Record.map(childPairs, ([child]) => child)
   }
-  const issues = Array.appendAll(
-    ownIssues,
-    pipe(Record.toEntries(childPairs), Array.flatMap(([, [, childIssues]]) => childIssues))
+  const issues = pipe(
+    collisionIssues,
+    Array.appendAll(ownIssues),
+    Array.appendAll(
+      pipe(Record.toEntries(childPairs), Array.flatMap(([, [, childIssues]]) => childIssues))
+    )
   )
   return [command, issues] as const
 }
@@ -431,6 +635,7 @@ export const compileExternal = (decl: ExternalDecl): CompiledCommand => {
   const childPairs = Record.map(decl.commands, (child, childName): Collected =>
     collectExternalCommand(
       bin,
+      decl.input ?? {},
       [String.kebabCase(childName)],
       childName,
       [decl.name, childName],
@@ -453,10 +658,13 @@ export const compileExternal = (decl: ExternalDecl): CompiledCommand => {
     run: Option.none(),
     children: Record.map(childPairs, ([child]) => child),
     cliHidden: false,
+    cliAliases: [],
+    cliDefault: Option.none(),
+    cliExamples: [],
     mcpHidden: false,
     mcpName: Option.none(),
     mcpAnnotations: Option.none(),
     cliRender: Option.none(),
-    external: Option.some({ bin, argPath: [] })
+    external: Option.some({ bin, argPath: [], successCodes: [0] })
   }
 }

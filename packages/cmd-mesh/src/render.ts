@@ -1,11 +1,11 @@
-import { Array, Option, Predicate, Record, String, pipe } from "effect"
+import { Array, Formatter, Option, Predicate, Record, String, pipe } from "effect"
 import type { AnyType, CompiledCommand, CompiledParameter } from "./compile.js"
 import { unitCandidates } from "./completion.js"
 
-const positionalDisplay = (p: CompiledParameter): string =>
+export const positionalDisplay = (p: CompiledParameter): string =>
   p.binding._tag === "positional" ? p.binding.display : ""
 
-const flagDisplay = (p: CompiledParameter): string =>
+export const flagDisplay = (p: CompiledParameter): string =>
   p.binding._tag === "flag"
     ? pipe(Array.prepend(p.binding.aliases, p.binding.name), Array.join(", "))
     : ""
@@ -16,7 +16,9 @@ const defaultDisplay = (p: CompiledParameter): string =>
     onSome: (value) => ` (default: ${JSON.stringify(value)})`
   })
 
-const valueHint = (p: CompiledParameter): string => p.isBoolean ? "" : " <value>"
+/** the hint is derived from the parameter's own name, the citty/clap way */
+const valueHint = (p: CompiledParameter): string =>
+  p.isBoolean ? "" : ` <${String.kebabCase(p.key)}>`
 
 /** enumerated literals render as a possible-values suffix, the clap way —
  * except booleans, whose "values" are flag presence and --no-x */
@@ -28,11 +30,20 @@ const possibleValues = (p: CompiledParameter): string => {
 
 const requiredDisplay = (p: CompiledParameter): string => p.required ? " (required)" : ""
 
-const optionLine = (p: CompiledParameter): string => {
+const optionLines = (p: CompiledParameter): ReadonlyArray<string> => {
   const description = Option.getOrElse(p.description, () => "")
-  return `  ${String.padEnd(28)(`${flagDisplay(p)}${valueHint(p)}`)}${description}${requiredDisplay(p)}${
+  const base = `  ${String.padEnd(28)(`${flagDisplay(p)}${valueHint(p)}`)}${description}${requiredDisplay(p)}${
     defaultDisplay(p)
   }${possibleValues(p)}`
+  // a boolean that defaults to true is turned OFF, not on — surface the
+  // negation the parser already accepts
+  const negation = p.isBoolean
+    && Option.contains(p.defaultValue, true)
+    && p.binding._tag === "flag"
+    && String.startsWith("--")(p.binding.name)
+    ? [`  ${String.padEnd(28)(String.replace("--", "--no-")(p.binding.name))}disable ${String.kebabCase(p.key)}`]
+    : []
+  return Array.prepend(negation, base)
 }
 
 const argumentLine = (p: CompiledParameter): string => {
@@ -40,8 +51,13 @@ const argumentLine = (p: CompiledParameter): string => {
   return `  ${String.padEnd(28)(positionalDisplay(p))}${description}${defaultDisplay(p)}${possibleValues(p)}`
 }
 
-const commandLine = ([name, child]: readonly [string, CompiledCommand]): string =>
-  `  ${String.padEnd(28)(name)}${child.description}`
+const commandLine = (defaultName: Option.Option<string>) =>
+([name, child]: readonly [string, CompiledCommand]): string => {
+  const names = Array.join(Array.prepend(child.cliAliases, name), ", ")
+  // bare-invocation behavior belongs on the help screen, not just in spec
+  const marked = Option.contains(defaultName, name) ? `${names} (default)` : names
+  return `  ${String.padEnd(28)(marked)}${child.description}`
+}
 
 const section = (title: string, lines: ReadonlyArray<string>): ReadonlyArray<string> =>
   lines.length === 0 ? [] : Array.prependAll(lines, ["", `${title}:`])
@@ -49,7 +65,6 @@ const section = (title: string, lines: ReadonlyArray<string>): ReadonlyArray<str
 const builtinLines = (cmd: CompiledCommand): ReadonlyArray<string> =>
   Array.flatMap(
     [
-      ["mcp", "serve this program's tools over stdio (mcp)"],
       ["complete <shell>", "print a zsh, bash, fish, or powershell completion script"]
     ] as const,
     ([name, description]) =>
@@ -58,20 +73,19 @@ const builtinLines = (cmd: CompiledCommand): ReadonlyArray<string> =>
         : []
   )
 
-/** render help for one command from the compiled model. `builtins` adds
- * the reserved subcommands — pass it for the program root only */
-export const renderHelp = (cmd: CompiledCommand, options?: { readonly builtins?: boolean }): string => {
+/** the one-line invocation shape, shared by help and usage errors */
+export const usageLine = (cmd: CompiledCommand): string => {
   const positionals = pipe(
     cmd.parameters,
     Array.filter((p) => p.binding._tag === "positional"),
     Array.map(positionalDisplay)
   )
-  const flags = Array.filter(cmd.parameters, (p) => p.binding._tag === "flag")
+  const flags = Array.filter(cmd.parameters, (p) => p.binding._tag === "flag" && !p.cliHidden)
   const visibleChildren = pipe(
     Record.toEntries(cmd.children),
     Array.filter(([, child]) => !child.cliHidden)
   )
-  const usage = pipe(
+  return pipe(
     [
       Array.join(cmd.path, " "),
       ...(visibleChildren.length === 0 ? [] : ["<command>"]),
@@ -80,11 +94,22 @@ export const renderHelp = (cmd: CompiledCommand, options?: { readonly builtins?:
     ],
     Array.join(" ")
   )
+}
+
+/** render help for one command from the compiled model. `builtins` adds
+ * the reserved subcommands — pass it for the program root only */
+export const renderHelp = (cmd: CompiledCommand, options?: { readonly builtins?: boolean }): string => {
+  const flags = Array.filter(cmd.parameters, (p) => p.binding._tag === "flag" && !p.cliHidden)
+  const visibleChildren = pipe(
+    Record.toEntries(cmd.children),
+    Array.filter(([, child]) => !child.cliHidden)
+  )
+  const usage = usageLine(cmd)
   return pipe(
     [
       ...(String.isEmpty(cmd.description) ? [] : [cmd.description, ""]),
       `Usage: ${usage}`,
-      ...section("Commands", Array.map(visibleChildren, commandLine)),
+      ...section("Commands", Array.map(visibleChildren, commandLine(cmd.cliDefault))),
       ...section(
         "Arguments",
         pipe(
@@ -93,7 +118,8 @@ export const renderHelp = (cmd: CompiledCommand, options?: { readonly builtins?:
           Array.map(argumentLine)
         )
       ),
-      ...section("Options", Array.map(flags, optionLine)),
+      ...section("Options", Array.flatMap(flags, optionLines)),
+      ...section("Examples", Array.map(cmd.cliExamples, (example) => `  ${example}`)),
       ...(options?.builtins === true ? section("Built-in", builtinLines(cmd)) : [])
     ],
     Array.join("\n")
@@ -135,11 +161,13 @@ const columnRows = (rows: ReadonlyArray<globalThis.Record<string, unknown>>): st
 }
 
 /** render a command result for a human terminal: strings raw, arrays of
- * flat records as aligned rows (the grep convention), everything else as
- * pretty json. agents never see this — mcp responses carry json. */
+ * flat records as aligned rows (the grep convention), everything else
+ * through Formatter.format — which handles BigInt, Dates, Maps, and
+ * circular references instead of throwing. agents never see this — mcp
+ * responses and `--json` carry strict json. */
 export const renderResult = (value: unknown): string =>
   value === undefined ? ""
     : String.isString(value) ? value
     : globalThis.Array.isArray(value) && value.length > 0 && Array.every(value, isFlatRecord)
     ? columnRows(value as ReadonlyArray<globalThis.Record<string, unknown>>)
-    : JSON.stringify(value, null, 2)
+    : Formatter.format(value)

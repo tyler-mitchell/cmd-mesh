@@ -30,8 +30,7 @@ if (tool.inputSchema?.properties?.times?.default !== 1) {
   throw new Error(`mcp schema lost the morphed default: ${JSON.stringify(tool.inputSchema)}`);
 }
 
-const exit = await probe.main(["greet", "release", "--times", "3"]);
+const exit = await probe.cli.run(["greet", "release", "--times", "3"]);
 if (exit !== 0) throw new Error(`cli projection exited ${exit}`);
 
-await probe.dispose();
 console.log("cmd-mesh probe: direct call, mcp projection, and cli all verified.");

@@ -1,13 +1,12 @@
 import { describe, expect, it } from "vitest"
-import { external, program } from "../src/index.js"
+import { program } from "../src/index.js"
 
-// Lifecycle and process execution under pressure.
+// Lifecycle and process execution.
 //
-// Every module allocates an Effect runtime and every handler can spawn
-// children. A long-lived process — an MCP server, a watch mode, a test
-// harness importing the module — depends on those resources being
-// releasable, concurrent calls being independent, and child output not
-// being truncated.
+// Every handler can spawn children. A long-lived process — an MCP server,
+// a watch mode, a test harness importing the module — depends on
+// concurrent calls being independent and child output not being
+// truncated.
 
 const makeCounter = () =>
   program({
@@ -76,39 +75,6 @@ const shell = program({
   }
 })
 
-describe("runtime disposal", () => {
-  it("releases its runtime and refuses further work", async () => {
-    const counter = makeCounter()
-    await expect(counter.inc({ by: 2 })).resolves.toEqual({ value: 2 })
-    await counter.dispose()
-    // a disposed module must fail promptly, not hang the caller
-    await expect(
-      Promise.race([
-        counter.inc({ by: 2 }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("hung after dispose")), 1000))
-      ])
-    ).rejects.toThrow()
-  })
-
-  it("tolerates being disposed twice", async () => {
-    const counter = makeCounter()
-    await counter.dispose()
-    await expect(counter.dispose()).resolves.not.toThrow()
-  })
-
-  it("gives an external module a way to release its runtime", async () => {
-    // external() allocates a ManagedRuntime exactly as program() does;
-    // without a release hook a long-lived host leaks one per module
-    const lister = external({
-      name: "lister",
-      bin: "echo",
-      commands: { show: { description: "echo something", output: "string" } }
-    })
-    expect(typeof (lister as unknown as { dispose?: unknown }).dispose).toBe("function")
-    await (lister as unknown as { dispose(): Promise<void> }).dispose()
-  })
-})
-
 describe("concurrent invocation", () => {
   it("keeps parallel calls of one command independent", async () => {
     const counter = makeCounter()
@@ -116,7 +82,6 @@ describe("concurrent invocation", () => {
       Array.from({ length: 50 }, (_, i) => counter.inc({ by: i }))
     )
     expect(results.map((r) => r.value)).toEqual(Array.from({ length: 50 }, (_, i) => i))
-    await counter.dispose()
   })
 
   it("keeps parallel child processes independent", async () => {
@@ -165,7 +130,49 @@ describe("child process behavior", () => {
       }
     })
     await expect(broken.go()).rejects.toThrow(/definitely-not-a-binary-xyz/)
-    await broken.dispose()
+  })
+})
+
+describe("cancellation", () => {
+  it("an aborted invocation interrupts and kills its child process", async () => {
+    const { runAbortable } = await import("../src/module.js")
+    const { invokeValues } = await import("../src/invoke.js")
+    const { mounted } = await import("../src/types.js")
+    const { ManagedRuntime } = await import("effect")
+    const { Exec } = await import("../src/exec.js")
+    const slow = program({
+      name: "slow",
+      version: "0.0.0",
+      commands: {
+        wait: {
+          description: "sleep in a child",
+          run: async (_input, ctx) => {
+            await ctx.exec("sleep", ["10"])
+            return { finished: true }
+          }
+        }
+      }
+    })
+    const compiled = (slow as unknown as Record<symbol, { children: Record<string, unknown> }>)[
+      mounted
+    ]!
+    const runtime = ManagedRuntime.make(Exec.layer)
+    const controller = new AbortController()
+    const started = Date.now()
+    const pending = runAbortable(
+      runtime as never,
+      invokeValues(
+        compiled.children["wait"] as never,
+        {},
+        { surface: "call", exec: (bin, args, o) => runtime.runPromise(Exec.use((s) => s.exec(bin, args, o))) }
+      ),
+      controller.signal
+    )
+    setTimeout(() => controller.abort(), 150)
+    await expect(pending).rejects.toThrow()
+    // interruption must beat the 10s sleep by a wide margin — the child
+    // was killed, not awaited
+    expect(Date.now() - started).toBeLessThan(3000)
   })
 })
 
@@ -185,7 +192,6 @@ describe("mounted modules", () => {
     const marker = Symbol.for("cmd-mesh/mounted")
     expect(typeof leaf).toBe("function")
     expect(marker in (leaf as unknown as object)).toBe(true)
-    await leaf.dispose()
   })
 
   it("keeps a mounted subprogram callable through its parent", async () => {
@@ -207,10 +213,8 @@ describe("mounted modules", () => {
       description: "hosts a mounted subprogram",
       commands: { cache }
     })
-    await expect(host.cache.clear()).resolves.toEqual({ cleared: true })
+    expect(host.cache.clear()).toEqual({ cleared: true })
     expect(host.mcp.tools.map((t) => t.name)).toContain("host_cache_clear")
-    await host.dispose()
-    await cache.dispose()
   })
 
   it("mounts the same subprogram under two names without crosstalk", async () => {
@@ -231,7 +235,5 @@ describe("mounted modules", () => {
     const names = host.mcp.tools.map((t) => t.name)
     expect(names).toContain("host_primary_ping")
     expect(names).toContain("host_secondary_ping")
-    await host.dispose()
-    await leaf.dispose()
   })
 })

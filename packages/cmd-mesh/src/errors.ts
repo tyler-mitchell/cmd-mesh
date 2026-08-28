@@ -1,4 +1,4 @@
-import { Array, Data } from "effect"
+import { Array, Data, Predicate } from "effect"
 import { didYouMean } from "./suggest.js"
 
 // tagged errors for the whole package. Data.TaggedError keeps Effect Schema
@@ -58,7 +58,12 @@ export class HandlerFailure extends Data.TaggedError("HandlerFailure")<{
   readonly cause: unknown
 }> {
   override get message(): string {
-    return `${Array.join(this.path, " ")} failed: ${this.cause}`
+    // an Error cause renders by its own message — never the doubled
+    // "x failed: Error: boom" framing
+    const cause = Predicate.hasProperty(this.cause, "message")
+      ? `${(this.cause as { readonly message: unknown }).message}`
+      : `${this.cause}`
+    return `${Array.join(this.path, " ")} failed: ${cause}`
   }
 }
 

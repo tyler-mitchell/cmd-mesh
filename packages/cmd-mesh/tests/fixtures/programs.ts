@@ -1,8 +1,8 @@
-// Programs under pressure.
+// Shared fixture programs.
 //
 // These are shaped like tools people actually ship — a deployer, a task
 // runner, a passthrough wrapper, a wrapped binary — so every failure the
-// pressure suites surface is a failure a real consumer would hit. Nothing
+// suites surface is a failure a real consumer would hit. Nothing
 // here is a synthetic minimum: each command carries the parameter shapes
 // its real-world counterpart would carry.
 
@@ -75,7 +75,7 @@ export const deploy = program({
           // second-level inline handlers lose contextual parameter types —
           // the documented reverse-mapped-inference limit, annotated here
           // because the prescribed fix (mounting a subprogram) does not
-          // survive compilation. see pressure-lifecycle "mounted modules".
+          // survive compilation. see lifecycle "mounted modules".
           run: (input: { readonly key: string; readonly value: string }) => ({
             [input.key]: input.value
           })
@@ -265,7 +265,3 @@ export const git = external({
 })
 
 export const allPrograms = [deploy, tasks, wrap, bake, app, fragile] as const
-
-export const disposeAll = async (): Promise<void> => {
-  await Promise.all(allPrograms.map((p) => p.dispose()))
-}

@@ -9,6 +9,7 @@ export const git = external({
       description: "working tree status",
       input: {
         short: { type: "boolean", cli: "--short, -s" },
+        branch: { type: "boolean", cli: "--branch, -b" },
       },
       output: "string",
     },
@@ -20,32 +21,33 @@ export const mesh = program({
   version: "0.1.0",
   description: "demo dev tool",
   commands: {
-    serve: {
-      description: "serve a directory over http",
+    snapshot: {
+      description: "record a directory snapshot",
       input: {
         directory: {
           type: "string",
-          description: "directory to serve",
+          description: "directory to snapshot",
           suggest: "folders",
           cli: "<directory>",
         },
-        port: {
-          type: "string.integer.parse = '3000'",
-          description: "port to bind",
-          cli: { usage: "--port, -p", env: "MESH_PORT" },
+        depth: {
+          type: "string.integer.parse = '2'",
+          description: "traversal depth",
+          cli: { usage: "--depth, -d", env: "MESH_DEPTH" },
         },
         verbose: { type: "boolean", cli: "--verbose, -v" },
-        tlsCert: { type: "string" },
+        signCert: { type: "string" },
         // object ArkType defs are first-class: real object on the
         // call/mcp surface, JSON token on the cli
-        tlsKey: { type: { a: "string" } },
+        signKey: { type: { a: "string" } },
       },
       narrow: (input, ctx) =>
-        (input.tlsCert === undefined) === (input.tlsKey === undefined) ||
-        ctx.reject({ expected: "--tls-cert and --tls-key together" }),
+        (input.signCert === undefined) === (input.signKey === undefined) ||
+        ctx.reject({ expected: "--sign-cert and --sign-key together" }),
+      // a sync handler is a sync typed function — no promise involved
       run: (input) => ({
-        served: input.directory,
-        port: input.port,
+        snapped: input.directory,
+        depth: input.depth,
         verbose: input.verbose,
       }),
     },
@@ -65,6 +67,11 @@ export const mesh = program({
           description: "cache statistics",
           output: { entries: "number" },
           run: () => ({ entries: 0 }),
+        },
+        clear: {
+          description: "drop the cache",
+          // a void command: side effect only, nothing to report
+          run: () => undefined,
         },
       },
     },

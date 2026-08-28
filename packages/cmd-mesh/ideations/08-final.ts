@@ -54,6 +54,49 @@
  * And the de-risk: because mounting is by reference, `external` is purely
  * additive. Adopting this contract does not require deciding it now; the
  * core is complete without it.
+ *
+ * IMPLEMENTATION ADDENDUM (audit finding 38 — what src/ ships where it
+ * diverges from or extends the text below; the code in this file is the
+ * ideation as written, kept verbatim)
+ *
+ * - `complete:` at parameter level shipped as `suggest:` (a universal
+ *   property — shell completion is its cli projection, schema examples
+ *   its mcp projection), and it moved to the descriptor root.
+ * - The projections are explicit: `module.cli.{run,help,complete}` and
+ *   `module.mcp.{tools,serve}`; `module.main(argv?)` is the ONE composed
+ *   bin (head token `mcp` serves, everything else is the cli). No
+ *   argv-dispatched `mcp` word inside the cli projection itself.
+ * - Typed functions preserve handler synchrony (a sync handler compiles
+ *   to a sync function); input validation is always sync assert
+ *   semantics. `ctx` is `{ exec, surface }`; exec runs on
+ *   effect/unstable/process, not tinyexec. Mockability comes from `Ctx`
+ *   being structural and exported — no framework seam. The
+ *   observability/sandbox sentences remain roadmap.
+ * - `narrow` receives a structural NarrowContext (mustBe/reject), so
+ *   consumers never import arktype.
+ * - Externals: root-level `input` declares binary-GLOBAL options
+ *   (emitted before the subcommand path); command input emits after it
+ *   (flags, then `--`, then positionals). `successCodes` (default [0])
+ *   declares report-style exits. Calls take `(input, options?)` with
+ *   `{cwd, env, timeoutMs}`. Externals mount into programs; externals
+ *   do not mount externals (one declaration = one binary).
+ * - Exit codes follow getopt: usage 2, runtime 1; a thrown error
+ *   carrying numeric `exitCode` owns the exit (diff/grep convention).
+ * - Added since the text: command `cli.alias`, `cli.default`,
+ *   `cli.render` (typed from the declared output), `cli.examples`,
+ *   per-parameter `cli.hidden`/`mcp.hidden`, repeatable flags
+ *   (`--tag <tags...>`), POSIX short clustering, arktype meta
+ *   `.describe()` as description fallback.
+ * - `spec` ships REAL (36): `module.spec` is a JSON-serializable
+ *   descriptor tree (paths, aliases, examples, per-surface hiding,
+ *   runnability, documented schemas, per-parameter cli grammar,
+ *   defaults, env) — the earlier no-op was deleted under the
+ *   no-purposeless-machinery ruling and rebuilt on merit under the
+ *   "anything faked with merit must be real" ruling.
+ * - `--json` ships (44): the 09 ideation's "human output only" thesis
+ *   was never adopted — 08 is the contract, and machine output on the
+ *   cli surface is what agents and scripts consume. docs/audit.md
+ *   records both decisions.
  */
 
 // a subprogram is just a program — built independently, mounted by reference:

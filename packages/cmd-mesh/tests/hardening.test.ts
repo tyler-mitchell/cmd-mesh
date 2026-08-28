@@ -98,11 +98,11 @@ describe("help rendering", () => {
     const help = renderHelp(root.children["release"]!)
     expect(help).toMatch(/Arguments:/)
     expect(help).toMatch(/<bump>\s+increment \[possible values: major, minor, patch\]/)
-    expect(help).toMatch(/--token <value>\s+auth \(required\)/)
+    expect(help).toMatch(/--token <token>\s+auth \(required\)/)
   })
 
-  vit("lists built-in subcommands only at the root", () => {
-    expect(renderHelp(root, { builtins: true })).toMatch(/mcp\s+serve this program's tools/)
+  vit("lists the built-in completion row only at the root", () => {
+    expect(renderHelp(root, { builtins: true })).toMatch(/complete <shell>\s+print a zsh/)
     expect(renderHelp(root.children["release"]!)).not.toMatch(/Built-in/)
   })
 })
