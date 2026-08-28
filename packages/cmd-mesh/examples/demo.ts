@@ -7,60 +7,56 @@ const show = (label: string, value: unknown) => {
   console.log(typeof value === "string" ? value : JSON.stringify(value))
 }
 
-// 1. direct calls: defaults, morphs
-show("serve direct (defaults)", await mesh.serve({ directory: "./public" }))
-show("serve direct (explicit)", await mesh.serve({ directory: ".", port: 8080, verbose: true }))
+// 1. direct calls: defaults, morphs — sync handlers are sync functions
+show("snapshot direct (defaults)", mesh.snapshot({ directory: "./public" }))
+show("snapshot direct (explicit)", mesh.snapshot({ directory: ".", depth: 4, verbose: true }))
 
-// 2. narrow rejection
-show(
-  "narrow rejects lone tlsCert",
-  await mesh.serve({ directory: ".", tlsCert: "cert.pem" }).then(
-    () => "UNEXPECTED SUCCESS",
-    (error) => `rejected: ${error}`
-  )
-)
+// 2. narrow rejection — sync, so it throws
+try {
+  mesh.snapshot({ directory: ".", signCert: "cert.pem" })
+  show("narrow rejects lone signCert", "UNEXPECTED SUCCESS")
+} catch (error) {
+  show("narrow rejects lone signCert", `threw: ${error}`)
+}
 
 // 3. variadic + output contract
-show("build direct", await mesh.build({ entries: ["a.ts", "b.ts"] }))
+show("build direct", mesh.build({ entries: ["a.ts", "b.ts"] }))
 
 // 4. nested subcommand as function
-show("cache.stat direct", await mesh.cache.stat())
+show("cache.stat direct", mesh.cache.stat())
 
-// 5. ctx.exec inside a handler
+// 5. ctx.exec inside a handler — async handler, async function
 show("disk (ctx.exec)", await mesh.disk())
 
-// 6. mounted external, called as typed function
+// 6. mounted external, called as typed function — process boundary, async
 show("git.status direct", await git.status({ short: true }))
 
-// 7. argv projection: subcommand + flags + variadic
-show("main: build a.ts b.ts --out-dir out", await mesh.main(["build", "a.ts", "b.ts", "--out-dir", "out"]))
-show("main: serve ./public -p 9999 -v", await mesh.main(["serve", "./public", "-p", "9999", "-v"]))
+// 7. the cli projection: subcommand + flags + variadic
+show("cli: build a.ts b.ts --out-dir out", await mesh.cli.run(["build", "a.ts", "b.ts", "--out-dir", "out"]))
+show("cli: snapshot ./public -d 4 -v", await mesh.cli.run(["snapshot", "./public", "-d", "4", "-v"]))
 
 // 8. env fallback
-process.env["MESH_PORT"] = "4444"
-show("main with MESH_PORT=4444: serve ./public", await mesh.main(["serve", "./public"]))
-delete process.env["MESH_PORT"]
+process.env["MESH_DEPTH"] = "6"
+show("cli with MESH_DEPTH=6: snapshot ./public", await mesh.cli.run(["snapshot", "./public"]))
+delete process.env["MESH_DEPTH"]
 
 // 9. argv error surface
-show("main: serve without directory (exit code)", await mesh.main(["serve"]))
-show("main: unknown flag (exit code)", await mesh.main(["serve", ".", "--nope"]))
+show("cli: snapshot without directory (exit code)", await mesh.cli.run(["snapshot"]))
+show("cli: unknown flag (exit code)", await mesh.cli.run(["snapshot", ".", "--nope"]))
 
 // 10. mounted external through argv
-show("main: git status --short", await mesh.main(["git", "status", "--short"]))
+show("cli: git status --short", await mesh.cli.run(["git", "status", "--short"]))
 
 // 11. help + version
-show("main: --help", await mesh.main(["--help"]))
-show("main: serve --help", await mesh.main(["serve", "--help"]))
-show("main: --version", await mesh.main(["--version"]))
+show("cli: --help", await mesh.cli.run(["--help"]))
+show("cli: snapshot --help", await mesh.cli.run(["snapshot", "--help"]))
+show("cli: --version", await mesh.cli.run(["--version"]))
 
 // 12. projections
 show("mcp.tools", mesh.mcp.tools)
-show("spec", mesh.spec)
-show("complete: ['']", mesh.complete([""]))
-show("complete: ['serve','--']", mesh.complete(["serve", "--"]))
+show("complete: ['']", await mesh.cli.complete([""]))
+show("complete: ['snapshot','--']", await mesh.cli.complete(["snapshot", "--"]))
 
 // 13. args introspection
-show("serve.args.allows bad", mesh.serve.args.allows({ directory: 1 }))
-show("serve.args json schema", mesh.serve.args.toJsonSchema())
-
-await mesh.dispose()
+show("snapshot.args.allows bad", mesh.snapshot.args.allows({ directory: 1 }))
+show("snapshot.args json schema", mesh.snapshot.args.toJsonSchema())

@@ -1,19 +1,3 @@
-<!--VITE PLUS START-->
-
-# Using Vite+, the Unified Toolchain for the Web
-
-This project is using Vite+, a unified toolchain built on top of Vite, Rolldown, Vitest, tsdown, Oxlint, Oxfmt, and Vite Task. Vite+ wraps runtime management, package management, and frontend tooling in a single global CLI called `vp`. Vite+ is distinct from Vite, and it invokes Vite through `vp dev` and `vp build`. Run `vp help` to print a list of commands and `vp <command> --help` for information about a specific command.
-
-Docs are local at `node_modules/vite-plus/docs` or online at https://viteplus.dev/guide/.
-
-## Review Checklist
-
-- [ ] Run `vp install` after pulling remote changes and before getting started.
-- [ ] Run `vp check` and `vp test` to format, lint, type check and test changes.
-- [ ] Check if there are `vite.config.ts` tasks or `package.json` scripts necessary for validation, run via `vp run <script>`.
-
-<!--VITE PLUS END-->
-
 # Agent Workflow
 
 ## Shared branches
@@ -57,6 +41,27 @@ local commits remain ordinary development actions.
 - Follow `node_modules/@varlock/bumpy/skills/add-change/SKILL.md` for bump level
   and changelog text.
 - Do not create task-specific branches or worktrees.
+
+## Bump lifecycle
+
+Bumps are authored during change development, never reconstructed just before
+release. The first consumer-visible commit for a logical change creates one
+bump file through `pnpm run release:add -- ...`; later commits for that same
+change update the same file. An unrelated logical change gets its own bump
+file.
+
+Commit the implementation, tests, generated consumer docs, and bump file
+together. Use patch for compatible fixes, minor for compatible capabilities,
+and major for breaking public contracts. Name only directly changed packages;
+Bumpy owns fixed-group and dependency propagation. Root shared changes name
+every affected public package explicitly. Internal changes that require a
+version but no changelog use `$changelog: false` through the bundled add-change
+guidance.
+
+Before every commit, decide whether the task-owned diff changes published
+behavior, API, runtime dependencies, executables, generated artifacts, or
+consumer documentation. If it does, the bump belongs in that commit. A release
+request consumes pending bump files; it never creates them retroactively.
 
 Before pushing the daily branch, report every commit not yet on
 `origin/main`. Bump files accumulate there; pushing it does not

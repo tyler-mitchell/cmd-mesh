@@ -24,16 +24,14 @@ export type SuggestSource = string | ReadonlyArray<string> | SuggestGenerator
 
 export interface CliParameterConfig {
   /** usage notation: "<x>" required positional, "[x]" optional positional,
-   * "<...xs>" variadic, "--flag, -f" flag with aliases. omitted ⇒ derived
-   * --kebab-case flag. */
+   * "<...xs>" required variadic, "[...xs]" optional variadic,
+   * "--flag, -f" flag with aliases. omitted ⇒ derived --kebab-case flag. */
   readonly usage?: string
   /** environment variable fallback (argv > env > default) */
   readonly env?: string
-}
-
-export interface McpParameterConfig {
+  /** drop this flag from help and completion; it still parses.
+   * positionals cannot be cli-hidden — that would corrupt argv order. */
   readonly hidden?: boolean
-  readonly description?: string
 }
 
 export interface ParameterDescriptor {
@@ -50,16 +48,27 @@ export interface ParameterDescriptor {
   /** flags are optional unless required; positionals ignore this */
   readonly required?: boolean
   readonly cli?: string | CliParameterConfig
-  readonly mcp?: McpParameterConfig
+  /** drop this parameter from the mcp tool schema; it still validates
+   * if supplied (secrets and internals stay unadvertised to agents) */
+  readonly mcp?: { readonly hidden?: boolean }
 }
 
 export type ParameterDef = string | ParameterDescriptor
 
-export interface CliCommandConfig {
+export interface CliCommandConfig<Out = never> {
   readonly hidden?: boolean
+  /** alternative subcommand names (`install` reachable as `i`); shown in
+   * help, a sibling's real name always wins over an alias */
+  readonly alias?: string | ReadonlyArray<string>
+  /** for a command group: the child that runs when no subcommand is
+   * named (`vite` ⇒ `vite dev`); remaining argv belongs to that child.
+   * mutually exclusive with an own `run` */
+  readonly default?: string
   /** override how this command's output prints for humans; `--json` and
    * agent surfaces are unaffected */
-  readonly render?: (output: never) => string
+  readonly render?: (output: Out) => string
+  /** full invocation lines rendered as an Examples section in help */
+  readonly examples?: ReadonlyArray<string>
 }
 
 export interface McpCommandConfig {
@@ -122,7 +131,9 @@ export type UsageOf<P> = P extends { readonly cli: infer C }
  * output side, which is what handlers and callers see */
 type OutOf<P> = distill<type.infer<DefOf<P>>, "out">
 
-type IsVariadic<P> = UsageOf<P> extends `<...${string}` | `[...${string}` ? true : false
+/** any notation carrying `...`: variadic positionals (`<...xs>`,
+ * `[...xs]`) and repeatable flags (`--tag <tags...>`) */
+type IsVariadic<P> = UsageOf<P> extends `${string}...${string}` ? true : false
 type IsPositional<P> = UsageOf<P> extends `<${string}` | `[${string}` ? true : false
 type IsOptionalPositional<P> = UsageOf<P> extends `[${string}` ? true : false
 type HasDefault<P> = DefOf<P> extends `${string}=${string}` ? true : false
@@ -180,10 +191,16 @@ export type CommandsData<M> = {
   readonly [N in keyof M]: M[N] extends Mounted ? M[N] : { readonly [K in keyof M[N]]: M[N][K] }
 }
 
-export type CommandsOverlay<M, Rs> = {
+/** program-level options (root input) join every command's handler and
+ * call surface — the same model as an external's binary-global options */
+export type CommandsOverlay<M, Rs, RIn = {}> = {
   readonly [N in keyof Rs]: {
-    readonly run?: (input: HandlerInput<InputOf<M[N & keyof M]>>, ctx: Ctx) => Rs[N]
-    readonly narrow?: (input: HandlerInput<InputOf<M[N & keyof M]>>, ctx: NarrowContext) => boolean
+    readonly run?: (input: HandlerInput<RIn & InputOf<M[N & keyof M]>>, ctx: Ctx) => Rs[N]
+    readonly narrow?: (input: HandlerInput<RIn & InputOf<M[N & keyof M]>>, ctx: NarrowContext) => boolean
+    // typed from the declared output contract only — referencing Rs here
+    // would make the reverse mapped type uninvertible and collapse
+    // handler inference. a contract-less command renders `unknown`.
+    readonly cli?: CliCommandConfig<OutputOf<M[N & keyof M], unknown>>
   }
 }
 
@@ -195,8 +212,12 @@ export interface ProgramDeclOf<Name extends string, RootIn, RootOut, RootR, Cs, 
   readonly output?: RootOut
   readonly narrow?: (input: HandlerInput<NoInfer<RootIn>>, ctx: NarrowContext) => boolean
   readonly run?: (input: HandlerInput<NoInfer<RootIn>>, ctx: Ctx) => RootR
-  readonly commands?: CommandsData<Cs> & CommandsOverlay<NoInfer<Cs>, Rs>
-  readonly cli?: CliCommandConfig
+  readonly commands?: CommandsData<Cs> & CommandsOverlay<NoInfer<Cs>, Rs, NoInfer<RootIn>>
+  // render typed from the declared root output, like command-level
+  // render (contract-less roots render `unknown`)
+  readonly cli?: CliCommandConfig<
+    RootOut extends undefined ? unknown : OutputOf<{ readonly output: NoInfer<RootOut> }, unknown>
+  >
   readonly mcp?: McpCommandConfig
 }
 
@@ -205,6 +226,9 @@ export interface ExternalCommandDecl {
   readonly input?: globalThis.Record<string, ParameterDef>
   /** ArkType definition applied to stdout on success */
   readonly output?: unknown
+  /** exit codes that count as success (default [0]) — `git grep`'s
+   * 1-means-no-match declares [0, 1]; anything else stays a failure */
+  readonly successCodes?: ReadonlyArray<number>
   readonly commands?: globalThis.Record<string, ExternalCommandDecl>
   readonly cli?: CliCommandConfig
   readonly mcp?: McpCommandConfig
@@ -215,6 +239,10 @@ export interface ExternalDecl {
   readonly description?: string
   /** binary to execute; defaults to `name` */
   readonly bin?: string
+  /** the binary's GLOBAL options (git's `-C`, `--no-pager`): emitted
+   * before the subcommand path and available on every command's call
+   * surface. command-level input emits after the subcommand. */
+  readonly input?: globalThis.Record<string, ParameterDef>
   readonly commands: globalThis.Record<string, ExternalCommandDecl>
 }
 
@@ -234,18 +262,79 @@ export interface ArgsType<out T> {
   toJsonSchema(): unknown
 }
 
-/** the input argument is optional whenever every key is optional */
-export type CommandFn<C, R> = {} extends CallInput<InputOf<C>>
-  ? (input?: CallInput<InputOf<C>>) => Promise<OutputOf<C, R>>
-  : (input: CallInput<InputOf<C>>) => Promise<OutputOf<C, R>>
+/** the typed functions ARE the program — they keep the handler's own
+ * synchrony. a sync handler yields a sync function; only a handler that
+ * returns a promise (async work, ctx.exec, externals) yields one. input
+ * validation is eager and synchronous for every function (assert
+ * semantics: invalid input throws, even from an async-typed function);
+ * handler and output failures follow the handler's synchrony. */
+type CommandResult<C, R> = [R] extends [Promise<unknown>] ? Promise<OutputOf<C, R>> : OutputOf<C, R>
 
-export type CommandModule<C, R> =
-  & CommandFn<C, R>
-  & { readonly args: ArgsType<HandlerInput<InputOf<C>>> }
+/** the input argument is optional whenever every key is optional.
+ * RIn: program-level options joining this command's call surface. */
+export type CommandFn<C, R, RIn = {}> = {} extends CallInput<RIn & InputOf<C>>
+  ? (input?: CallInput<RIn & InputOf<C>>) => CommandResult<C, R>
+  : (input: CallInput<RIn & InputOf<C>>) => CommandResult<C, R>
+
+export type CommandModule<C, R, RIn = {}> =
+  & CommandFn<C, R, RIn>
+  & { readonly args: ArgsType<HandlerInput<RIn & InputOf<C>>> }
   & (C extends { readonly commands: infer M } ? {
-      readonly [K in keyof M]: M[K] extends Mounted ? M[K] : CommandModule<M[K], unknown>
+      readonly [K in keyof M]: M[K] extends Mounted ? M[K] : CommandModule<M[K], unknown, RIn>
     }
     : {})
+
+/** one parameter in the machine-readable program spec */
+export interface ParameterSpec {
+  readonly key: string
+  readonly kind: "flag" | "positional"
+  /** cli grammar display: "--env, -e" or "<service>" */
+  readonly usage: string
+  readonly description?: string
+  readonly required: boolean
+  readonly variadic: boolean
+  readonly boolean: boolean
+  /** present only when defaulted; already evaluated through its morph
+   * into the value domain */
+  readonly defaultValue?: unknown
+  readonly env?: string
+  /** declared static candidate values — a prompt UI's choices */
+  readonly suggestions?: ReadonlyArray<string>
+  /** named filesystem source ("folders", "filepaths") */
+  readonly suggestionSource?: string
+  /** a Fig-style generator exists — dynamic, not serializable */
+  readonly dynamicSuggestions?: boolean
+  readonly hidden: { readonly cli: boolean; readonly mcp: boolean }
+}
+
+/** the compiled model as one JSON-serializable descriptor tree — the
+ * machine-readable projection for doc generators, prompt UIs, and
+ * install handshakes. `JSON.stringify(program.spec)` is a complete
+ * self-description of the program. */
+export interface CommandSpec {
+  readonly path: ReadonlyArray<string>
+  /** program version — present on the root node only; the install
+   * handshake verifies identity with it */
+  readonly version?: string
+  readonly description: string
+  readonly aliases: ReadonlyArray<string>
+  readonly hidden: { readonly cli: boolean; readonly mcp: boolean }
+  readonly examples: ReadonlyArray<string>
+  /** the child (canonical name) that runs when this group is invoked
+   * bare — user-facing behavior a reference must document */
+  readonly defaultCommand?: string
+  readonly runnable: boolean
+  readonly external: boolean
+  /** external commands: exit codes that count as success — doc gen
+   * explains a `git grep`-style exit 1 with this */
+  readonly successCodes?: ReadonlyArray<number>
+  /** documented JSON Schema of the input record */
+  readonly inputSchema: unknown
+  /** JSON Schema of the declared output contract, when representable */
+  readonly outputSchema?: unknown
+  readonly parameters: ReadonlyArray<ParameterSpec>
+  readonly commands: ReadonlyArray<CommandSpec>
+}
 
 export interface McpTool {
   readonly name: string
@@ -260,6 +349,19 @@ export interface McpProjection {
   serve(): Promise<void>
 }
 
+/** the cli projection: parse, route, run, render, resolve exit code.
+ * bare `run()` is a complete cli-only bin entry — it reads process argv
+ * and sets the process exit code; `run(argv)` is the programmatic form
+ * with no process mutation. help and shell completion are cli machinery
+ * and live here; the mcp server is a separate projection
+ * (`module.mcp.serve()`), never dispatched through argv. */
+export interface CliProjection {
+  run(argv?: ReadonlyArray<string>): Promise<number>
+  help(path?: ReadonlyArray<string>): string
+  /** async because parameter completion may run a generator */
+  complete(words: ReadonlyArray<string>): Promise<ReadonlyArray<string>>
+}
+
 export type ProgramModule<RootIn, RootOut, RootR, Cs, Rs> =
   & CommandFn<
     RootOut extends undefined ? { readonly input: RootIn }
@@ -269,38 +371,44 @@ export type ProgramModule<RootIn, RootOut, RootR, Cs, Rs> =
   & { readonly args: ArgsType<HandlerInput<RootIn>> }
   & {
     readonly [K in keyof Cs]: Cs[K] extends Mounted ? Cs[K]
-      : CommandModule<Cs[K], K extends keyof Rs ? Rs[K] : unknown>
+      : CommandModule<Cs[K], K extends keyof Rs ? Rs[K] : unknown, RootIn>
   }
   & Mounted
   & {
-    /** the cli projection. bare `main()` is a complete bin entry: it reads
-     * process argv, sets the process exit code, and disposes the module.
-     * `main(argv)` is the programmatic form — parses the given tokens and
-     * resolves the exit code with no process mutation and no disposal. */
+    /** the composed bin: `main()` is a complete entry point — argv token
+     * `mcp` at the head serves the mcp projection (that promise resolves
+     * only when the server ends), anything else runs the cli projection,
+     * and bare `main()` reads process argv and sets the process exit
+     * code. a program whose own vocabulary needs the word `mcp` — or a
+     * programmatic caller that must never serve — uses `cli.run()`. */
     main(argv?: ReadonlyArray<string>): Promise<number>
-    help(path?: ReadonlyArray<string>): string
-    /** async because parameter completion may run a generator */
-    complete(words: ReadonlyArray<string>): Promise<ReadonlyArray<string>>
-    /** the declaration as pure data, functions stripped */
-    readonly spec: unknown
+    readonly cli: CliProjection
     readonly mcp: McpProjection
-    /** release the module's runtime resources */
-    dispose(): Promise<void>
+    /** the machine-readable self-description (JSON-serializable) */
+    readonly spec: CommandSpec
   }
+
+/** per-invocation execution context for a wrapped binary — the
+ * `fetch(url, init)` shape; never part of the declared input schema */
+export type ExternalCallOptions = Pick<ExecOptions, "cwd" | "env" | "timeoutMs">
+
+type ExternalIn<D> = D extends { readonly input: infer I } ? I : {}
+
+/** an external always crosses a process boundary — inherently async.
+ * global (root-level) parameters join every command's call surface. */
+export type ExternalCommandFn<C, RIn> = {} extends CallInput<RIn & InputOf<C>>
+  ? (input?: CallInput<RIn & InputOf<C>>, options?: ExternalCallOptions) => Promise<OutputOf<C, Promise<string>>>
+  : (input: CallInput<RIn & InputOf<C>>, options?: ExternalCallOptions) => Promise<OutputOf<C, Promise<string>>>
 
 export type ExternalModule<D extends ExternalDecl> =
   & Mounted
   & {
-    readonly [K in keyof D["commands"]]: ExternalCommandModule<D["commands"][K]>
-  }
-  & {
-    /** release the module's runtime resources */
-    dispose(): Promise<void>
+    readonly [K in keyof D["commands"]]: ExternalCommandModule<D["commands"][K], ExternalIn<D>>
   }
 
-export type ExternalCommandModule<C extends ExternalCommandDecl> =
-  & CommandFn<C, string>
-  & { readonly args: ArgsType<HandlerInput<InputOf<C>>> }
+export type ExternalCommandModule<C extends ExternalCommandDecl, RIn = {}> =
+  & ExternalCommandFn<C, RIn>
+  & { readonly args: ArgsType<HandlerInput<RIn & InputOf<C>>> }
   & (C extends { readonly commands: infer M extends globalThis.Record<string, ExternalCommandDecl> }
-    ? { readonly [K in keyof M]: ExternalCommandModule<M[K]> }
+    ? { readonly [K in keyof M]: ExternalCommandModule<M[K], RIn> }
     : {})

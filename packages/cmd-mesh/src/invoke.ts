@@ -3,7 +3,7 @@ import { Array, Effect, Option, Predicate, String } from "effect"
 import type { AnyType, CompiledCommand, CompiledParameter } from "./compile.js"
 import { ExternalExit, HandlerFailure, InvalidInput, InvalidOutput, NoRunnableCommand } from "./errors.js"
 import { Exec } from "./exec.js"
-import type { Ctx } from "./types.js"
+import type { Ctx, ExternalCallOptions } from "./types.js"
 
 export type InvokeError = InvalidInput | InvalidOutput | HandlerFailure | NoRunnableCommand | ExternalExit
 
@@ -25,56 +25,59 @@ const flagToken = (p: CompiledParameter): string =>
 
 const tokenOf = (value: unknown): string => Predicate.isObject(value) ? JSON.stringify(value) : `${value}`
 
-/** value-taking flags reconstruct before the subcommand path — the position
- * binaries reserve for their global options (`git -C <dir> status`);
- * booleans and positionals follow the subcommand in declaration order */
-const preSubcommandTokens = (
-  parameters: ReadonlyArray<CompiledParameter>,
-  parsed: Readonly<globalThis.Record<string, unknown>>
-): ReadonlyArray<string> =>
-  Array.flatMap(parameters, (p) => {
-    const value = parsed[p.key]
-    if (value === undefined || p.binding._tag !== "flag" || p.isBoolean) return []
-    return [flagToken(p), tokenOf(value)]
-  })
+/** one parameter's argv tokens: a set boolean is its bare flag, a valued
+ * flag is flag + token, a repeatable flag repeats per value — the only
+ * repetition convention binaries actually speak */
+const flagTokens = (
+  p: CompiledParameter,
+  value: unknown
+): ReadonlyArray<string> => {
+  if (p.isBoolean) return value === true ? [flagToken(p)] : []
+  if (p.binding._tag === "flag" && p.binding.variadic) {
+    return Array.flatMap(value as ReadonlyArray<unknown>, (v) => [flagToken(p), tokenOf(v)])
+  }
+  return [flagToken(p), tokenOf(value)]
+}
 
-/** after the subcommand: boolean flags first (`git rev-parse --verify HEAD`
- * rejects the reverse), then positionals, declaration order within each.
- * a positional value that looks like a flag is argv injection into the
- * binary — fence positionals behind the end-of-options separator then */
-const postSubcommandTokens = (
+/** placement follows declaration level: global (root-declared) options
+ * precede the subcommand path — the position binaries reserve for them
+ * (`git -C <dir> log`) — and the command's own flags then positionals
+ * follow it (`git log -n 2 <path>`). a positional value that looks like
+ * a flag is argv injection into the binary; fence positionals behind the
+ * end-of-options separator then. */
+const externalArgs = (
+  argPath: ReadonlyArray<string>,
   parameters: ReadonlyArray<CompiledParameter>,
   parsed: Readonly<globalThis.Record<string, unknown>>
 ): ReadonlyArray<string> => {
-  const positionals = Array.flatMap(parameters, (p) => {
+  const set = Array.filter(parameters, (p) => parsed[p.key] !== undefined)
+  const globals = Array.flatMap(set, (p) =>
+    p.global && p.binding._tag === "flag" ? flagTokens(p, parsed[p.key]) : [])
+  const ownFlags = Array.flatMap(set, (p) =>
+    !p.global && p.binding._tag === "flag" ? flagTokens(p, parsed[p.key]) : [])
+  const positionals = Array.flatMap(set, (p) => {
+    if (p.binding._tag !== "positional") return []
     const value = parsed[p.key]
-    if (value === undefined || p.binding._tag !== "positional") return []
     return p.binding.variadic
       ? Array.map(value as ReadonlyArray<unknown>, tokenOf)
       : [tokenOf(value)]
   })
   const fence = Array.some(positionals, String.startsWith("-")) ? ["--"] : []
-  return Array.appendAll(
-    Array.flatMap(parameters, (p) =>
-      p.binding._tag === "flag" && p.isBoolean && parsed[p.key] === true ? [flagToken(p)] : []),
-    Array.appendAll(fence, positionals)
-  )
+  return Array.flatten([globals, argPath, ownFlags, fence, positionals])
 }
 
 const runExternal = Effect.fn("cmd-mesh/runExternal")(function*(
   cmd: CompiledCommand,
-  parsed: Readonly<globalThis.Record<string, unknown>>
+  parsed: Readonly<globalThis.Record<string, unknown>>,
+  options?: ExternalCallOptions
 ) {
   const external = Option.getOrThrow(cmd.external)
   const exec = yield* Exec
-  const args = Array.appendAll(
-    preSubcommandTokens(cmd.parameters, parsed),
-    Array.appendAll(external.argPath, postSubcommandTokens(cmd.parameters, parsed))
-  )
-  const result = yield* exec.exec(external.bin, args).pipe(
+  const args = externalArgs(external.argPath, cmd.parameters, parsed)
+  const result = yield* exec.exec(external.bin, args, options).pipe(
     Effect.mapError((cause) => new HandlerFailure({ path: cmd.path, cause }))
   )
-  if (result.exitCode !== 0) {
+  if (!Array.contains(external.successCodes, result.exitCode)) {
     return yield* new ExternalExit({
       bin: external.bin,
       args,
@@ -98,10 +101,18 @@ const runHandler = Effect.fn("cmd-mesh/runHandler")(function*(
     onNone: () => Effect.fail(new NoRunnableCommand({ path: cmd.path })),
     onSome: Effect.succeed
   })
-  const result = yield* Effect.tryPromise({
-    try: async () => run(parsed, ctx),
+  // the handler's own synchrony is the contract: a sync handler keeps the
+  // whole invocation sync, so only a returned promise crosses into async
+  const raw = yield* Effect.try({
+    try: () => run(parsed, ctx),
     catch: (cause) => new HandlerFailure({ path: cmd.path, cause })
   })
+  const result = Predicate.isPromise(raw)
+    ? yield* Effect.tryPromise({
+      try: async () => raw,
+      catch: (cause) => new HandlerFailure({ path: cmd.path, cause })
+    })
+    : raw
   return yield* Option.match(cmd.outputType, {
     onNone: () => Effect.succeed<unknown>(result),
     onSome: (out) =>
@@ -113,22 +124,26 @@ const runHandler = Effect.fn("cmd-mesh/runHandler")(function*(
 export const invokeParsed = (
   cmd: CompiledCommand,
   parsed: Readonly<globalThis.Record<string, unknown>>,
-  ctx: Ctx
+  ctx: Ctx,
+  options?: ExternalCallOptions
 ): Effect.Effect<unknown, InvokeError, Exec> =>
   cmd.kind === "external" && Option.isSome(cmd.external)
-    ? runExternal(cmd, parsed)
+    ? runExternal(cmd, parsed, options)
     : runHandler(cmd, parsed, ctx)
 
 /** the value-boundary path: direct calls and mcp tool calls */
 export const invokeValues = (
   cmd: CompiledCommand,
   input: unknown,
-  ctx: Ctx
+  ctx: Ctx,
+  options?: ExternalCallOptions
 ): Effect.Effect<unknown, InvokeError, Exec> =>
   parseWith(
     cmd.valueType,
     input ?? {},
     (summary) => new InvalidInput({ path: cmd.path, summary })
   ).pipe(
-    Effect.flatMap((parsed) => invokeParsed(cmd, parsed as globalThis.Record<string, unknown>, ctx))
+    Effect.flatMap((parsed) =>
+      invokeParsed(cmd, parsed as globalThis.Record<string, unknown>, ctx, options)
+    )
   )

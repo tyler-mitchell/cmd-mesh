@@ -19,9 +19,10 @@ export const jsonSchemaOf = (t: AnyType): unknown =>
 const toolName = (cmd: CompiledCommand): string =>
   Option.getOrElse(cmd.mcpName, () => Array.join(cmd.path, "_"))
 
-/** parameter descriptions live in the descriptor, not the ArkType def —
- * fold them into the projected schema so agents see them */
-const withParameterDocs = (schema: unknown, cmd: CompiledCommand): unknown => {
+/** parameter descriptions and suggestion examples live in the
+ * descriptor, not the ArkType def — fold them into a projected schema.
+ * every schema surface shares this; it is not mcp-specific. */
+const documentSchema = (schema: unknown, cmd: CompiledCommand): unknown => {
   if (!Predicate.isObject(schema) || !Predicate.hasProperty(schema, "properties")) return schema
   const properties = (schema as { readonly properties: globalThis.Record<string, unknown> }).properties
   if (!Predicate.isObject(properties)) return schema
@@ -51,10 +52,44 @@ const withParameterDocs = (schema: unknown, cmd: CompiledCommand): unknown => {
   return { ...schema, properties: documented }
 }
 
+/** the full documented input schema — the `args` surface's projection */
+export const inputSchema = (cmd: CompiledCommand): unknown =>
+  documentSchema(jsonSchemaOf(cmd.schemaType), cmd)
+
+/** the mcp projection additionally drops mcp-hidden parameters from the
+ * advertised schema and its required list */
+const withParameterDocs = (schema: unknown, cmd: CompiledCommand): unknown => {
+  const documented = documentSchema(schema, cmd)
+  if (!Predicate.isObject(documented) || !Predicate.hasProperty(documented, "properties")) {
+    return documented
+  }
+  const properties = (documented as { readonly properties: globalThis.Record<string, unknown> })
+    .properties
+  const hidden = (key: string): boolean =>
+    Array.some(cmd.parameters, (p) => p.key === key && p.mcpHidden)
+  const required = Predicate.hasProperty(documented, "required")
+      && globalThis.Array.isArray((documented as { readonly required: unknown }).required)
+    ? {
+      required: Array.filter(
+        (documented as { readonly required: ReadonlyArray<string> }).required,
+        (key) => !hidden(key)
+      )
+    }
+    : {}
+  return {
+    ...documented,
+    properties: Record.filter(properties, (_, key) => !hidden(key)),
+    ...required
+  }
+}
+
 /** mcp output schemas must describe an object (structuredContent is an
- * object) — non-object outputs are wrapped under a `result` key */
+ * object) — non-object outputs are wrapped under a `result` key.
+ * structuredContent carries the MORPHED value, so the schema projects
+ * the output side; a morph's own toJsonSchema throws (and the swallow
+ * would advertise a number as an object, skipping the wrap). */
 const structuredSchema = (out: AnyType): { readonly schema: unknown; readonly wrapped: boolean } => {
-  const schema = jsonSchemaOf(out) as { readonly type?: unknown }
+  const schema = jsonSchemaOf(out.out) as { readonly type?: unknown }
   return schema.type === "object"
     ? { schema, wrapped: false }
     : { schema: { type: "object", properties: { result: schema }, required: ["result"] }, wrapped: true }
@@ -152,7 +187,7 @@ export const serveMcp = (
   root: CompiledCommand,
   meta: { readonly name: string; readonly version: string },
   invoke: (cmd: CompiledCommand, input: unknown, ctx: Ctx) => Effect.Effect<unknown, unknown, any>,
-  runPromise: <A>(effect: Effect.Effect<A, never, any>) => Promise<A>,
+  runPromise: <A>(effect: Effect.Effect<A, never, any>, signal?: AbortSignal) => Promise<A>,
   ctx: Ctx
 ): Effect.Effect<never, Error> =>
   Effect.gen(function*() {
@@ -170,10 +205,12 @@ export const serveMcp = (
         ...(t.tool.annotations === undefined ? {} : { annotations: t.tool.annotations })
       }))
     }))
-    // the sdk demands async handlers: runPromise is the sanctioned bridge
+    // the sdk demands async handlers: runPromise is the sanctioned bridge,
+    // and the request's AbortSignal interrupts the invocation — a
+    // cancelled tool call kills any child process it spawned
     server.setRequestHandler(CallToolRequestSchema, (async (request: {
       readonly params: { readonly name: string; readonly arguments?: unknown }
-    }) =>
+    }, extra: { readonly signal: AbortSignal }) =>
       runPromise(
         pipe(
           Record.get(byName, request.params.name),
@@ -183,21 +220,27 @@ export const serveMcp = (
               invoke(tool.command, request.params.arguments ?? {}, ctx).pipe(
                 Effect.match({
                   // agents get json text plus, when an output contract
-                  // exists, schema-conformant structuredContent
-                  onSuccess: (result) => ({
-                    ...textResult(JSON.stringify(result, null, 2)),
-                    ...Option.match(tool.command.outputType, {
-                      onNone: () => ({}),
-                      onSome: () => ({
-                        structuredContent: tool.wrapOutput ? { result } : result as object
-                      })
-                    })
-                  }),
+                  // exists, schema-conformant structuredContent. a void
+                  // result is a valid empty content array — never
+                  // `text: undefined`, which the protocol rejects
+                  onSuccess: (result) =>
+                    result === undefined
+                      ? { content: [] }
+                      : {
+                        ...textResult(JSON.stringify(result, null, 2)),
+                        ...Option.match(tool.command.outputType, {
+                          onNone: () => ({}),
+                          onSome: () => ({
+                            structuredContent: tool.wrapOutput ? { result } : result as object
+                          })
+                        })
+                      },
                   onFailure: (error) => textResult(`${error}`, true)
                 })
               )
           })
-        )
+        ),
+        extra.signal
       )) as never)
     yield* Effect.tryPromise({
       try: () => server.connect(new StdioServerTransport()),

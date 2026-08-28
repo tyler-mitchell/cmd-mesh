@@ -27,7 +27,8 @@
   },
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
-    "check": "pnpm run typecheck && pnpm run test && pnpm run test:types",
+    "check": "pnpm run typecheck && pnpm run test && pnpm run test:types && pnpm run check:pack",
+    "check:pack": "pnpm run build && publint && attw --pack . --profile esm-only",
     "prepack": "pnpm run build",
     "test": "vitest run",
     "test:types": "tsx contract.attest.ts",
@@ -41,12 +42,14 @@
     "effect": "catalog:"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
     "@ark/attest": "catalog:",
     "@effect/vitest": "catalog:",
+    "publint": "^0.3.24",
     "tsx": "catalog:",
     "vitest": "catalog:"
   },
   "engines": {
-    "node": ">=24"
+    "node": ">=20"
   }
 }

@@ -47,19 +47,31 @@ try {
           attest(input.conf).type.toString.snap("{ a: number } | undefined")
           return input.conf
         }
+      },
+      rendered: {
+        output: { url: "string" },
+        run: () => ({ url: "x" }),
+        // cli.render's parameter is contextually typed from the output
+        cli: {
+          render: (output) => {
+            attest(output).type.toString.snap("{ url: string }")
+            return output.url
+          }
+        }
       }
     }
   })
 
-  // output contract wins over the handler return
-  attest(p.out({ xs: ["a"] })).type.toString.snap("Promise<{ total: number }>")
+  // output contract wins over the handler return; a sync handler keeps
+  // the typed function synchronous — no promise anywhere
+  attest(p.out({ xs: ["a"] })).type.toString.snap("{ total: number }")
 
   // handler return drives the output when no contract is declared
-  attest(p.c({ s: "x" })).type.toString.snap("Promise<number>")
+  attest(p.c({ s: "x" })).type.toString.snap("number")
 
   // structured parameter: real output-domain object on the call surface
   // (the cli surface takes input-domain JSON tokens instead)
-  attest(p.structured({ conf: { a: 1 } })).type.toString.snap("Promise<{ a: number } | undefined>")
+  attest(p.structured({ conf: { a: 1 } })).type.toString.snap("{ a: number } | undefined")
 
   // object def + narrow together, plus a mounted external in the record
   const ext = external({
@@ -83,12 +95,35 @@ try {
   attest({} as Parameters<typeof p3.s>[0]).type.toString.snap("{ readonly tlsKey?: { a: string } } | undefined")
 
   // the example program's real call surface
-  attest({} as Parameters<typeof mesh.serve>[0]).type.toString.snap(`{
+  attest({} as Parameters<typeof mesh.snapshot>[0]).type.toString.snap(`{
   readonly directory: string
-  readonly port?: number
+  readonly depth?: number
   readonly verbose?: boolean
-  readonly tlsCert?: string
-  readonly tlsKey?: { a: string }
+  readonly signCert?: string
+  readonly signKey?: { a: string }
+}`)
+
+  // program-level options: root input joins every child's handler and
+  // call surface, the external-globals model
+  const p4 = program({
+    name: "b4",
+    input: {
+      registry: { type: "string = 'https://npm.dev'", cli: "--registry" }
+    },
+    commands: {
+      add: {
+        input: { pkg: { type: "string", cli: "<pkg>" } },
+        run: (input) => {
+          attest(input.registry).type.toString.snap("string")
+          attest(input.pkg).type.toString.snap("string")
+          return input.registry
+        }
+      }
+    }
+  })
+  attest({} as Parameters<typeof p4.add>[0]).type.toString.snap(`{
+  readonly pkg: string
+  readonly registry?: string
 }`)
 
   // negative space: the call surface enforces required keys and value

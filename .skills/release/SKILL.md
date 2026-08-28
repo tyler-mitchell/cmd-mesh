@@ -17,6 +17,12 @@ branch only accumulates bump files; Bumpy creates or updates
 `bumpy/version-packages` when the promotion merge reaches the base branch, and
 nothing publishes until that generated PR merges.
 
+Create the bump with the first consumer-visible commit for that logical change.
+Update the same bump as the change evolves. Give unrelated logical changes
+separate bump files. Commit implementation, tests, generated consumer docs,
+and the bump together. Never wait for a release request to reconstruct bumps
+from commit history.
+
 An explicit release request authorizes this exact sequence:
 
 ```sh

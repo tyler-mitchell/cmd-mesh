@@ -17,7 +17,6 @@ export type Routed =
   }
   | { readonly _tag: "help"; readonly command: CompiledCommand }
   | { readonly _tag: "version" }
-  | { readonly _tag: "mcp" }
   | { readonly _tag: "complete"; readonly words: ReadonlyArray<string> }
   | { readonly _tag: "completionScript"; readonly shell: string }
 
@@ -51,12 +50,48 @@ const flagTable = (cmd: CompiledCommand): FlagTable => {
 const hasPositionals = (cmd: CompiledCommand): boolean =>
   Array.some(cmd.parameters, (p) => p.binding._tag === "positional")
 
+/** every token that routes to a child — names and aliases alike — is
+ * did-you-mean vocabulary */
+const childTokens = (cmd: CompiledCommand): ReadonlyArray<string> =>
+  pipe(
+    Record.toEntries(cmd.children),
+    Array.flatMap(([name, child]) => Array.prepend(child.cliAliases, name))
+  )
+
+/** resolve a subcommand token: the real name wins, then any alias.
+ * every projection that walks a command path — routing, help,
+ * completion — resolves through this, so aliases work identically. */
+export const childFor = (cmd: CompiledCommand, token: string): Option.Option<CompiledCommand> =>
+  Record.get(cmd.children, token).pipe(
+    Option.orElse(() =>
+      pipe(
+        Record.values(cmd.children),
+        Array.findFirst((child) => Array.contains(child.cliAliases, token))
+      )
+    )
+  )
+
+/** the group's declared default child, applicable only when the head
+ * token names no child and is not a help request aimed at the group */
+const defaultChild = (cmd: CompiledCommand, head: Option.Option<string>): Option.Option<CompiledCommand> =>
+  Option.flatMap(cmd.cliDefault, (name) =>
+    head.pipe(
+      Option.match({
+        onNone: () => Record.get(cmd.children, name),
+        onSome: (token) =>
+          token === "--help" || token === "-h" || Option.isSome(childFor(cmd, token))
+            ? Option.none()
+            : Record.get(cmd.children, name)
+      })
+    ))
+
 interface WalkState {
   readonly record: globalThis.Record<string, unknown>
   readonly positionals: ReadonlyArray<CompiledParameter>
   readonly onlyPositionals: boolean
   readonly help: boolean
   readonly json: boolean
+  readonly version: boolean
 }
 
 interface Walked {
@@ -64,6 +99,7 @@ interface Walked {
   readonly record: globalThis.Record<string, unknown>
   readonly help: boolean
   readonly json: boolean
+  readonly version: boolean
 }
 
 const assignPositional = (
@@ -83,7 +119,7 @@ const assignPositional = (
             new CommandNotFound({
               path: cmd.path,
               token,
-              near: nearest(token, Record.keys(cmd.children))
+              near: nearest(token, childTokens(cmd))
             })
           ),
       onSome: (p) =>
@@ -111,6 +147,90 @@ const assignPositional = (
  * reserved marker and the walk continues (help lands on the deepest
  * command the line reaches), `--` locks the rest to positionals, and a
  * bare token fills a positional slot or is a mistyped subcommand. */
+/** record a flag's value: repeatable flags append, others last-wins */
+const withFlagValue = (
+  state: WalkState,
+  p: CompiledParameter,
+  value: unknown
+): WalkState => ({
+  ...state,
+  record: {
+    ...state.record,
+    [p.key]: p.binding._tag === "flag" && p.binding.variadic
+      ? Array.append((state.record[p.key] as ReadonlyArray<unknown> | undefined) ?? [], value)
+      : value
+  }
+})
+
+/** POSIX guideline 5: a `-abc` token that is not itself declared
+ * decomposes into declared shorts — every char but the last must be
+ * boolean; a value-taking char consumes the token remainder (`-d4`) or
+ * the next token. any unresolvable char fails the whole token. */
+const decomposeShorts = (
+  cmd: CompiledCommand,
+  table: FlagTable,
+  token: string,
+  rest: ReadonlyArray<string>,
+  state: WalkState
+): Option.Option<
+  Effect.Effect<readonly [WalkState, ReadonlyArray<string>], ArgvError>
+> => {
+  const chars = pipe(token, String.slice(1), (s) => s.length >= 2 ? Array.fromIterable(s) : [])
+  const step = (
+    index: number,
+    acc: WalkState
+  ): Option.Option<Effect.Effect<readonly [WalkState, ReadonlyArray<string>], ArgvError>> =>
+    pipe(
+      Array.get(chars, index),
+      Option.flatMap((char) =>
+        pipe(Record.get(table.byToken, `-${char}`), Option.map((p) => [char, p] as const))),
+      Option.flatMap(([char, p]) => {
+        if (p.isBoolean) {
+          const next = { ...acc, record: { ...acc.record, [p.key]: true } }
+          return index === chars.length - 1
+            ? Option.some(Effect.succeed([next, rest] as const))
+            : step(index + 1, next)
+        }
+        // `-fm=x` ≡ `-f -m x`: an attached remainder may carry the =
+        // separator citty #237 accepts on standalone shorts
+        const attached = pipe(
+          token,
+          String.slice(2 + index),
+          (raw) => String.startsWith("=")(raw) ? String.slice(1)(raw) : raw
+        )
+        if (String.isNonEmpty(attached)) {
+          return Option.some(Effect.succeed([withFlagValue(acc, p, attached), rest] as const))
+        }
+        return Option.some(
+          pipe(
+            Array.head(rest),
+            Option.match({
+              onNone: () => Effect.fail(new MissingFlagValue({ path: cmd.path, flag: `-${char}` })),
+              onSome: (value) =>
+                Effect.succeed([withFlagValue(acc, p, value), Array.drop(rest, 1)] as const)
+            })
+          )
+        )
+      })
+    )
+  return String.startsWith("--")(token) ? Option.none() : step(0, state)
+}
+
+const descend = (
+  child: CompiledCommand,
+  tokens: ReadonlyArray<string>,
+  state: WalkState
+): Effect.Effect<Walked, ArgvError> =>
+  walk(child, flagTable(child), tokens, {
+    ...state,
+    // program-level options bind before the subcommand and the child
+    // declares them too (root input joins every command) — those values
+    // carry across the descent; anything else stays behind
+    record: Record.filter(state.record, (_, key) =>
+      Array.some(child.parameters, (p) => p.key === key)),
+    positionals: Array.filter(child.parameters, (p) => p.binding._tag === "positional")
+  })
+
 const walk = (
   cmd: CompiledCommand,
   table: FlagTable,
@@ -121,18 +241,35 @@ const walk = (
     Array.head(tokens),
     Option.match({
       onNone: () =>
-        Effect.succeed({ command: cmd, record: state.record, help: state.help, json: state.json }),
+        pipe(
+          // a help request aims at the group itself, never its default child
+          state.help ? Option.none<CompiledCommand>() : defaultChild(cmd, Option.none()),
+          Option.match({
+            onNone: () =>
+              Effect.succeed({
+                command: cmd,
+                record: state.record,
+                help: state.help,
+                json: state.json,
+                version: state.version
+              }),
+            onSome: (child) => descend(child, tokens, state)
+          })
+        ),
       onSome: (token) => {
         const rest = Array.drop(tokens, 1)
-        if (state.onlyPositionals || !String.startsWith("-")(token)) {
-          if (!state.onlyPositionals && Option.isSome(Record.get(cmd.children, token))) {
-            const child = Option.getOrThrow(Record.get(cmd.children, token))
+        // a declared default child owns everything the group's own
+        // vocabulary does not claim — `vite --port 3000` is `vite dev …`
+        if (!state.onlyPositionals) {
+          const fallback = defaultChild(cmd, Option.some(token))
+          if (Option.isSome(fallback)) return descend(fallback.value, tokens, state)
+        }
+        // a bare `-` is the stdin/stdout operand, never a flag
+        if (state.onlyPositionals || !String.startsWith("-")(token) || token === "-") {
+          const child = childFor(cmd, token)
+          if (!state.onlyPositionals && Option.isSome(child)) {
             // ancestor flag values routed the line; the leaf owns its input
-            return walk(child, flagTable(child), rest, {
-              ...state,
-              record: {},
-              positionals: Array.filter(child.parameters, (p) => p.binding._tag === "positional")
-            })
+            return descend(child.value, rest, state)
           }
           return assignPositional(cmd, state, token).pipe(
             Effect.flatMap((next) => walk(cmd, table, rest, next))
@@ -148,14 +285,27 @@ const walk = (
           return pipe(
             Record.get(table.byToken, name),
             Option.match({
+              // an undeclared single-dash name may be a CLUSTER carrying
+              // an = value (`-fm=x`) — decomposition owns that shape
               onNone: () =>
-                Effect.fail(
-                  new UnknownFlag({ path: cmd.path, flag: name, near: nearest(name, Record.keys(table.byToken)) })
+                pipe(
+                  decomposeShorts(cmd, table, token, rest, state),
+                  Option.match({
+                    onNone: () =>
+                      Effect.fail(
+                        new UnknownFlag({
+                          path: cmd.path,
+                          flag: name,
+                          near: nearest(name, Record.keys(table.byToken))
+                        })
+                      ),
+                    onSome: (decomposed) =>
+                      Effect.flatMap(decomposed, ([next, remaining]) => walk(cmd, table, remaining, next))
+                  })
                 ),
               // the raw token is recorded verbatim: the token boundary's
               // ArkType morph owns literal coercion (booleans included)
-              onSome: (p) =>
-                walk(cmd, table, rest, { ...state, record: { ...state.record, [p.key]: value } })
+              onSome: (p) => walk(cmd, table, rest, withFlagValue(state, p, value))
             })
           )
         }
@@ -172,15 +322,17 @@ const walk = (
             Option.match({
               onNone: () => Effect.fail(new MissingFlagValue({ path: cmd.path, flag: token })),
               onSome: (value) =>
-                walk(cmd, table, Array.drop(rest, 1), {
-                  ...state,
-                  record: { ...state.record, [p.key]: value }
-                })
+                walk(cmd, table, Array.drop(rest, 1), withFlagValue(state, p, value))
             })
           )
         }
         if (token === "--help" || token === "-h") {
           return walk(cmd, table, rest, { ...state, help: true })
+        }
+        // reserved anywhere a command does not claim it, like --help —
+        // `tool push --version` answers the same as `tool --version`
+        if (token === "--version") {
+          return walk(cmd, table, rest, { ...state, version: true })
         }
         if (token === "--json") {
           return walk(cmd, table, rest, { ...state, json: true })
@@ -192,8 +344,20 @@ const walk = (
             record: { ...state.record, [negated.value.key]: false }
           })
         }
-        return Effect.fail(
-          new UnknownFlag({ path: cmd.path, flag: token, near: nearest(token, Record.keys(table.byToken)) })
+        return pipe(
+          decomposeShorts(cmd, table, token, rest, state),
+          Option.match({
+            onNone: () =>
+              Effect.fail(
+                new UnknownFlag({
+                  path: cmd.path,
+                  flag: token,
+                  near: nearest(token, Record.keys(table.byToken))
+                })
+              ),
+            onSome: (decomposed) =>
+              Effect.flatMap(decomposed, ([next, remaining]) => walk(cmd, table, remaining, next))
+          })
         )
       }
     })
@@ -216,7 +380,12 @@ const applyEnv = (
           Option.filter(String.isNonEmpty),
           Option.match({
             onNone: () => acc,
-            onSome: (value) => ({ ...acc, [p.key]: value })
+            // one exported value ≡ one occurrence: a repeatable flag
+            // takes it as a single-element array
+            onSome: (value) => ({
+              ...acc,
+              [p.key]: p.binding._tag === "flag" && p.binding.variadic ? [value] : value
+            })
           })
         ))
     ))
@@ -232,17 +401,10 @@ export const routeArgv = (
     const argv = Array.head(rawArgv).pipe(Option.contains("--"))
       ? Array.drop(rawArgv, 1)
       : rawArgv
-    // reserved subcommands yield to the program's own vocabulary: a child
-    // with the name, or a root positional that could receive the token
+    // the reserved subcommand yields to the program's own vocabulary: a
+    // child with the name, or a root positional that could receive the token
     const reservedFree = !hasPositionals(root)
     const head = Array.head(argv)
-    if (
-      reservedFree
-      && head.pipe(Option.contains("mcp"))
-      && Option.isNone(Record.get(root.children, "mcp"))
-    ) {
-      return { _tag: "mcp" } as const
-    }
     // the tab protocol: `complete <shell>` prints a script, `complete --
     // <words>` answers a completion request from the shell
     if (
@@ -255,19 +417,17 @@ export const routeArgv = (
         ? { _tag: "complete", words: Array.drop(argv, 2) } as const
         : { _tag: "completionScript", shell: Option.getOrElse(next, () => "zsh") } as const
     }
-    const versionDeclared = Array.some(root.parameters, (p) =>
-      p.binding._tag === "flag"
-      && Array.contains(Array.prepend(p.binding.aliases, p.binding.name), "--version"))
-    if (head.pipe(Option.contains("--version")) && !versionDeclared) {
-      return { _tag: "version" } as const
-    }
     const walked = yield* walk(root, flagTable(root), argv, {
       record: {},
       positionals: Array.filter(root.parameters, (p) => p.binding._tag === "positional"),
       onlyPositionals: false,
       help: false,
-      json: false
+      json: false,
+      version: false
     })
+    if (walked.version) {
+      return { _tag: "version" } as const
+    }
     if (walked.help) {
       return { _tag: "help", command: walked.command } as const
     }
