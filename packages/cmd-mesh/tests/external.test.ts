@@ -307,10 +307,13 @@ describe("global versus command options (level = placement)", () => {
 
   it("emits a command-level value option after the subcommand", async () => {
     // `git log -n 2` — a command-scoped value option must never migrate
-    // in front of `log` (finding 49)
+    // in front of `log` (finding 49): misplaced, git errors outright.
+    // a shallow CI clone may hold fewer than 2 commits, so the pin is
+    // the -n ceiling, not an exact count
     const log = await git.log({})
     const commits = log.split("\n").filter((line) => line.startsWith("commit ")).length
-    expect(commits).toBe(2)
+    expect(commits).toBeGreaterThanOrEqual(1)
+    expect(commits).toBeLessThanOrEqual(2)
   })
 
   it("combines both levels in one invocation", async () => {
