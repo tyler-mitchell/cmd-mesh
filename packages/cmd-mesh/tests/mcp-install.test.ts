@@ -104,6 +104,30 @@ describe("keeping what the file already holds", () => {
     const after = await read(homeFs, ".codex/config.toml")
     expect(after.match(/\[mcp_servers\.mytool\]/g)).toHaveLength(1)
   })
+
+  // a moved project or a new interpreter leaves the stored command
+  // unspawnable; re-running the install has to repair it
+  it("replaces a stale toml entry rather than leaving it", async () => {
+    createFile(
+      `${home}/.codex/config.toml`,
+      `# my own note\n\n[mcp_servers.mytool]\ncommand = "/old/stale/node"\nargs = ["/old/bin.js", "mcp"]\n\n[mcp_servers.other]\ncommand = "other-bin"\n`
+    )
+    installMcpClient("mytool", { command: "/new/node", args: ["/new/bin.js", "mcp"] }, "codex")
+    const after = await read(homeFs, ".codex/config.toml")
+    expect(after).toContain(`command = "/new/node"`)
+    expect(after).not.toContain("/old/stale/node")
+    expect(after).toContain("# my own note")
+    expect(after).toContain("[mcp_servers.other]")
+    // the blank line between tables is the file's spacing, not the entry
+    expect(after).toContain(`"mcp"]\n\n[mcp_servers.other]`)
+  })
+
+  it("replaces a stale json entry too", async () => {
+    createFile(`${project}/.mcp.json`, `{"mcpServers":{"mytool":{"command":"/old/stale/node"}}}`)
+    installMcpClient("mytool", invocation, "claude")
+    const after = JSON.parse(await read(projectFs, ".mcp.json"))
+    expect(after.mcpServers.mytool).toEqual({ command: "mytool", args: ["mcp"] })
+  })
 })
 
 // a directory of its own: the cases above leave .cursor and .vscode behind,

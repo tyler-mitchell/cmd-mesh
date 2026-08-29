@@ -1,5 +1,4 @@
-import { parseTOML } from "confbox"
-import { Array, Option, Predicate } from "effect"
+import { Array, Option } from "effect"
 // package-management owns file and config concerns, and now carries
 // `readFile` and a `modifyConfigFile` that covers toml — neither is in
 // the released 0.1.0 yet, so this reads directly until that ships.
@@ -117,18 +116,37 @@ export const detectMcpClient = (): Option.Option<McpClientId> =>
 
 /** a toml table is appended as text rather than re-serialized, so every
  * comment and hand-written line in the user's config survives */
-const tomlEntry = (
+const tomlTable = (
   key: string,
   name: string,
   invocation: { readonly command: string; readonly args: ReadonlyArray<string> }
-): string =>
-  `\n[${key}.${name}]\ncommand = ${JSON.stringify(invocation.command)}\nargs = ${
-    JSON.stringify(invocation.args)
-  }\n`
+): ReadonlyArray<string> => [
+  `[${key}.${name}]`,
+  `command = ${JSON.stringify(invocation.command)}`,
+  `args = ${JSON.stringify(invocation.args)}`
+]
 
-const alreadyInToml = (source: string, key: string, name: string): boolean => {
-  const table = parseTOML<Record<string, unknown>>(source)[key]
-  return Predicate.isObject(table) && name in table
+/** Written line-wise so every other line of the file survives: a toml
+ * config is hand-kept and full of comments. Replacing an existing table
+ * rather than skipping it is the point — a moved project or a new
+ * interpreter leaves the old command unspawnable, and re-running the
+ * install has to repair that instead of quietly doing nothing. */
+const withTomlTable = (source: string, table: ReadonlyArray<string>): string => {
+  const lines = source === "" ? [] : source.split("\n")
+  const start = lines.findIndex((line) => line.trim() === table[0])
+  if (start === -1) {
+    const spacer = lines.length === 0 || lines[lines.length - 1] === "" ? [] : [""]
+    return [...lines, ...spacer, ...table, ""].join("\n")
+  }
+  const following = lines.slice(start + 1).findIndex((line) => line.trimStart().startsWith("["))
+  const boundary = following === -1 ? lines.length : start + 1 + following
+  // the blank lines that separated this table from the next are the
+  // file's spacing, not part of the table being replaced
+  const spacing = Array.takeWhile(
+    Array.reverse(lines.slice(start + 1, boundary)),
+    (line) => line.trim() === ""
+  ).length
+  return [...lines.slice(0, start), ...table, ...lines.slice(boundary - spacing)].join("\n")
 }
 
 /** register `<name> mcp` with a client, keeping the rest of its file */
@@ -141,9 +159,7 @@ export const installMcpClient = (
   const file = getPath({ to: spec.file })
   if (spec.format === "toml") {
     const source = exists(spec.file) ? readFileSync(file, "utf-8") : ""
-    if (!alreadyInToml(source, spec.key, name)) {
-      createFile(file, `${source}${tomlEntry(spec.key, name, invocation)}`)
-    }
+    createFile(file, withTomlTable(source, tomlTable(spec.key, name, invocation)))
     return file
   }
   if (!exists(spec.file)) createFile(file, "{}\n")

@@ -130,6 +130,10 @@ program name would fail to spawn — the installed `node_modules/.bin`
 entry is written absolutely, and a program still being developed is
 written as its own interpreter plus its script.
 
+Re-run it whenever that invocation goes stale — a moved project or a new
+interpreter — and the existing entry is replaced in place, comments and
+neighbouring servers untouched.
+
 Bare `mcp install` only ever picks a client whose config lives in this
 project. Windsurf and Codex keep theirs in your home directory, so they
 are named outright rather than detected — a project command should not
