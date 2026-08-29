@@ -66,6 +66,9 @@ importers:
         specifier: workspace:*
         version: link:../../packages/repo-ops
     devDependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: 'catalog:'
+        version: 1.29.0(zod@4.4.3)
       tsx:
         specifier: 'catalog:'
         version: 4.23.1

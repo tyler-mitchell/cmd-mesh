@@ -83,6 +83,30 @@ describe("the operational surface (the closed-distribution contract)", () => {
   })
 })
 
+describe("mcp surface", () => {
+  it("hands an agent a real external's output as text, not as quoted json", async () => {
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js")
+    const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js")
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    await repokit.mcp.server().connect(serverTransport)
+    const client = new Client({ name: "witness", version: "0.0.0" })
+    await client.connect(clientTransport)
+
+    const called = await client.callTool({ name: "repokit_git_status", arguments: { short: true } })
+    const text = (called.content as Array<{ text: string }>)[0]!.text
+    expect(text.startsWith("\"")).toBe(false)
+    expect(text).not.toMatch(/\\n/)
+    expect(text).toBe(await repokit.git.status({ short: true }))
+  })
+
+  it("keeps terminal-bound operations off the agent surface", () => {
+    const names = repokit.mcp.tools.map((tool) => tool.name)
+    expect(names).toContain("repokit_release_status")
+    expect(names).not.toContain("repokit_ci_watch")
+    expect(names).not.toContain("repokit_release_add")
+  })
+})
+
 describe("cli surface", () => {
   it("routes and exits cleanly", async () => {
     expect(await repokit.main(["--help"])).toBe(0)

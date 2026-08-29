@@ -23,6 +23,7 @@
     "repo-ops": "workspace:*"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "catalog:",
     "tsx": "catalog:",
     "vitest": "catalog:"
   }
