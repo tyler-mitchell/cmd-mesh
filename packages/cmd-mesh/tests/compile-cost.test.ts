@@ -40,31 +40,34 @@ const declare = (size: number) =>
     ) as never
   })
 
-describe("declaration compile cost", () => {
-  it("stays interactive at CLI scale (50 five-parameter commands)", () => {
+/** the middle of several readings, because one reading measures the
+ * machine's mood as much as the code — this file's own history has a
+ * loaded run reporting 591ms for a change repetition put at ~30% */
+const medianMs = (size: number): number => {
+  const readings = Array.from({ length: 5 }, () => {
     const started = performance.now()
+    declare(size)
+    return performance.now() - started
+  })
+  return [...readings].sort((a, b) => a - b)[2] as number
+}
+
+describe("declaration compile cost", () => {
+  it("stays linear in the number of commands", () => {
+    // What would reopen lazy subcommand loading is SUPERLINEAR cost, and
+    // a ratio says that directly: five times the commands should cost
+    // about five times as much, where quadratic would be about
+    // twenty-five. Load stretches both readings, so the ratio holds
+    // where an absolute wall-clock budget flakes.
+    const ratio = medianMs(50) / medianMs(10)
+    expect(ratio).toBeLessThan(12)
+  })
+
+  it("stays interactive at CLI scale (50 five-parameter commands)", () => {
     const compiled = declare(50)
-    const elapsed = performance.now() - started
     expect(Object.keys(compiled.cli).length).toBeGreaterThan(0)
-    // This file runs alone through test:cost, so the budget can be real.
-    // Solo baseline is ~124ms at 50 commands, about 2.5ms per command,
-    // measured over repeated runs rather than one reading.
-    //
-    // The earlier pin was 2500ms because this ran inside the parallel
-    // suite, where contention reached ~1330ms. Running alone removes
-    // that noise. A single wall-clock reading is still unreliable: one
-    // taken on a loaded machine read 591ms for a change that repeated
-    // runs put at ~30%. Trust this number only in repetition.
-    //
-    // The pin catches a structural regression — the kind that would
-    // reopen lazy subcommand loading — not a small constant factor.
-    expect(elapsed).toBeLessThan(500)
-    console.info(`program(): 5 commands ${time(5)}ms · 20 ${time(20)}ms · 50 ${elapsed.toFixed(1)}ms`)
+    // A catastrophic backstop, not a constant-factor pin: the solo
+    // baseline is ~124ms at 50 commands, about 2.5ms each.
+    expect(medianMs(50)).toBeLessThan(500)
   })
 })
-
-const time = (size: number) => {
-  const started = performance.now()
-  declare(size)
-  return (performance.now() - started).toFixed(1)
-}
