@@ -68,4 +68,19 @@ describe("default in metadata applies as a default", () => {
   it("rejects a default the type does not accept, as the operator does", () => {
     expect(() => type({ port: ["number", "@", { default: "no" }] })).toThrow()
   })
+
+  // the .d.ts half: `inferTupleExpression`'s "@" branch must produce
+  // Default<T, V>, which is what `distill.In` turns into an optional key.
+  // Types are proved in meta-default.attest.ts; this pins that the two
+  // forms stay interchangeable at runtime, which is the same claim.
+  it("matches the operator form's JSON Schema exactly", () => {
+    const meta = type({ port: ["number", "@", { default: 3000 }], name: "string" })
+    const operator = type({ port: ["number", "=", 3000], name: "string" })
+    expect(meta.toJsonSchema()).toEqual(operator.toJsonSchema())
+  })
+
+  it("accepts a caller who omits the defaulted key", () => {
+    const t = type({ port: ["number", "@", { default: 3000 }], name: "string" })
+    expect(t.from({ name: "ada" })).toEqual({ name: "ada", port: 3000 })
+  })
 })

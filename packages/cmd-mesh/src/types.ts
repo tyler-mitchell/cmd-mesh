@@ -57,19 +57,16 @@ declare global {
        * required positional, "[x]" optional, "<...xs>" variadic,
        * "--flag, -f" a flag and its aliases. omitted ⇒ a derived
        * --kebab-case flag. */
-      cli?: string
-      /** environment variable fallback (argv > env > default) */
-      env?: string
+      cli?: string | CliParameterConfig
+      /** the agent surface. `hidden` drops the parameter from the tool
+       * schema; it still validates when supplied, so hiding is
+       * presentation and never a security boundary. */
+      mcp?: { readonly hidden?: boolean }
       /** candidate values, universal to every surface: shell completion
        * is their cli projection, schema examples their mcp projection.
        * hoist generator functions to consts with annotated parameters —
        * inline arrows are context-sensitive and collapse inference. */
       suggest?: SuggestSource
-      /** surfaces that omit this parameter. it still parses and still
-       * validates when supplied — hiding is presentation, never a
-       * security boundary. a positional cannot be cli-hidden: that
-       * would corrupt argv order for everything after it. */
-      hidden?: Surface | ReadonlyArray<Surface>
     }
   }
 }

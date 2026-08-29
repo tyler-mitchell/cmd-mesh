@@ -155,7 +155,7 @@ describe("parent flags before the subcommand (citty resolveSubCommand)", () => {
       version: "0.0.0",
       description: "root invariant over program-level options",
       input: {
-        trace: ["boolean", "@", { cli: "--trace", default: false }],
+        trace: [["boolean", "@", { cli: "--trace" }], "=", false],
         "traceFile?": ["string", "@", { cli: "--trace-file" }]
       },
       narrow: (input, ctx) =>
@@ -184,7 +184,7 @@ describe("parent flags before the subcommand (citty resolveSubCommand)", () => {
       name: "enved",
       version: "0.0.0",
       input: {
-        region: ["string", "@", { cli: "--region", env: "ENVED_REGION", default: "us-east" }]
+        region: [["string", "@", { cli: { usage: "--region", env: "ENVED_REGION" } }], "=", "us-east"]
       },
       commands: {
         deploy: {

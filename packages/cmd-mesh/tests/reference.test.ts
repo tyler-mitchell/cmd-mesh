@@ -12,27 +12,24 @@ const tool = program({
   version: "1.0.0",
   cli: { default: "dev" },
   input: {
-    logLevel: { type: "'debug' | 'info' = 'info'", cli: "--log-level" }
+    logLevel: [["'debug' | 'info'", "@", { cli: "--log-level" }], "=", "info"]
   },
   commands: {
     dev: {
       description: "start dev mode",
       cli: { alias: ["d"], examples: ["tool dev src/main.ts --port 8080"] },
       input: {
-        entry: { type: "string", cli: "<entry>" },
-        out: { type: "string", cli: "[out]" },
-        files: { type: "string", cli: "[...files]" },
-        port: {
-          type: "string.integer.parse = '3000'",
-          cli: { usage: "--port, -p", env: "TOOL_PORT" }
-        },
-        tag: { type: "string", cli: "--tag <tags...>" },
-        token: {
-          type: "string",
-          cli: { usage: "--token", hidden: true },
-          mcp: { hidden: true }
-        },
-        level: { type: "'debug' | 'info' | 'warn'" }
+        entry: ["string", "@", { cli: "<entry>" }],
+        "out?": ["string", "@", { cli: "[out]" }],
+        files: ["string[]", "@", { cli: "[...files]", default: () => [] }],
+        port: [
+          "string.integer.parse",
+          "@",
+          { cli: { usage: "--port, -p", env: "TOOL_PORT" }, default: "3000" }
+        ],
+        tag: ["string[]", "@", { cli: "--tag <tags...>", default: () => [] }],
+        "token?": ["string", "@", { cli: { usage: "--token", hidden: true }, mcp: { hidden: true } }],
+        "level?": "'debug' | 'info' | 'warn'"
       },
       narrow: (input, ctx) =>
         input.out === input.entry ? ctx.mustBe("a distinct output path") : true,
@@ -168,7 +165,7 @@ describe("unit-testing a handler that execs", () => {
       commands: {
         list: {
           description: "list tracked files",
-          input: { dir: { type: "string", cli: "<dir>" } },
+          input: { dir: ["string", "@", { cli: "<dir>" }] },
           output: { files: "string[]" },
           run: list
         }

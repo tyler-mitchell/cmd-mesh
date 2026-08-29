@@ -16,3 +16,18 @@ index ef4b6e6978bafc54f17ec5d2b26ff07fecb22b7e..3abf2f8827dd180218245b50092b9643
  };
  // single quote use here is better for TypeScript's inlined error to avoid escapes
  export const invalidOptionalKeyKindMessage = `Only required keys may make their values optional, e.g. { [mySymbol]: ['number', '?'] }`;
+diff --git a/out/parser/tupleExpressions.d.ts b/out/parser/tupleExpressions.d.ts
+index 4895a2025cae4fd3c95b253a83bbc28b2654e113..bbfd4d0c6523ae6d42d9c5f913c580b69237568e 100644
+--- a/out/parser/tupleExpressions.d.ts
++++ b/out/parser/tupleExpressions.d.ts
+@@ -11,7 +11,9 @@ export type maybeValidateTupleExpression<def extends array, $, args> = def exten
+     def[0] extends "" ? BaseCompletions<$, args, IndexZeroOperator | "..."> : def[0],
+     def[1] extends "" ? BaseCompletions<$, args, IndexOneOperator | "..."> : def[1]
+ ] : null;
+-export type inferTupleExpression<def extends TupleExpression, $, args> = def[1] extends "[]" ? inferDefinition<def[0], $, args>[] : def[1] extends "?" ? inferDefinition<def[0], $, args> : def[1] extends "&" ? inferIntersection<inferDefinition<def[0], $, args>, inferDefinition<def[2], $, args>> : def[1] extends "|" ? inferDefinition<def[0], $, args> | inferDefinition<def[2], $, args> : def[1] extends ":" ? inferPredicate<inferDefinition<def[0], $, args>, def[2]> : def[1] extends "=>" ? parseMorph<def[0], def[2], $, args> : def[1] extends "|>" ? parseTo<def[0], def[2], $, args> : def[1] extends "=" ? withDefault<inferDefinition<def[0], $, args>, unwrapDefault<def[2]>> : def[1] extends "@" ? inferDefinition<def[0], $, args> : def extends readonly ["===", ...infer values] ? values[number] : def extends (readonly ["instanceof", ...infer constructors extends Constructor[]]) ? InstanceType<constructors[number]> : def[0] extends "keyof" ? inferKeyOfExpression<def[1], $, args> : never;
++export type inferTupleExpression<def extends TupleExpression, $, args> = def[1] extends "[]" ? inferDefinition<def[0], $, args>[] : def[1] extends "?" ? inferDefinition<def[0], $, args> : def[1] extends "&" ? inferIntersection<inferDefinition<def[0], $, args>, inferDefinition<def[2], $, args>> : def[1] extends "|" ? inferDefinition<def[0], $, args> | inferDefinition<def[2], $, args> : def[1] extends ":" ? inferPredicate<inferDefinition<def[0], $, args>, def[2]> : def[1] extends "=>" ? parseMorph<def[0], def[2], $, args> : def[1] extends "|>" ? parseTo<def[0], def[2], $, args> : def[1] extends "=" ? withDefault<inferDefinition<def[0], $, args>, unwrapDefault<def[2]>> : def[1] extends "@" ? (def[2] extends {
++    readonly default: infer metaDefault;
++} ? withDefault<inferDefinition<def[0], $, args>, unwrapDefault<metaDefault>> : inferDefinition<def[0], $, args>) : def extends readonly ["===", ...infer values] ? values[number] : def extends (readonly ["instanceof", ...infer constructors extends Constructor[]]) ? InstanceType<constructors[number]> : def[0] extends "keyof" ? inferKeyOfExpression<def[1], $, args> : never;
+ export type validatePrefixExpression<def extends IndexZeroExpression, $, args> = def["length"] extends 1 ? readonly [writeMissingRightOperandMessage<def[0]>] : def[0] extends "keyof" ? readonly [def[0], validateDefinition<def[1], $, args>] : def[0] extends "===" ? readonly [def[0], ...unknown[]] : def[0] extends "instanceof" ? readonly [def[0], ...Constructor[]] : never;
+ export type validateIndexOneExpression<def extends IndexOneExpression, $, args> = def[1] extends TuplePostfixOperator ? readonly [validateDefinition<def[0], $, args>, def[1]] : readonly [
+     validateDefinition<def[0], $, args>,

@@ -86,7 +86,7 @@ const makeCounter = () =>
     commands: {
       inc: {
         description: "return the number it was given",
-        input: { by: { type: "string.integer.parse = '1'", cli: "--by" } },
+        input: { by: ["string.integer.parse", "@", { cli: "--by", default: "1" }] },
         output: { value: "number" },
         run: async (input) => {
           await new Promise((resolve) => setTimeout(resolve, 1))
@@ -103,7 +103,7 @@ const shell = program({
   commands: {
     echo: {
       description: "echo through a child process",
-      input: { text: { type: "string", cli: "<text>" } },
+      input: { text: ["string", "@", { cli: "<text>" }] },
       run: async (_input, ctx) => {
         const result = await ctx.exec("printf", ["%s", _input.text])
         return { stdout: result.stdout, exitCode: result.exitCode }
@@ -165,7 +165,7 @@ describe("concurrent invocation", () => {
   it("keeps parallel calls of one command independent", async () => {
     const counter = makeCounter()
     const results = await Promise.all(
-      Array.from({ length: 50 }, (_, i) => counter.inc({ by: i }))
+      Array.from({ length: 50 }, (_, i) => counter.inc({ by: `${i}` }))
     )
     expect(results.map((r) => r.value)).toEqual(Array.from({ length: 50 }, (_, i) => i))
   })

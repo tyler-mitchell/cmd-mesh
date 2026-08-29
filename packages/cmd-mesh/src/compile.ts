@@ -12,9 +12,9 @@ import type {
   McpExample,
   Mounted,
   ParameterDef,
+  CliParameterConfig,
   SuggestGenerator,
-  SuggestSource,
-  Surface
+  SuggestSource
 } from "./types.js"
 import { mounted } from "./types.js"
 
@@ -126,16 +126,15 @@ interface RawCommandDecl {
 /** surface bindings authored as ArkType metadata */
 interface ParameterMeta {
   readonly description?: string
-  /** the argv notation — a positional slot, or a flag and its aliases */
-  readonly cli?: string
-  readonly env?: string
+  /** the cli surface: its notation, or the full config */
+  readonly cli?: string | CliParameterConfig
+  /** the agent surface */
+  readonly mcp?: { readonly hidden?: boolean }
   readonly suggest?: SuggestSource
-  readonly hidden?: Surface | ReadonlyArray<Surface>
 }
 
-const hiddenFrom = (meta: ParameterMeta, surface: Surface): boolean =>
-  meta.hidden === surface
-  || (globalThis.Array.isArray(meta.hidden) && Array.contains(meta.hidden, surface))
+const normalizeCli = (cli: string | CliParameterConfig | undefined): CliParameterConfig =>
+  cli === undefined ? {} : String.isString(cli) ? { usage: cli } : cli
 
 /** an ArkType key carries its own optionality: "note?" is optional */
 const bareKey = (key: string): string => String.endsWith("?")(key) ? key.slice(0, -1) : key
@@ -323,7 +322,8 @@ const compileParameter = (rawKey: string, rawDef: ParameterDef): CompiledParamet
   // down, on the unwrapped output side
   const unwrapped = defaulted ? (inner.out.exclude("undefined") as AnyType) : inner
   const meta = metaOf(rawDef)
-  const binding = parseBinding(key, meta.cli ?? "")
+  const cli = normalizeCli(meta.cli)
+  const binding = parseBinding(key, cli.usage ?? "")
   return {
     key,
     def: rawDef,
@@ -334,9 +334,9 @@ const compileParameter = (rawKey: string, rawDef: ParameterDef): CompiledParamet
     generator: Predicate.isFunction(meta.suggest)
       ? Option.some(meta.suggest as SuggestGenerator)
       : Option.none(),
-    env: Option.fromNullishOr(meta.env),
-    cliHidden: hiddenFrom(meta, "cli"),
-    mcpHidden: hiddenFrom(meta, "mcp"),
+    env: Option.fromNullishOr(cli.env),
+    cliHidden: cli.hidden === true,
+    mcpHidden: meta.mcp?.hidden === true,
     // ArkType owns optionality: an unmarked, undefaulted key is required
     required: !String.endsWith("?")(rawKey) && !defaulted,
     defaulted,
@@ -378,7 +378,10 @@ const takesRawToken = (p: CompiledParameter): boolean =>
  * wrapper stripped — the wrapper hides an array from the element check */
 const tokenDomain = (p: CompiledParameter): AnyType => {
   const input = p.inner.in as AnyType
-  return p.defaulted ? (input.exclude("undefined") as AnyType) : input
+  const base = p.defaulted ? (input.exclude("undefined") as AnyType) : input
+  // the token key is optional and the value boundary owns defaults, so a
+  // `default` still riding in metadata would land on an optional key
+  return base.configure({ default: undefined }) as AnyType
 }
 
 /** boolean flags cross the token boundary as presence booleans or as the

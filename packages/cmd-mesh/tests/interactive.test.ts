@@ -44,10 +44,10 @@ const tool = program({
     build: {
       description: "bundle",
       input: {
-        entry: { type: "string", cli: "<entry>" },
-        port: { type: "string.integer.parse = '3000'", cli: "--port, -p" },
-        level: { type: "'debug' | 'info' = 'info'" },
-        verbose: { type: "boolean", cli: "--verbose, -v" }
+        entry: ["string", "@", { cli: "<entry>" }],
+        port: ["string.integer.parse", "@", { cli: "--port, -p", default: "3000" }],
+        level: ["'debug' | 'info'", "@", { default: "info" }],
+        verbose: ["boolean", "@", { cli: "--verbose, -v", default: false }]
       },
       output: { entry: "string", port: "number", level: "string", verbose: "boolean" },
       run: (input) => {
@@ -58,7 +58,7 @@ const tool = program({
     grep: {
       description: "search",
       input: {
-        pattern: { type: "string", cli: "--pattern" }
+        pattern: ["string", "@", { cli: "--pattern" }]
       },
       output: { pattern: "string" },
       run: (input) => {

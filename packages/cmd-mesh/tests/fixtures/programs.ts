@@ -25,7 +25,7 @@ export const deploy = program({
           [
             "'staging' | 'production'",
             "@",
-            { description: "target environment", cli: "--env, -e", env: "DEPLOY_ENV" }
+            { description: "target environment", cli: { usage: "--env, -e", env: "DEPLOY_ENV" } }
           ],
           "=",
           "staging"

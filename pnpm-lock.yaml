@@ -38,7 +38,7 @@ catalogs:
       version: 4.1.11
 
 patchedDependencies:
-  arktype: 14b016fd077a134adc7c32aca4ce5b512592b5131f7e2691c918918ce2a4c9ef
+  arktype: 79ff9abcbf364603b1035b062546e1c5b2eb37d17bb0172d07f3e399ac7da6f4
 
 importers:
 
@@ -95,7 +95,7 @@ importers:
         version: 1.29.0(zod@4.4.3)
       arktype:
         specifier: 'catalog:'
-        version: 2.2.3(patch_hash=14b016fd077a134adc7c32aca4ce5b512592b5131f7e2691c918918ce2a4c9ef)
+        version: 2.2.3(patch_hash=79ff9abcbf364603b1035b062546e1c5b2eb37d17bb0172d07f3e399ac7da6f4)
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.112
@@ -2111,7 +2111,7 @@ snapshots:
       '@prettier/sync': 0.6.1(prettier@3.6.2)
       '@typescript/analyze-trace': 0.10.1
       '@typescript/vfs': 1.6.1(typescript@6.0.3)
-      arktype: 2.2.3(patch_hash=14b016fd077a134adc7c32aca4ce5b512592b5131f7e2691c918918ce2a4c9ef)
+      arktype: 2.2.3(patch_hash=79ff9abcbf364603b1035b062546e1c5b2eb37d17bb0172d07f3e399ac7da6f4)
       prettier: 3.6.2
       typescript: 6.0.3
     transitivePeerDependencies:
@@ -2540,7 +2540,7 @@ snapshots:
     dependencies:
       '@ark/util': 0.56.2
 
-  arktype@2.2.3(patch_hash=14b016fd077a134adc7c32aca4ce5b512592b5131f7e2691c918918ce2a4c9ef):
+  arktype@2.2.3(patch_hash=79ff9abcbf364603b1035b062546e1c5b2eb37d17bb0172d07f3e399ac7da6f4):
     dependencies:
       '@ark/schema': 0.56.2
       '@ark/util': 0.56.2
