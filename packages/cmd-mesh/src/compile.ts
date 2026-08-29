@@ -552,7 +552,10 @@ const collectCommand = (
   // parsing first and the value boundary second, so it still applies
   // once. a root narrow travels with the root's options — an invariant
   // over program-level values holds wherever they are supplied.
-  const valueType = withNarrow(withNarrow(assembly.schemaType, inheritedNarrow), decl.narrow)
+  // a handler receives its declared input and nothing else; agent-supplied
+  // keys are stripped at the boundary. See docs/reference.md.
+  const declaredOnly = (assembly.schemaType as AnyType).onUndeclaredKey("delete") as AnyType
+  const valueType = withNarrow(withNarrow(declaredOnly, inheritedNarrow), decl.narrow)
   // only the PROGRAM root's input propagates (path length 1) — mirrors
   // externals, where only binary-root globals join every command.
   // mounted modules are finished programs and keep their own model.

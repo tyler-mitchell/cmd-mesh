@@ -151,6 +151,32 @@ describe("mcp tool identity", () => {
     expect(new Set(answers)).toEqual(new Set(["from nested", "from flat"]))
   })
 
+  it("does not hand a handler an argument the agent invented", async () => {
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js")
+    const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js")
+    const seen: Array<unknown> = []
+    const app = program({
+      name: "trust",
+      version: "0.0.0",
+      commands: {
+        greet: {
+          safety: "read",
+          input: { who: { type: "string", cli: "<who>" } },
+          run: (input) => {
+            seen.push(input)
+            return input.who
+          }
+        }
+      }
+    })
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    await app.mcp.server().connect(serverTransport)
+    const client = new Client({ name: "witness", version: "0.0.0" })
+    await client.connect(clientTransport)
+    await client.callTool({ name: "trust_greet", arguments: { who: "ada", smuggled: "payload" } })
+    expect(seen[0]).toEqual({ who: "ada" })
+  })
+
   it("serves the spec as a resource and a paired read tool over a live client", async () => {
     const { Client } = await import("@modelcontextprotocol/sdk/client/index.js")
     const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js")

@@ -73,6 +73,7 @@ project full nested JSON Schemas to MCP.
 | tool `<name>_spec` | the same descriptor for clients that only consume tools; a declared tool claiming the name wins |
 | annotations | `readOnlyHint` and `destructiveHint`, both always explicit, derived from `safety` unless overridden |
 | `structuredContent` | schema-conformant; non-object outputs wrapped under `result` |
+| undeclared arguments | stripped at the boundary — a handler receives the parameters it declared and nothing else, on every surface |
 
 ## Exit codes
 
