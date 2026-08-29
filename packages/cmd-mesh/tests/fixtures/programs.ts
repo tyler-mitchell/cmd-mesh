@@ -143,7 +143,7 @@ export const wrap = program({
       description: "execute a tool with forwarded arguments",
       input: {
         tool: ["string", "@", { cli: "<tool>" }],
-        args: ["string[]", "@", { description: "forwarded arguments", cli: "<...args>" }]
+        args: ["string[] >= 1", "@", { description: "forwarded arguments", cli: "<...args>" }]
       },
       output: { tool: "string", args: "string[]" },
       run: (input) => ({ tool: input.tool, args: [...input.args] })
