@@ -321,10 +321,13 @@ export const program = <
   RootR = void,
   const Cs = {},
   Rs = {},
-  const Rsrc extends Readonly<globalThis.Record<string, ResourceSpec<any>>> = {}
+  const Rsrc extends Readonly<globalThis.Record<string, ResourceSpec<any>>> = {},
+  // the result is deferred through a type parameter, as ArkType's own
+  // `type` does: computing it in the return position instantiates eagerly
+  r = ProgramModule<RootIn, RootOut, RootR, Cs, Rs>
 >(
   def: ProgramDeclOf<Name, RootIn, RootOut, RootR, Cs, Rs, Rsrc>
-): ProgramModule<RootIn, RootOut, RootR, Cs, Rs> => {
+): r extends infer _ ? _ : never => {
   const compiled = compileCommand(def.name, [def.name], def as never)
   const specs: Resources = def.resources ?? {}
   const runtime: MeshRuntime = ManagedRuntime.make(Exec.layer)
@@ -455,11 +458,13 @@ export const program = <
 }
 
 /** interpret an external-binary declaration into its callable module */
-export const external = <const D extends ExternalDecl>(def: D): ExternalModule<D> => {
+export const external = <const D extends ExternalDecl, r = ExternalModule<D>>(
+  def: D
+): r extends infer _ ? _ : never => {
   const compiled = compileExternal(def)
   const runtime: MeshRuntime = ManagedRuntime.make(Exec.layer)
   return {
     ...Record.map(compiled.children, (child) => buildCommandModule(child, runtime)),
     [mounted]: compiled
-  } as ExternalModule<D>
+  } as never
 }

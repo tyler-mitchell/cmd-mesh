@@ -29,7 +29,7 @@ describe("a group with a default child and its own flags", () => {
         cli: { default: "dev" },
         commands: {
           dev: {
-            input: { port: { type: "string", cli: "--port" } },
+            input: { "port?": ["string", "@", { cli: "--port" }] },
             output: { ran: "string", port: "string" },
             run: (input: { readonly port?: string }) => ({ ran: "dev", port: input.port ?? "none" })
           }

@@ -75,10 +75,10 @@ declare global {
  * ArkType's own: a valid definition returns unchanged, an invalid one
  * returns ArkType's error message, which makes the argument fail to
  * assign at the declaration site. */
-export type ValidateInput<I> = I & type.validate<I>
+export type ValidateInput<I> = type.validate<I>
 
 /** an output contract is any ArkType definition, validated the same way */
-export type ValidateOutput<O> = O & type.validate<O>
+export type ValidateOutput<O> = type.validate<O>
 
 export type ParameterDef = unknown
 

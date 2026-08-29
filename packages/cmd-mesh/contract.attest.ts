@@ -1,9 +1,10 @@
-// type-level proof of the contract: `input` and `output` are ArkType
-// definitions, so ArkType's own inference IS the boundary model — its
-// input side is what a caller may supply, its output side what a handler
-// receives. run with: pnpm run test:types
+// Type-level proof of the contract, against the shapes real tools ship.
+// `input` and `output` are ArkType definitions, so ArkType's own inference
+// IS the boundary model: its input side is what a caller may supply, its
+// output side what a handler receives. run with: pnpm run test:types
 import { attest, setup, teardown } from "@ark/attest"
-import { program } from "./src/index.js"
+import { type } from "arktype"
+import { external, program } from "./src/index.js"
 
 setup({
   shouldFormat: false,
@@ -11,33 +12,53 @@ setup({
 })
 
 try {
-  const p = program({
-    name: "t",
+  // ─── a deployer: the shape almost every internal cli grows ──────────────
+  const deploy = program({
+    name: "deploy",
+    version: "1.0.0",
+    // program-level options join every command's surfaces
+    input: {
+      "profile?": ["string", "@", { cli: { usage: "--profile", env: "DEPLOY_PROFILE" } }]
+    },
     commands: {
-      // the ordinary shape: a positional, a flag with an alias, an
-      // optional key, and a morph that parses its argv token
-      greet: {
+      push: {
+        description: "push a service build",
         input: {
-          who: ["string", "@", { cli: "<who>" }],
-          loud: [["boolean", "@", { cli: "--loud, -l" }], "=", false],
-          times: [["string.integer.parse", "@", { cli: "--times, -n" }], "=", "1"],
-          "note?": ["string", "@", { cli: "--note" }]
+          service: ["string", "@", { cli: "<service>" }],
+          env: [
+            "'staging' | 'production'",
+            "@",
+            { cli: { usage: "--env, -e", env: "DEPLOY_ENV" }, default: "staging" }
+          ],
+          replicas: ["string.integer.parse", "@", { cli: "--replicas", default: "2" }],
+          force: ["boolean", "@", { cli: "--force, -f", default: false }],
+          "message?": ["string", "@", { cli: "--message, -m" }],
+          token: ["string", "@", { cli: "--token", mcp: { hidden: true }, default: "" }]
         },
         run: (input) => {
-          attest(input.who).type.toString.snap("string")
-          attest(input.loud).type.toString.snap("boolean")
-          attest(input.times).type.toString.snap("number")
-          attest(input.note).type.toString.snap("string | undefined")
-          return input.times
+          // a bare handler: every type below comes from the declaration alone
+          attest(input.service).type.toString.snap()
+          attest(input.env).type.toString.snap()
+          attest(input.replicas).type.toString.snap()
+          attest(input.force).type.toString.snap()
+          attest(input.message).type.toString.snap()
+          attest(input.profile).type.toString.snap()
+          return { at: input.service, count: input.replicas }
         }
       },
-      // a variadic positional says so in its own definition
-      count: {
+      // a variadic states its own array; the notation only says how it is spelled
+      bundle: {
+        description: "bundle entries",
         input: {
-          files: ["string[]", "@", { cli: "<...files>" }]
+          entries: ["string[] >= 1", "@", { cli: "<...entries>" }],
+          "tag?": ["string[]", "@", { cli: "--tag <tags...>" }]
         },
-        output: { total: "number" },
-        run: (input) => ({ total: input.files.length })
+        output: { count: "number" },
+        run: (input) => {
+          attest(input.entries).type.toString.snap()
+          attest(input.tag).type.toString.snap()
+          return { count: input.entries.length }
+        }
       },
       // a structured parameter is an ordinary nested ArkType object
       configure: {
@@ -45,33 +66,69 @@ try {
           conf: [{ retries: "number.integer", label: "string" }, "@", { cli: "--conf" }]
         },
         run: (input) => {
-          attest(input.conf).type.toString.snap("{ retries: number; label: string }")
+          attest(input.conf).type.toString.snap()
           return input.conf.retries
         }
+      },
+      // GAP: a Type instance inside a "@" tuple does NOT carry its
+      // inference — `level` is absent from the handler's input type.
+      tuned: {
+        input: {
+          level: [type("'low' | 'high'").describe("verbosity"), "@", { cli: "--level" }]
+        },
+        run: (input) => attest(input).type.toString.snap()
       }
     }
   })
 
-  // the call surface is ArkType's INPUT side: defaulted and optional keys
+  // the CALL surface is ArkType's input side: defaults and optional keys
   // may be omitted, and a morph accepts its own input domain
-  attest(p.greet({ who: "ada" })).type.toString.snap("number")
-  attest(p.greet({ who: "ada", times: "3", loud: true })).type.toString.snap("number")
+  attest(deploy.push({ service: "api" })).type.toString.snap()
+  attest(deploy.push({ service: "api", replicas: "5", env: "production" })).type.toString.snap()
+  attest(deploy.bundle({ entries: ["a.ts"] })).type.toString.snap()
+  attest(deploy.configure({ conf: { retries: 2, label: "x" } })).type.toString.snap()
 
-  // an output contract decides the result type
-  attest(p.count({ files: ["a"] })).type.toString.snap("{ total: number }")
+  // a program-level option is callable on every command
+  attest(deploy.push({ service: "api", profile: "eu" })).type.toString.snap()
 
-  // a structured parameter crosses the value boundary as a real value
-  attest(p.configure({ conf: { retries: 2, label: "x" } })).type.toString.snap("number")
+  // the args surface exposes the compiled value boundary
+  attest(deploy.push.args.assert({})).type.toString.snap()
 
-  // rejections. these are type-level only — never invoked, since a call
-  // that fails to typecheck would still run and throw at the boundary.
+  // ─── an external: the same contract over a binary ───────────────────────
+  const git = external({
+    name: "git",
+    input: { "repo?": ["string", "@", { cli: "-C" }] },
+    commands: {
+      status: {
+        description: "working tree status",
+        input: { short: ["boolean", "@", { cli: "--short, -s", default: false }] },
+        output: "string"
+      },
+      revParse: {
+        description: "resolve a revision",
+        input: { rev: ["string", "@", { cli: "<rev>" }] },
+        output: "string"
+      }
+    }
+  })
+
+  // an external always crosses a process boundary, so it is always async
+  attest(git.status({})).type.toString.snap()
+  attest(git.revParse({ rev: "HEAD", repo: "." })).type.toString.snap()
+
+  // ─── rejections: type-level only, never invoked ─────────────────────────
   const rejected = () => {
-    // @ts-expect-error — `who` is required at the call boundary
-    p.greet({})
+    // @ts-expect-error — `service` is required at the call boundary
+    deploy.push({})
     // @ts-expect-error — a morph's input domain is a string, not a number
-    p.greet({ who: "ada", times: 3 })
+    deploy.push({ service: "api", replicas: 5 })
+    // @ts-expect-error — not a member of the declared union
+    deploy.push({ service: "api", env: "dev" })
+    // @ts-expect-error — the structured parameter's shape is enforced
+    deploy.configure({ conf: { retries: "two", label: "x" } })
+    // @ts-expect-error — an external's required positional
+    git.revParse({})
 
-    // ArkType validates the definition itself, in place
     program({
       name: "bad",
       // @ts-expect-error — 'not.a.keyword' is unresolvable
@@ -84,13 +141,21 @@ try {
     })
     program({
       name: "bad3",
-      // @ts-expect-error — cli takes a string or a config object
+      // @ts-expect-error — cli takes a notation string or a config object
       commands: { c: { input: { x: ["string", "@", { cli: 7 }] } } }
     })
+    // GAP in the patch's type half: a metadata `default` is INFERRED
+    // correctly but not VALIDATED against the input domain. The "="
+    // operator form is validated, through `defaultFor<type.infer.In<…>>`
+    // in `validateIndexOneExpression`; the "@" branch has no equivalent.
     program({
       name: "bad4",
-      // @ts-expect-error — a default must satisfy the morph's INPUT domain
-      commands: { c: { input: { n: [["string.integer.parse", "@", {}], "=", 1] } } }
+      commands: { c: { input: { n: ["string.integer.parse", "@", { default: 1 }] } } }
+    })
+    program({
+      name: "bad5",
+      // @ts-expect-error — mcp takes `hidden`, not a misspelling of it
+      commands: { c: { input: { x: ["string", "@", { mcp: { hiden: true } }] } } }
     })
   }
   void rejected

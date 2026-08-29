@@ -583,7 +583,7 @@ describe("suggestion generators", () => {
           commands: {
             focus: {
               description: "focus",
-              input: { name: { type: "string", suggest: gen, cli: "<name>" } },
+              input: { name: ["string", "@", { suggest: gen, cli: "<name>" }] },
               run: (input: { readonly name: string }) => input.name
             }
           }
@@ -746,9 +746,9 @@ describe("arktype meta descriptions", () => {
     expect(help).toMatch(/a port to listen on/)
   })
 
-  it("prefers an explicit descriptor description", () => {
+  it("prefers an outer annotation over one the inner type carries", () => {
     const help = meta.cli.help(["serve"])
-    expect(help).toMatch(/the descriptor wins/)
+    expect(help).toMatch(/the outer annotation wins/)
     expect(help).not.toMatch(/falls behind/)
   })
 

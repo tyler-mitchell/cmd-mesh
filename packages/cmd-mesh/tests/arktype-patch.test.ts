@@ -79,6 +79,15 @@ describe("default in metadata applies as a default", () => {
     expect(meta.toJsonSchema()).toEqual(operator.toJsonSchema())
   })
 
+  // the type half infers a metadata default but does not VALIDATE it
+  // against the input domain, the way the "=" operator's own
+  // `defaultFor<type.infer.In<…>>` check does. ArkType's runtime
+  // assertion still runs, so the gap is late rather than unsound.
+  it("still rejects a metadata default the input domain refuses", () => {
+    expect(() => type({ n: ["string.integer.parse", "@", { default: 1 }] })).toThrow()
+    expect(() => type({ n: ["number", "@", { default: "no" }] })).toThrow()
+  })
+
   it("accepts a caller who omits the defaulted key", () => {
     const t = type({ port: ["number", "@", { default: 3000 }], name: "string" })
     expect(t.from({ name: "ada" })).toEqual({ name: "ada", port: 3000 })

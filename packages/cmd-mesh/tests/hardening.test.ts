@@ -37,8 +37,8 @@ describe("declaration validation", () => {
               other: { type: "string", cli: "--same" },
               rest: { type: "string", cli: "<...rest>" },
               after: { type: "string", cli: "<after>" },
-              toggled: { type: "boolean", cli: "<toggled>" },
-              fromEnv: { type: "string", cli: { usage: "<pos>", env: "X" } }
+              toggled: ["boolean", "@", { cli: "<toggled>" }],
+              fromEnv: ["string", "@", { cli: { usage: "<pos>", env: "X" } }]
             },
             run: () => "x"
           }
@@ -51,10 +51,10 @@ describe("declaration validation", () => {
         commands: {
           broken: {
             input: {
-              bad: { type: "not.a.keyword" },
-              flag: { type: "string", cli: "--same" },
-              other: { type: "string", cli: "--same" },
-              toggled: { type: "boolean", cli: "<toggled>" }
+              bad: "not.a.keyword",
+              flag: ["string", "@", { cli: "--same" }],
+              other: ["string", "@", { cli: "--same" }],
+              toggled: ["boolean", "@", { cli: "<toggled>" }]
             }
           }
         }
@@ -81,7 +81,7 @@ describe("declaration validation", () => {
   vit("accepts a valid declaration unchanged", () => {
     expect(() =>
       compileCommand("tool", ["tool"], {
-        input: { a: { type: "string", cli: "<a>" } },
+        input: { a: ["string", "@", { cli: "<a>" }] },
         run: () => "ok"
       } as never)
     ).not.toThrow()
@@ -141,8 +141,9 @@ describe("help rendering", () => {
       release: {
         description: "bump",
         input: {
-          bump: { type: "'patch' | 'minor' | 'major'", description: "increment", cli: "<bump>" },
-          token: { type: "string", description: "auth", required: true, cli: "--token" }
+          bump: ["'patch' | 'minor' | 'major'", "@", { description: "increment", cli: "<bump>" }],
+          // no `?` and no default: required
+          token: ["string", "@", { description: "auth", cli: "--token" }]
         },
         run: () => "x"
       }

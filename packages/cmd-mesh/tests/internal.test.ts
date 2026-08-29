@@ -11,9 +11,9 @@ const root = compileCommand("tool", ["tool"], {
     greet: {
       description: "greet someone",
       input: {
-        who: { type: "string", cli: "<who>" },
-        shout: { type: "boolean", cli: "--shout, -s" },
-        times: { type: "string.integer.parse = '1'" }
+        who: ["string", "@", { cli: "<who>" }],
+        shout: ["boolean", "@", { cli: "--shout, -s", default: false }],
+        times: ["string.integer.parse", "@", { default: "1" }]
       },
       run: () => "hi"
     }
