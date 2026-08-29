@@ -39,7 +39,8 @@
     "@effect/platform-node": "catalog:",
     "@modelcontextprotocol/sdk": "catalog:",
     "arktype": "catalog:",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "package-management": "^0.1.0"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
@@ -50,6 +51,6 @@
     "vitest": "catalog:"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   }
 }

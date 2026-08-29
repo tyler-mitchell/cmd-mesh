@@ -1,4 +1,5 @@
 import type { distill, type } from "arktype"
+import type { project, workspace } from "package-management"
 
 // ─── declaration model ──────────────────────────────────────────────────────
 // the consumer-authored data. parameters are ArkType property-position
@@ -8,6 +9,13 @@ import type { distill, type } from "arktype"
 export interface SuggestContext {
   exec(bin: string, args: ReadonlyArray<string>, options?: ExecOptions): Promise<ExecResult>
   readonly words: ReadonlyArray<string>
+  /** repository resolution — package-management's `project(...)` verbatim:
+   * `ctx.project("<package_folder>")` answers manifest, dependency, and
+   * package-manager questions for the invocation's repository */
+  readonly project: typeof project
+  /** workspace enumeration — `ctx.workspace.packageNames()` is the
+   * canonical monorepo completion source */
+  readonly workspace: typeof workspace
 }
 
 /** a Fig-style generator: computes suggestions on demand, with process
@@ -106,14 +114,23 @@ export interface ExecOptions {
   readonly stdio?: "capture" | "inherit"
   /** kill the process and fail if it runs longer than this */
   readonly timeoutMs?: number
+  /** exit codes that count as success — any other exit throws
+   * `ExternalExit`, the same vocabulary external commands use. omitted,
+   * exit codes stay data on the result (branch on `result.exitCode`) */
+  readonly successCodes?: ReadonlyArray<number>
 }
 
 export type Surface = "cli" | "mcp" | "call"
 
-/** interpreter-owned capabilities handed to handlers. not user DI. */
+/** interpreter-owned capabilities handed to handlers. not user DI.
+ * `project` and `workspace` are package-management's own consumer
+ * surfaces, exposed whole — mediated here so handlers stay mockable
+ * (hand a fake ctx) and auditable per invocation. */
 export interface Ctx {
   exec(bin: string, args: ReadonlyArray<string>, options?: ExecOptions): Promise<ExecResult>
   readonly surface: Surface
+  readonly project: typeof project
+  readonly workspace: typeof workspace
 }
 
 // ─── static inference ───────────────────────────────────────────────────────

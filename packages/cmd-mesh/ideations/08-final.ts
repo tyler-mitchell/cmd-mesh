@@ -95,8 +95,9 @@
  *   "anything faked with merit must be real" ruling.
  * - `--json` ships (44): the 09 ideation's "human output only" thesis
  *   was never adopted — 08 is the contract, and machine output on the
- *   cli surface is what agents and scripts consume. docs/audit.md
- *   records both decisions.
+ *   cli surface is what agents and scripts consume. The engineering log
+ *   (docs/audit/audit.md at the repository root, untracked) records both
+ *   decisions.
  */
 
 // a subprogram is just a program — built independently, mounted by reference:

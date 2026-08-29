@@ -2,6 +2,7 @@ import { type } from "arktype"
 import { describe, expect, it } from "vitest"
 import { mesh } from "../examples/mesh.js"
 import { program } from "../src/index.js"
+import type { SuggestContext } from "../src/index.js"
 import { compileCommand } from "../src/compile.js"
 import { candidateValues, completionLines } from "../src/completion.js"
 import { collectTools } from "../src/mcp.js"
@@ -239,7 +240,93 @@ describe("per-parameter surface hiding (contract: 08-final grammar rules)", () =
   })
 })
 
+describe("scoped arktype vocabulary as parameter types", () => {
+  it("accepts a type.module member with full projection fidelity", async () => {
+    const { type } = await import("arktype")
+    const vocabulary = type.module({
+      Environment: "'staging' | 'production'",
+      Replicas: "1 <= number.integer <= 10"
+    })
+    const ship = program({
+      name: "ship",
+      version: "0.0.0",
+      commands: {
+        push: {
+          description: "push",
+          input: {
+            env: { type: vocabulary.Environment, cli: "--env" },
+            replicas: { type: vocabulary.Replicas, cli: "--replicas" }
+          },
+          output: { env: "string" },
+          run: (input: { readonly env?: string }) => ({ env: input.env ?? "none" })
+        }
+      }
+    })
+    await expect(ship.cli.complete(["push", "--env", ""])).resolves.toContain("staging")
+    const schema = JSON.stringify(ship.mcp.tools[0]!.inputSchema)
+    expect(schema).toMatch(/staging/)
+    const { code, err } = await captureCli(() => ship.cli.run(["push", "--replicas", "99"]))
+    expect(code).toBe(2)
+    expect(err).toMatch(/replicas/)
+  })
+})
+
+describe("concurrent completion requests", () => {
+  it("answers parallel completes independently", async () => {
+    const results = await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        i % 2 === 0 ? deploy.cli.complete([""]) : deploy.cli.complete(["push", "api", "--"]))
+    )
+    results.forEach((candidates, i) => {
+      if (i % 2 === 0) expect(candidates).toContain("push")
+      else expect(candidates).toContain("--force")
+    })
+  })
+})
+
+describe("static suggestions beside enumerable literals", () => {
+  it("offers both without duplicates", async () => {
+    const picker = program({
+      name: "picker",
+      version: "0.0.0",
+      commands: {
+        use: {
+          description: "use",
+          input: {
+            preset: { type: "'fast' | 'slow'", suggest: ["fast", "custom"], cli: "--preset" }
+          },
+          run: (input: { readonly preset?: string }) => input.preset ?? "none"
+        }
+      }
+    })
+    const candidates = await picker.cli.complete(["use", "--preset", ""])
+    expect(candidates).toEqual(expect.arrayContaining(["fast", "slow", "custom"]))
+    expect(new Set(candidates).size).toBe(candidates.length)
+  })
+})
+
 describe("suggestion generators", () => {
+  it("completes workspace package names through ctx.workspace", async () => {
+    // the canonical monorepo completion source — no shelling to a
+    // package manager and parsing its output. hoisted with an annotated
+    // parameter, as the generator contract documents.
+    const workspacePackages = (ctx: SuggestContext) => ctx.workspace.packageNames()
+    const repo = program({
+      name: "repo",
+      version: "0.0.0",
+      commands: {
+        focus: {
+          description: "focus a workspace package",
+          input: {
+            pkg: { type: "string", suggest: workspacePackages, cli: "<pkg>" }
+          },
+          run: (input: { readonly pkg: string }) => input.pkg
+        }
+      }
+    })
+    await expect(repo.cli.complete(["focus", ""])).resolves.toContain("cmd-mesh")
+  })
+
   it("degrades to static candidates when a generator throws", async () => {
     // the README promise: completion never errors
     const risky = program({

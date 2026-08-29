@@ -143,6 +143,34 @@ describe("nested default children", () => {
   })
 })
 
+describe("repository questions through ctx", () => {
+  it("answers manifest and dependency questions without a spawn", async () => {
+    const doctor = program({
+      name: "doctor",
+      version: "0.0.0",
+      commands: {
+        deps: {
+          description: "report a dependency's presence",
+          input: { name: { type: "string", cli: "<name>" } },
+          output: { name: "string", declared: "boolean", pkg: "string" },
+          run: (input: { readonly name: string }, ctx) => {
+            const self = ctx.project("<package_folder>")
+            return {
+              name: input.name,
+              declared: self.isDependencyInPackageJson(input.name),
+              pkg: self.packageName ?? ""
+            }
+          }
+        }
+      }
+    })
+    expect(await doctor.deps({ name: "arktype" }))
+      .toEqual({ name: "arktype", declared: true, pkg: "cmd-mesh" })
+    expect(await doctor.deps({ name: "definitely-not-a-dep-xyz" }))
+      .toMatchObject({ declared: false })
+  })
+})
+
 describe("the same composition on the other surfaces", () => {
   it("keeps the typed surface consistent with the cli", () => {
     expect(pkgctl.install({ pkgs: ["x"], filter: ["a"] })).toEqual({
