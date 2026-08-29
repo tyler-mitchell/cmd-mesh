@@ -14,5 +14,3 @@ dist/
 .pnpm-debug.log*
 
 docs/audit/
-
-packages/spine

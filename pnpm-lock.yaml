@@ -115,16 +115,6 @@ importers:
 
   packages/fig-plugin-types: {}
 
-  packages/spec:
-    dependencies:
-      arktype:
-        specifier: 'catalog:'
-        version: 2.2.3
-    devDependencies:
-      '@ark/attest':
-        specifier: 'catalog:'
-        version: 0.56.3(typescript@6.0.3)
-
 packages:
 
   '@andrewbranch/untar.js@1.0.4':
