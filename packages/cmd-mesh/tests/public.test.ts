@@ -132,6 +132,40 @@ describe("the cli projection", () => {
   })
 })
 
+describe("the repository toolkit re-exports", () => {
+  it("edits jsonc in memory, comments preserved", async () => {
+    const { modifyJSON } = await import("../src/index.js")
+    const { data, error } = modifyJSON({
+      json: { text: "{\n  // keep me\n  \"a\": 1\n}" },
+      edits: { "b.c": { value: 2 } }
+    })
+    expect(error).toBeUndefined()
+    expect(data!.text).toContain("// keep me")
+    expect(data!.data).toEqual({ a: 1, b: { c: 2 } })
+  })
+
+  it("resolves alias-grammar paths to this package", async () => {
+    const { getPath } = await import("../src/index.js")
+    const packageDir = getPath({ to: ["<package_folder>"] })
+    expect(packageDir.endsWith("packages/cmd-mesh")).toBe(true)
+  })
+
+  it("writes a file through missing directories", async () => {
+    const { createFile } = await import("../src/index.js")
+    const { mkdtempSync, readFileSync, rmSync } = await import("node:fs")
+    const { tmpdir } = await import("node:os")
+    const { join } = await import("node:path")
+    const root = mkdtempSync(join(tmpdir(), "cmd-mesh-create-file-"))
+    try {
+      const target = join(root, "deep", "nested", "note.txt")
+      createFile(target, "made whole")
+      expect(readFileSync(target, "utf8")).toBe("made whole")
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
+
 describe("the mcp projection", () => {
   it("derives mcp tools with full json schemas", () => {
     const names = mesh.mcp.tools.map((t) => t.name)

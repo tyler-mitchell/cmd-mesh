@@ -31,8 +31,13 @@ export const captureCli = async (run: () => Promise<number>): Promise<Capture> =
   }
 }
 
-/** the parsed JSON a `--json` invocation printed */
+/** the parsed JSON a `--json` invocation printed. an unparsable answer
+ * reports the whole capture — the exit code and stderr are the diagnosis */
 export const captureJson = async (run: () => Promise<number>): Promise<unknown> => {
-  const { out } = await captureCli(run)
-  return JSON.parse(out)
+  const { code, out, err } = await captureCli(run)
+  try {
+    return JSON.parse(out)
+  } catch {
+    throw new Error(`expected JSON on stdout (exit ${code})\nstdout: ${out}\nstderr: ${err}`)
+  }
 }

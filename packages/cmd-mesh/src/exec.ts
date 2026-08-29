@@ -1,7 +1,7 @@
 import { NodeServices } from "@effect/platform-node"
-import { Context, Effect, Fiber, Layer, Stream } from "effect"
+import { Array, Context, Effect, Fiber, Layer, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
-import { ExecFailure } from "./errors.js"
+import { ExecFailure, ExternalExit } from "./errors.js"
 import type { ExecOptions, ExecResult } from "./types.js"
 
 const collectText = (stream: Stream.Stream<Uint8Array, unknown>): Effect.Effect<string, unknown> =>
@@ -11,7 +11,11 @@ const collectText = (stream: Stream.Stream<Uint8Array, unknown>): Effect.Effect<
   )
 
 export class Exec extends Context.Service<Exec, {
-  exec(bin: string, args: ReadonlyArray<string>, options?: ExecOptions): Effect.Effect<ExecResult, ExecFailure>
+  exec(
+    bin: string,
+    args: ReadonlyArray<string>,
+    options?: ExecOptions
+  ): Effect.Effect<ExecResult, ExecFailure | ExternalExit>
 }>()("cmd-mesh/Exec") {
   static readonly layer = Layer.effect(
     Exec,
@@ -49,13 +53,28 @@ export class Exec extends Context.Service<Exec, {
           Effect.mapError((cause) => new ExecFailure({ bin, args, cause }))
         )
         // interruption closes the spawn scope, which kills the process
-        return yield* options?.timeoutMs === undefined ? base : base.pipe(
+        const result = yield* options?.timeoutMs === undefined ? base : base.pipe(
           Effect.timeout(options.timeoutMs),
           Effect.catchTag(
             "TimeoutError",
             () => new ExecFailure({ bin, args, cause: `timed out after ${options.timeoutMs}ms` })
           )
         )
+        // a declared success set makes any other exit a thrown failure —
+        // the same vocabulary externals use. undeclared, exit codes stay
+        // data on the result.
+        if (
+          options?.successCodes !== undefined
+          && !Array.contains(options.successCodes, result.exitCode)
+        ) {
+          return yield* new ExternalExit({
+            bin,
+            args,
+            exitCode: result.exitCode,
+            stderr: result.stderr
+          })
+        }
+        return result
       })
 
       return Exec.of({ exec })

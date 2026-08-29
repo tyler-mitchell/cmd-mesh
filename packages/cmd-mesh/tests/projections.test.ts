@@ -2,6 +2,7 @@ import { type } from "arktype"
 import { describe, expect, it } from "vitest"
 import { mesh } from "../examples/mesh.js"
 import { program } from "../src/index.js"
+import type { SuggestContext } from "../src/index.js"
 import { compileCommand } from "../src/compile.js"
 import { candidateValues, completionLines } from "../src/completion.js"
 import { collectTools } from "../src/mcp.js"
@@ -305,6 +306,27 @@ describe("static suggestions beside enumerable literals", () => {
 })
 
 describe("suggestion generators", () => {
+  it("completes workspace package names through ctx.workspace", async () => {
+    // the canonical monorepo completion source — no shelling to a
+    // package manager and parsing its output. hoisted with an annotated
+    // parameter, as the generator contract documents.
+    const workspacePackages = (ctx: SuggestContext) => ctx.workspace.packageNames()
+    const repo = program({
+      name: "repo",
+      version: "0.0.0",
+      commands: {
+        focus: {
+          description: "focus a workspace package",
+          input: {
+            pkg: { type: "string", suggest: workspacePackages, cli: "<pkg>" }
+          },
+          run: (input: { readonly pkg: string }) => input.pkg
+        }
+      }
+    })
+    await expect(repo.cli.complete(["focus", ""])).resolves.toContain("cmd-mesh")
+  })
+
   it("degrades to static candidates when a generator throws", async () => {
     // the README promise: completion never errors
     const risky = program({

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest"
-import { program } from "../src/index.js"
+import { program, project, workspace } from "../src/index.js"
 import type { Ctx } from "../src/index.js"
 import { captureCli, captureJson } from "./fixtures/capture.js"
 
@@ -151,7 +151,10 @@ describe("unit-testing a handler that execs", () => {
       exec: async (bin, args) => {
         calls.push([bin, ...args])
         return { stdout: "a.ts\nb.ts\n", stderr: "", exitCode: 0 }
-      }
+      },
+      // a fake mocks what the test controls; the rest passes through
+      project,
+      workspace
     }
     expect(await list({ dir: "src" }, fake)).toEqual({ files: ["a.ts", "b.ts"] })
     expect(calls).toEqual([["git", "ls-files", "src"]])

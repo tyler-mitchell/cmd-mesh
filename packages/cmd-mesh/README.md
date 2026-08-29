@@ -228,14 +228,68 @@ invalid declaration:
   tool broken: flag --same is claimed by flag and other
 ```
 
-## Process execution
+## The execution context
 
-`ctx.exec(bin, args, options?)` runs through the Effect process spawner:
-exit codes are reported, not thrown (branch on `result.exitCode` — `git
-grep`'s 1-means-no-match is the canonical case). Options: `cwd`, `env`,
-`timeoutMs` (interruption kills the process), and `stdio: "inherit"` to
-stream a long-running child straight to the terminal (result carries the
-exit code with empty output strings).
+Handlers and suggest generators receive `ctx` — interpreter-owned
+capability, not user dependency injection. Every member is mockable by
+handing a plain fake object (`Ctx` is structural) and mediated per
+invocation.
+
+**`ctx.exec(bin, args, options?)`** runs through the Effect process
+spawner. Two modes, both first-class:
+
+```ts
+// report mode (default): exit codes are data — branch on them.
+// `which`-probing and `git grep`'s 1-means-no-match live here.
+const probe = await ctx.exec("which", [candidate])
+if (probe.exitCode === 0) return probe.stdout.trim()
+
+// succeed-or-throw: declare the success set; any other exit throws
+// ExternalExit with the child's stderr. NEVER hand-roll this wrapper.
+await ctx.exec("pnpm", ["run", "build"], { cwd, stdio: "inherit", successCodes: [0] })
+```
+
+Options: `cwd`, `env`, `timeoutMs` (interruption kills the process),
+`stdio: "inherit"` to stream a long-running child to the terminal, and
+`successCodes` — the same vocabulary external commands use.
+
+**`ctx.project` and `ctx.workspace`** are
+[`package-management`](https://npmjs.com/package/package-management)'s
+own consumer surfaces, exposed whole — repository questions without
+spawning and parsing:
+
+```ts
+run: async (input, ctx) => {
+  const self = ctx.project("<package_folder>")   // manifest, mtime-cached
+  self.packageJson.version
+  self.isDependencyInPackageJson("arktype")
+  const pm = await self.findPackageManager()      // lockfile-detected
+  await pm.installPackage(["left-pad"])           // injection-guarded, batched
+}
+
+// the canonical monorepo completion source:
+const workspacePackages = (ctx: SuggestContext) => ctx.workspace.packageNames()
+//   … suggest: workspacePackages
+```
+
+## The repository toolkit
+
+The same library's path-anchored utilities are re-exported from
+`cmd-mesh` directly — import them wherever no invocation context is
+involved:
+
+```ts
+import { getPath, modifyJSONFile, project, workspace } from "cmd-mesh"
+
+getPath("<workspace_folder>/node_modules/.bin")   // absolute local-bin path
+modifyJSONFile("tsconfig.json", { "compilerOptions.strict": { value: true } })
+//   ^ comment-preserving JSONC edits, dot paths, sequential-edit safe
+```
+
+Also exported: `modifyJSON` (in-memory form), `createFile` (writes
+through missing directories), `definePackageManagerClient`,
+`importer`/`importMap`/`definePackage` (install-on-missing imports), and
+the `PackageJson`/`PackageInfo`/`PackageName` types.
 
 ## Shell completion
 

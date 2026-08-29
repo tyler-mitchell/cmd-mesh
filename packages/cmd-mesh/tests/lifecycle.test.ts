@@ -71,6 +71,22 @@ const shell = program({
         const result = await ctx.exec("pwd", [], { cwd: "/tmp" })
         return { cwd: result.stdout.trim() }
       }
+    },
+    strict: {
+      description: "a spawn whose nonzero exit IS a failure",
+      run: async (_input, ctx) => {
+        // the blessed succeed-or-throw form — field evidence shows every
+        // consumer hand-rolls this wrapper without it
+        await ctx.exec("sh", ["-c", "echo diagnostics >&2; exit 3"], { successCodes: [0] })
+        return { reached: true }
+      }
+    },
+    lenient: {
+      description: "a spawn whose exit 1 is a report (grep-style)",
+      run: async (_input, ctx) => {
+        const result = await ctx.exec("sh", ["-c", "exit 1"], { successCodes: [0, 1] })
+        return { exitCode: result.exitCode }
+      }
     }
   }
 })
@@ -118,6 +134,23 @@ describe("child process behavior", () => {
     expect(result.cwd).toMatch(/tmp/)
   })
 
+  it("throws the external-exit vocabulary for a declared success set", async () => {
+    // one vocabulary across the framework: `successCodes` means the same
+    // thing on ctx.exec that it means on an external command
+    await expect(shell.strict()).rejects.toThrow(/exited with 3/)
+    await expect(shell.strict()).rejects.toThrow(/diagnostics/)
+  })
+
+  it("keeps a declared success code a plain result", async () => {
+    expect(await shell.lenient()).toEqual({ exitCode: 1 })
+  })
+
+  it("stays report-only when no success set is declared", async () => {
+    // the default contract is unchanged: exit codes are data
+    const result = await shell.search() as { exitCode: number }
+    expect(result.exitCode).toBe(1)
+  })
+
   it("surfaces a missing binary as a handler failure", async () => {
     const broken = program({
       name: "broken",
@@ -159,12 +192,18 @@ describe("cancellation", () => {
     const runtime = ManagedRuntime.make(Exec.layer)
     const controller = new AbortController()
     const started = Date.now()
+    const { project, workspace } = await import("../src/index.js")
     const pending = runAbortable(
       runtime as never,
       invokeValues(
         compiled.children["wait"] as never,
         {},
-        { surface: "call", exec: (bin, args, o) => runtime.runPromise(Exec.use((s) => s.exec(bin, args, o))) }
+        {
+          surface: "call",
+          exec: (bin, args, o) => runtime.runPromise(Exec.use((s) => s.exec(bin, args, o))),
+          project,
+          workspace
+        }
       ),
       controller.signal
     )

@@ -28,6 +28,7 @@ import { invokeParsed, invokeValues } from "./invoke.js"
 import { collectTools, inputSchema, serveMcp } from "./mcp.js"
 import { Predicate } from "effect"
 import { renderHelp, renderResult, usageLine } from "./render.js"
+import { project, workspace } from "package-management"
 import { deepFrozen, specOf } from "./spec.js"
 import type {
   Ctx,
@@ -53,7 +54,10 @@ const callableModule = (
 
 const makeCtx = (runtime: MeshRuntime, surface: Surface): Ctx => ({
   surface,
-  exec: (bin, args, options) => runtime.runPromise(Exec.use((s) => s.exec(bin, args, options)))
+  exec: (bin, args, options) => runtime.runPromise(Exec.use((s) => s.exec(bin, args, options))),
+  // the library functions themselves — nothing constructed until called
+  project,
+  workspace
 })
 
 /** run an invocation preserving the handler's synchrony: a fiber that
@@ -149,7 +153,9 @@ const completeEffect = (
     const dynamic = yield* Option.match(generatorFor(compiled, words), {
       onNone: () => Effect.succeed([] as ReadonlyArray<string>),
       onSome: (generator) =>
-        Effect.tryPromise(async () => generator({ exec: makeCtx(runtime, "call").exec, words })).pipe(
+        Effect.tryPromise(async () =>
+          generator({ exec: makeCtx(runtime, "call").exec, words, project, workspace })
+        ).pipe(
           Effect.orElseSucceed(() => [] as ReadonlyArray<string>)
         )
     })
