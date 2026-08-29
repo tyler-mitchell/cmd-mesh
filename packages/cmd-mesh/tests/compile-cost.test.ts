@@ -32,9 +32,12 @@ const declare = (size: number) =>
     name: `bench${size}`,
     version: "0.0.0",
     description: "compile-cost subject",
+    // a factory-built declaration is not a literal, so its tuples widen
+    // and contract inference cannot apply. this measures RUNTIME compile
+    // cost, where the tuples are intact, so the cast loses nothing.
     commands: Object.fromEntries(
       Array.from({ length: size }, (_, n) => [`cmd${n}`, command(n)])
-    )
+    ) as never
   })
 
 describe("declaration compile cost", () => {
