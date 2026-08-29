@@ -56,8 +56,8 @@ Healthy: one JSON-RPC result naming the server.
 
 ## Evidence
 
-Capture stdout and exit codes into `docs/audit/verify-evidence/`
-(gitignored with the rest of docs/audit): one file per drive, named
+Capture stdout and exit codes into `docs/internal/verify-evidence/`
+(gitignored with the rest of docs/internal): one file per drive, named
 `<command>-<date>.txt`. A proof exercises the real user path — the
 built bin — never internal functions; the vitest suites are the deeper
 layer, not a substitute for a bin drive.

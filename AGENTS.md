@@ -14,7 +14,7 @@ Writing "awaiting your ruling" or requesting permission for work
 outside that reserved list is a named failure. Deference is churn;
 asking is idling.
 
-The work queue is `docs/audit/backlog.md`: the top unblocked item is
+The work queue is `docs/internal/backlog.md`: the top unblocked item is
 always the next work. When the queue is empty, derive the next
 functional item from the repository's state, append it, and begin it.
 Producing substantially the same completion or holding statement two
