@@ -56,6 +56,15 @@ describe("declaration validation", () => {
     }
   })
 
+  vit("rejects a misspelled command field in a program declaration", () => {
+    expect(() =>
+      program({
+        name: "tool",
+        commands: { go: { descrption: "go", run: () => "ok" } }
+      } as never)
+    ).toThrow(/CMSH1013.*descrption/s)
+  })
+
   vit("accepts a valid declaration unchanged", () => {
     expect(() =>
       compileCommand("tool", ["tool"], {

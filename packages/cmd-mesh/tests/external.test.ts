@@ -411,6 +411,26 @@ describe("external declaration validation", () => {
     ).toThrow(/CMSH1013.*cli\.complete/s)
   })
 
+  // the dangerous one: a typo here leaves the command ADVERTISED to
+  // agents, because the real mcp.hidden was never set. tsc catches this
+  // particular shape, so the cast is what makes the runtime guard the
+  // subject — a caller reaching external() from JavaScript gets no such
+  // help.
+  it("rejects a misspelled mcp field instead of exposing the command", () => {
+    expect(() =>
+      external({
+        name: "tool",
+        commands: { secret: { description: "internal", mcp: { hiden: true } } }
+      } as never)
+    ).toThrow(/CMSH1013.*mcp\.hiden/s)
+  })
+
+  it("rejects a misspelled command field", () => {
+    expect(() =>
+      external({ name: "tool", commands: { go: { description: "go", saftey: "read" } } })
+    ).toThrow(/CMSH1013.*saftey/s)
+  })
+
   it("rejects a misspelled descriptor field", () => {
     expect(() =>
       external({

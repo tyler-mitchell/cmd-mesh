@@ -220,32 +220,77 @@ const commandIssues = (
   return Array.appendAll(collisions, misplacedVariadic)
 }
 
-// a declaration is authored by hand and reaches the compiler through a
-// `const` generic, where the constraint is checked by assignability —
-// which ignores excess properties. an unknown field is therefore silent
-// to tsc, so the interpreter is the only place that can reject a typo.
+// tsc's excess-property check covers a declaration unevenly: it fires
+// on a field typed as one object (mcp.hiden errors) and misses one
+// typed as a union with a primitive, which is where a parameter lives
+// (ParameterDef = string | ParameterDescriptor, cli = string |
+// CliParameterConfig). Observed misses: a stray command field, a stray
+// descriptor field, and cli.complete — the last shipped in repo-ops and
+// silently dropped git add's completion. A JavaScript caller gets no
+// check at all. The interpreter rejects every case.
 const descriptorFields = ["type", "description", "suggest", "required", "cli", "mcp"]
 const cliFields = ["usage", "env", "hidden"]
 
 const strayFields = (value: unknown, known: ReadonlyArray<string>): ReadonlyArray<string> =>
-  Predicate.isObject(value)
+  Predicate.isObject(value) && !Predicate.isFunction(value)
     ? Array.filter(
       Record.keys(value as globalThis.Record<string, unknown>),
       (key) => !Array.contains(known, key)
     )
     : []
 
+const strayIssues = (
+  at: string,
+  found: ReadonlyArray<{ readonly key: string; readonly known: ReadonlyArray<string> }>
+): ReadonlyArray<DeclarationIssue> =>
+  Array.map(found, ({ key, known }) => ({
+    at,
+    problem: issueText(diagnostics.CMSH1013({ key, known: Array.join(known, ", ") }))
+  }))
+
+// one list across program commands, external commands, and the root:
+// a field legal on any of them passes everywhere, which costs a little
+// precision and saves threading four sets through two collectors. A
+// typo still lands, because a typo matches no form's vocabulary.
+const commandFields = [
+  "description",
+  "input",
+  "output",
+  "narrow",
+  "run",
+  "safety",
+  "commands",
+  "cli",
+  "mcp",
+  "successCodes",
+  "name",
+  "version",
+  "resources",
+  "bin"
+]
+const cliCommandFields = ["hidden", "alias", "default", "render", "examples"]
+const mcpFields = ["hidden", "name", "annotations", "examples"]
+
+/** a misspelled command field is as invisible to tsc as a misspelled
+ * parameter field, and `mcp: { hiden: true }` would advertise a command
+ * meant to stay off the agent surface */
+const commandFieldIssues = (at: string, decl: unknown): ReadonlyArray<DeclarationIssue> => {
+  const nested = decl as { readonly cli?: unknown; readonly mcp?: unknown }
+  return strayIssues(at, [
+    ...Array.map(strayFields(decl, commandFields), (key) => ({ key, known: commandFields })),
+    ...Array.map(strayFields(nested.cli, cliCommandFields), (key) => ({
+      key: `cli.${key}`,
+      known: cliCommandFields
+    })),
+    ...Array.map(strayFields(nested.mcp, mcpFields), (key) => ({ key: `mcp.${key}`, known: mcpFields }))
+  ])
+}
+
 const descriptorIssues = (at: string, rawDef: ParameterDef): ReadonlyArray<DeclarationIssue> =>
-  String.isString(rawDef) ? [] : pipe(
-    Array.appendAll(
-      Array.map(strayFields(rawDef, descriptorFields), (key) => ({ key, known: descriptorFields })),
-      Array.map(strayFields(rawDef.cli, cliFields), (key) => ({ key: `cli.${key}`, known: cliFields }))
-    ),
-    Array.map(({ key, known }) => ({
-      at,
-      problem: issueText(diagnostics.CMSH1013({ key, known: Array.join(known, ", ") }))
-    }))
-  )
+  String.isString(rawDef) ? [] : strayIssues(at, [
+    ...Array.map(strayFields(rawDef, descriptorFields), (key) => ({ key, known: descriptorFields })),
+    ...Array.map(strayFields(rawDef.cli, cliFields), (key) => ({ key: `cli.${key}`, known: cliFields }))
+  ])
 
 const compileParameter = (key: string, rawDef: ParameterDef): CompiledParameter => {
   const descriptor = normalizeDescriptor(rawDef)
@@ -602,6 +647,7 @@ const collectCommand = (
   }
   const issues = pipe(
     ownIssues,
+    Array.appendAll(commandFieldIssues(at, decl)),
     Array.appendAll(aliasIssues),
     Array.appendAll(defaultIssues),
     Array.appendAll(safetyIssues),
@@ -677,6 +723,7 @@ const collectExternalCommand = (
   const issues = pipe(
     collisionIssues,
     Array.appendAll(ownIssues),
+    Array.appendAll(commandFieldIssues(Array.join(path, " "), decl)),
     Array.appendAll(
       pipe(Record.toEntries(childPairs), Array.flatMap(([, [, childIssues]]) => childIssues))
     )
@@ -695,7 +742,11 @@ export const compileExternal = (decl: ExternalDecl): CompiledCommand => {
       [decl.name, childName],
       child
     ))
-  const issues = pipe(Record.toEntries(childPairs), Array.flatMap(([, [, childIssues]]) => childIssues))
+  const issues = pipe(
+    Record.toEntries(childPairs),
+    Array.flatMap(([, [, childIssues]]) => childIssues),
+    Array.appendAll(commandFieldIssues(decl.name, decl))
+  )
   if (issues.length > 0) {
     throw new InvalidDeclaration({ issues })
   }

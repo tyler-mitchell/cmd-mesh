@@ -106,16 +106,28 @@ token must resolve to exactly one child.
 
 ## CMSH1013
 
-A parameter carries a field the model does not have. A declaration
-reaches the compiler through a `const` generic, whose constraint is
-checked by assignability — and assignability ignores extra properties,
-so a misspelled field is invisible to `tsc`. The declaration is
-rejected here instead.
+A parameter or command carries a field the model does not have.
+TypeScript's own excess-property check covers a declaration unevenly: it
+reports a stray field typed as one object, and misses one typed as a
+union with a primitive — which is exactly where parameters live
+(`ParameterDef` is `string | ParameterDescriptor`, and `cli` is `string
+| CliParameterConfig`). A caller reaching these functions from
+JavaScript gets no check at all. The declaration is rejected here
+instead.
 
 ```ts
 paths: { type: "string", cli: { usage: "<...paths>", complete: "filepaths" } }  // ✗ no cli.complete
 paths: { type: "string", suggest: "filepaths", cli: "<...paths>" }              // ✓
 ```
 
+The same check covers command fields, where a typo is more dangerous:
+`mcp: { hiden: true }` leaves the command advertised to agents, because
+the real `mcp.hidden` was never set.
+
 Parameter fields are `type`, `description`, `suggest`, `required`,
-`cli`, `mcp`. The `cli` object's fields are `usage`, `env`, `hidden`.
+`cli`, `mcp`; the parameter `cli` object takes `usage`, `env`, `hidden`.
+Command fields are `description`, `input`, `output`, `narrow`, `run`,
+`safety`, `commands`, `cli`, `mcp`, `successCodes`, plus `name`,
+`version`, `resources` and `bin` at a declaration root; the command
+`cli` object takes `hidden`, `alias`, `default`, `render`, `examples`,
+and `mcp` takes `hidden`, `name`, `annotations`, `examples`.
