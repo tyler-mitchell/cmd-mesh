@@ -64,43 +64,6 @@ member, exit code, and argv convention — live in
 skill at `skill-data/core/SKILL.md`; agents discover usage from the
 installed tarball.
 
-## Importing a binary's surface
-
-A large binary does not need its surface written by hand. Describe what
-the binary accepts, curate it, and `importExternal` produces the
-declaration:
-
-```ts
-import { external, importExternal } from "cmd-mesh"
-
-const git = external(
-  importExternal({
-    bin: "git",
-    commands: [
-      {
-        name: "commit",
-        description: "Record changes to the repository",
-        argument: { name: "pathspec", optional: true, variadic: true, suggest: "filepaths" },
-        options: [
-          { names: ["-m", "--message"], argument: { name: "message" } },
-          { names: ["-a", "--all"] }
-        ]
-      }
-    ],
-    curation: {
-      commit: { safety: "action", flags: ["--message", "--all"] }
-    }
-  })
-)
-```
-
-`curation` supplies what an observed surface cannot state. `flags` names,
-per command, exactly the options to keep — a real binary carries
-100-plus. `safety` is required: a surface describes how to type a
-command, never what it does, and an agent client reads a command with no
-hints as destructive. A command absent from `curation` is not imported.
-[docs/reference.md](./docs/reference.md) lists the full mapping.
-
 ## Safety is a contract
 
 ```ts

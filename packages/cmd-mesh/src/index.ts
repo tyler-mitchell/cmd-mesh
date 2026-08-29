@@ -1,12 +1,4 @@
 export { external, program } from "./module.js"
-export { importExternal } from "./import-external.js"
-export type {
-  CommandCuration,
-  ExternalImport,
-  ImportedArgument,
-  ImportedCommand,
-  ImportedOption
-} from "./import-external.js"
 
 // the repository toolkit, re-exported whole from package-management —
 // the same day-to-day affordances handlers reach through ctx, importable

@@ -56,36 +56,6 @@ A parameter's `type` is any ArkType definition. Structured parameters
 take real objects on the value boundary and a JSON token on the CLI, and
 project full nested JSON Schemas to MCP.
 
-## Importing an external declaration
-
-`importExternal(source)` turns a binary's observed command surface into
-an `external()` declaration. The surface is what the binary accepts; the
-declaration is what a program promises about it.
-
-| field | meaning |
-| --- | --- |
-| `bin` | the binary — becomes the declaration's `name` |
-| `description` | optional, carried onto the declaration |
-| `commands` | the observed commands |
-| `curation` | per command, what an observed surface cannot state; a command absent from it is not imported |
-| `curation[name].flags` | exactly the option tokens to keep |
-| `curation[name].safety` | `read` · `action` · `destructive`; required, because a command with no hints reads as destructive |
-
-| imported field | becomes |
-| --- | --- |
-| `command.name` | the declaration's command key |
-| `command.argument` | the leading positional parameter |
-| `command.options[]` | flag parameters, in declaration order |
-| `option.names` | `--long, -s` usage; the first long token names the key |
-| `option.argument` | a `string` parameter; without one, `boolean` |
-| `argument.optional` / `argument.variadic` | `<x>` · `[x]` · `<...x>` · `[...x]` usage |
-| `argument.suggest` | the parameter's suggestion source, unchanged |
-
-An observed surface describes how to type a command, never what it does,
-so safety cannot be derived from it — curation declares it. A converter
-that reads another tool's spec file maps that file into these fields;
-the importer itself never sees a foreign grammar.
-
 ## MCP surface
 
 | item | meaning |
