@@ -95,6 +95,30 @@ const structuredSchema = (out: AnyType): { readonly schema: unknown; readonly wr
     : { schema: { type: "object", properties: { result: schema }, required: ["result"] }, wrapped: true }
 }
 
+/** examples reach agents twice: appended to the description (the text
+ * every client renders) and as the input schema's JSON-Schema
+ * `examples` annotation (canonical argument objects) */
+const describedWithExamples = (cmd: CompiledCommand): string =>
+  cmd.mcpExamples.length === 0
+    ? cmd.description
+    : Array.join(
+      [
+        cmd.description,
+        "",
+        "Examples:",
+        ...Array.map(cmd.mcpExamples, (example) =>
+          example.description === undefined
+            ? `- ${JSON.stringify(example.args)}`
+            : `- ${JSON.stringify(example.args)} — ${example.description}`)
+      ],
+      "\n"
+    )
+
+const withSchemaExamples = (schema: unknown, cmd: CompiledCommand): unknown =>
+  cmd.mcpExamples.length === 0 || !Predicate.isObject(schema)
+    ? schema
+    : { ...schema, examples: Array.map(cmd.mcpExamples, (example) => example.args) }
+
 const runnable = (cmd: CompiledCommand): boolean => Option.isSome(cmd.run) || Option.isSome(cmd.external)
 
 /** an external mount root ("run the bare binary") is argv-useful but is
@@ -122,8 +146,8 @@ export const collectTools = (root: CompiledCommand): ReadonlyArray<NamedTool> =>
       wrapOutput: Option.match(output, { onNone: () => true, onSome: (o) => o.wrapped }),
       tool: {
         name: toolName(root),
-        description: root.description,
-        inputSchema: withParameterDocs(jsonSchemaOf(root.schemaType), root),
+        description: describedWithExamples(root),
+        inputSchema: withSchemaExamples(withParameterDocs(jsonSchemaOf(root.schemaType), root), root),
         ...Option.match(output, {
           onNone: () => ({}),
           onSome: (o) => ({ outputSchema: o.schema })

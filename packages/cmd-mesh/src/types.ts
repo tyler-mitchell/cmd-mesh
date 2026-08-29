@@ -85,12 +85,22 @@ export interface CliCommandConfig<Out = never> {
  * verification may invoke */
 export type CommandSafety = "read" | "action" | "destructive"
 
+/** an example invocation shown to agents: canonical argument values
+ * plus what the call accomplishes */
+export interface McpExample {
+  readonly args: Readonly<globalThis.Record<string, unknown>>
+  readonly description?: string
+}
+
 export interface McpCommandConfig {
   readonly hidden?: boolean
   /** overrides the derived flattened tool name */
   readonly name?: string
   /** mcp tool annotations, e.g. { readOnlyHint: true, destructiveHint: true } */
   readonly annotations?: Readonly<globalThis.Record<string, unknown>>
+  /** example invocations, appended to the tool description and
+   * projected as the input schema's `examples` */
+  readonly examples?: ReadonlyArray<McpExample>
 }
 
 /** structural subset of ArkType's traversal context — consumers never import arktype */
@@ -381,6 +391,9 @@ export interface CommandSpec {
   /** safety classification — automated verification may invoke only
    * `read` commands; drives MCP hint annotations */
   readonly safety?: CommandSafety
+  /** example invocations declared for agents, schema-validated at
+   * compile time */
+  readonly mcpExamples?: ReadonlyArray<McpExample>
   /** external commands: exit codes that count as success — doc gen
    * explains a `git grep`-style exit 1 with this */
   readonly successCodes?: ReadonlyArray<number>

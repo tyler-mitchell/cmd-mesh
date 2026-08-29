@@ -89,6 +89,50 @@ describe("mcp tool identity", () => {
       })
     ).toThrow(/safety must be/)
   })
+
+  it("projects declared examples into the description, schema, and spec", () => {
+    const tool = program({
+      name: "ex",
+      commands: {
+        greet: {
+          input: { who: { type: "string", cli: "<who>" } },
+          mcp: {
+            examples: [
+              { args: { who: "world" }, description: "the canonical greeting" },
+              { args: { who: "agents" } }
+            ]
+          },
+          run: (input) => input.who
+        }
+      }
+    })
+    const greet = tool.mcp.tools.find((t) => t.name === "ex_greet")!
+    expect(greet.description).toContain("Examples:")
+    expect(greet.description).toContain("the canonical greeting")
+    expect((greet.inputSchema as { examples: ReadonlyArray<unknown> }).examples).toEqual([
+      { who: "world" },
+      { who: "agents" }
+    ])
+    expect(tool.spec.commands[0]!.mcpExamples).toEqual([
+      { args: { who: "world" }, description: "the canonical greeting" },
+      { args: { who: "agents" } }
+    ])
+  })
+
+  it("rejects an example that does not satisfy the input schema", () => {
+    expect(() =>
+      program({
+        name: "bad",
+        commands: {
+          greet: {
+            input: { who: { type: "string", cli: "<who>" } },
+            mcp: { examples: [{ args: { who: 7 } }] },
+            run: (input) => input.who
+          }
+        }
+      })
+    ).toThrow(/mcp\.examples\[0\]/)
+  })
 })
 
 describe("mcp input schemas", () => {

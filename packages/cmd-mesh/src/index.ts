@@ -50,6 +50,7 @@ export type {
   ExternalDecl,
   ExternalModule,
   McpCommandConfig,
+  McpExample,
   McpProjection,
   McpTool,
   Mounted,
