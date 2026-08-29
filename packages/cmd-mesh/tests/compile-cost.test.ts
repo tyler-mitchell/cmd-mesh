@@ -39,14 +39,19 @@ describe("declaration compile cost", () => {
     const compiled = declare(50)
     const elapsed = performance.now() - started
     expect(Object.keys(compiled.cli).length).toBeGreaterThan(0)
-    // Solo measurement: ~2.5ms per command (125ms at 50). The pin is an
-    // order-of-magnitude tripwire, not a precise budget — wall-clock
-    // under parallel suite workers runs several times slower than a
-    // cold CLI start, and only a regression that would genuinely
-    // reopen lazy loading (10x) should fail it. Measured contention on
-    // the full suite reaches ~1330ms, so a 1000ms pin failed on load
-    // alone; 2500 still trips a real 10x regression.
-    expect(elapsed).toBeLessThan(2500)
+    // This file runs alone through test:cost, so the budget can be real.
+    // Solo baseline is ~124ms at 50 commands, about 2.5ms per command,
+    // measured over repeated runs rather than one reading.
+    //
+    // The earlier pin was 2500ms because this ran inside the parallel
+    // suite, where contention reached ~1330ms. Running alone removes
+    // that noise. A single wall-clock reading is still unreliable: one
+    // taken on a loaded machine read 591ms for a change that repeated
+    // runs put at ~30%. Trust this number only in repetition.
+    //
+    // The pin catches a structural regression — the kind that would
+    // reopen lazy subcommand loading — not a small constant factor.
+    expect(elapsed).toBeLessThan(500)
     console.info(`program(): 5 commands ${time(5)}ms · 20 ${time(20)}ms · 50 ${elapsed.toFixed(1)}ms`)
   })
 })

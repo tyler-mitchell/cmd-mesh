@@ -29,11 +29,12 @@
   },
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
-    "check": "pnpm run typecheck && pnpm run test && pnpm run test:types && pnpm run check:pack",
+    "check": "pnpm run typecheck && pnpm run test && pnpm run test:cost && pnpm run test:types && pnpm run check:pack",
     "check:pack": "pnpm run build && publint && attw --pack . --profile esm-only",
     "prepack": "pnpm run build",
     "prepare": "pnpm run build",
     "test": "vitest run",
+    "test:cost": "vitest run --config vitest.cost.config.ts",
     "test:types": "tsx contract.attest.ts",
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
