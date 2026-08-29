@@ -12,6 +12,19 @@ import { renderHelp } from "../src/render.js"
 
 // the production-hardening layer: declaration validation, exec modes, help.
 
+describe("the errors reference", () => {
+  vit("documents every diagnostic code the compiler can emit", async () => {
+    const { readFile } = await import("node:fs/promises")
+    const { diagnostics } = await import("../src/diagnostics.js")
+    const { getPath } = await import("../src/index.js")
+    const page = await readFile(getPath("<package_folder>/docs/errors.md"), "utf8")
+    const codes = Object.keys(diagnostics).filter((key) => key.startsWith("CMSH"))
+    expect(codes.length).toBeGreaterThan(0)
+    const undocumented = codes.filter((code) => !page.includes(`## ${code}`))
+    expect(undocumented).toEqual([])
+  })
+})
+
 describe("declaration validation", () => {
   vit("aggregates every problem with command/parameter paths", () => {
     expect(() =>
