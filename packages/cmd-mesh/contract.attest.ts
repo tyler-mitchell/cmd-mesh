@@ -37,12 +37,12 @@ try {
         },
         run: (input) => {
           // a bare handler: every type below comes from the declaration alone
-          attest(input.service).type.toString.snap()
-          attest(input.env).type.toString.snap()
-          attest(input.replicas).type.toString.snap()
-          attest(input.force).type.toString.snap()
-          attest(input.message).type.toString.snap()
-          attest(input.profile).type.toString.snap()
+          attest(input.service).type.toString.snap("string")
+          attest(input.env).type.toString.snap("\"staging\" | \"production\"")
+          attest(input.replicas).type.toString.snap("number")
+          attest(input.force).type.toString.snap("boolean")
+          attest(input.message).type.toString.snap("string | undefined")
+          attest(input.profile).type.toString.snap("string | undefined")
           return { at: input.service, count: input.replicas }
         }
       },
@@ -55,8 +55,8 @@ try {
         },
         output: { count: "number" },
         run: (input) => {
-          attest(input.entries).type.toString.snap()
-          attest(input.tag).type.toString.snap()
+          attest(input.entries).type.toString.snap("string[]")
+          attest(input.tag).type.toString.snap("string[] | undefined")
           return { count: input.entries.length }
         }
       },
@@ -66,7 +66,7 @@ try {
           conf: [{ retries: "number.integer", label: "string" }, "@", { cli: "--conf" }]
         },
         run: (input) => {
-          attest(input.conf).type.toString.snap()
+          attest(input.conf).type.toString.snap("{ retries: number; label: string }")
           return input.conf.retries
         }
       },
@@ -76,23 +76,35 @@ try {
         input: {
           level: [type("'low' | 'high'").describe("verbosity"), "@", { cli: "--level" }]
         },
-        run: (input) => attest(input).type.toString.snap()
+        run: (input) => {
+          attest(input).type.toString.snap()
+          return "ok"
+        }
       }
     }
   })
 
   // the CALL surface is ArkType's input side: defaults and optional keys
   // may be omitted, and a morph accepts its own input domain
-  attest(deploy.push({ service: "api" })).type.toString.snap()
-  attest(deploy.push({ service: "api", replicas: "5", env: "production" })).type.toString.snap()
-  attest(deploy.bundle({ entries: ["a.ts"] })).type.toString.snap()
-  attest(deploy.configure({ conf: { retries: 2, label: "x" } })).type.toString.snap()
+  attest(deploy.push({ service: "api" })).type.toString.snap("{ at: string; count: number }")
+  attest(deploy.push({ service: "api", replicas: "5", env: "production" })).type.toString.snap("{ at: string; count: number }")
+  attest(deploy.bundle({ entries: ["a.ts"] })).type.toString.snap("{ count: number }")
+  attest(deploy.configure({ conf: { retries: 2, label: "x" } })).type.toString.snap("number")
 
   // a program-level option is callable on every command
-  attest(deploy.push({ service: "api", profile: "eu" })).type.toString.snap()
+  attest(deploy.push({ service: "api", profile: "eu" })).type.toString.snap("{ at: string; count: number }")
 
-  // the args surface exposes the compiled value boundary
-  attest(deploy.push.args.assert({})).type.toString.snap()
+  // the args surface exposes the compiled value boundary. type-only: a
+  // real assert({}) would throw, and this asserts the SHAPE it yields.
+  attest(null as never as ReturnType<typeof deploy.push.args.assert>).type.toString.snap(`{
+  service: string
+  env: "staging" | "production"
+  replicas: number
+  force: boolean
+  token: string
+  profile?: string
+  message?: string
+}`)
 
   // ─── an external: the same contract over a binary ───────────────────────
   const git = external({
@@ -112,9 +124,10 @@ try {
     }
   })
 
-  // an external always crosses a process boundary, so it is always async
-  attest(git.status({})).type.toString.snap()
-  attest(git.revParse({ rev: "HEAD", repo: "." })).type.toString.snap()
+  // an external always crosses a process boundary, so it is always async.
+  // type-only: executing these would spawn the binary.
+  attest(null as never as ReturnType<typeof git.status>).type.toString.snap("Promise<string>")
+  attest(null as never as ReturnType<typeof git.revParse>).type.toString.snap("Promise<string>")
 
   // ─── rejections: type-level only, never invoked ─────────────────────────
   const rejected = () => {
