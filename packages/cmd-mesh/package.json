@@ -12,7 +12,8 @@
     "CHANGELOG.md",
     "dist",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "skill-data"
   ],
   "type": "module",
   "sideEffects": false,
