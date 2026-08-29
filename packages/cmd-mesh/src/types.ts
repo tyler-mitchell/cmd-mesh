@@ -1,3 +1,4 @@
+import type { requiredKeyOf, unionToTuple } from "@ark/util"
 import type { distill, type } from "arktype"
 import type { project, workspace } from "package-management"
 
@@ -201,6 +202,10 @@ export interface Ctx {
 // omitted, morph inputs accepted), the output side what a handler
 // receives (defaults applied, morphs run).
 
+// ArkType's own `show` ends in `& unknown`, which TypeScript simplifies
+// away and leaves the mapped type deferred; `& {}` forces it to resolve,
+// which the handler's contextual type needs. `@ark/util`'s `merge` calls
+// that `show` internally, so this keeps a local pair.
 type Show<T> = { [K in keyof T]: T[K] } & {}
 
 /** later keys win, the type-level twin of the runtime spread that joins
@@ -350,9 +355,25 @@ type CommandResult<C, R> = [R] extends [Promise<unknown>] ? Promise<OutputOf<C, 
 
 /** the input argument is optional whenever every key is optional.
  * RIn: program-level options joining this command's call surface. */
-export type CommandFn<C, R, RIn = {}> = {} extends CallInput<Merge<RIn, InputOf<C>>>
-  ? (input?: CallInput<Merge<RIn, InputOf<C>>>) => CommandResult<C, R>
-  : (input: CallInput<Merge<RIn, InputOf<C>>>) => CommandResult<C, R>
+/** the lone required key, when exactly one exists and its value cannot
+ * be confused with the input record itself. a plain-object value would
+ * make the two call forms ambiguous, so it keeps only the record form;
+ * an array is unambiguous and keeps both. */
+type SoleRequired<T, K = unionToTuple<requiredKeyOf<T>>> = K extends readonly [infer Only]
+  ? Only extends keyof T
+    ? T[Only] extends ReadonlyArray<unknown> ? Only : T[Only] extends object ? never : Only
+  : never
+  : never
+
+/** shorthand: a command whose input is one required parameter takes
+ * that parameter's value directly — `git.commit("message")` */
+type BareFn<T, R, Rest extends ReadonlyArray<unknown> = []> = [SoleRequired<T>] extends [never]
+  ? unknown
+  : (value: T[SoleRequired<T>], ...rest: Rest) => R
+
+export type CommandFn<C, R, RIn = {}, I = CallInput<Merge<RIn, InputOf<C>>>> =
+  & ({} extends I ? (input?: I) => CommandResult<C, R> : (input: I) => CommandResult<C, R>)
+  & BareFn<I, CommandResult<C, R>>
 
 export type CommandModule<C, R, RIn = {}> =
   & CommandFn<C, R, RIn>
@@ -490,9 +511,15 @@ type ExternalIn<D> = D extends { readonly input: infer I } ? I : {}
 
 /** an external always crosses a process boundary — inherently async.
  * global (root-level) parameters join every command's call surface. */
-export type ExternalCommandFn<C, RIn> = {} extends CallInput<Merge<RIn, InputOf<C>>>
-  ? (input?: CallInput<Merge<RIn, InputOf<C>>>, options?: ExternalCallOptions) => Promise<OutputOf<C, Promise<string>>>
-  : (input: CallInput<Merge<RIn, InputOf<C>>>, options?: ExternalCallOptions) => Promise<OutputOf<C, Promise<string>>>
+export type ExternalCommandFn<
+  C,
+  RIn,
+  I = CallInput<Merge<RIn, InputOf<C>>>,
+  R = Promise<OutputOf<C, Promise<string>>>
+> =
+  & ({} extends I ? (input?: I, options?: ExternalCallOptions) => R
+    : (input: I, options?: ExternalCallOptions) => R)
+  & BareFn<I, R, [options?: ExternalCallOptions]>
 
 export type ExternalModule<D extends ExternalDecl> =
   & Mounted

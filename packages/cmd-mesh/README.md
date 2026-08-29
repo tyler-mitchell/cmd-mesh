@@ -52,6 +52,8 @@ projection:
 ```ts
 mesh.snapshot({ directory: "./public" })  // the program itself: a sync handler
                                           //   is a sync function — no promise
+mesh.snapshot("./public")                 // one required parameter takes its
+                                          //   value bare
 
 // bin.ts — the complete entry point; the word `mcp` serves agents,
 // everything else is the cli. one line, zero plumbing.

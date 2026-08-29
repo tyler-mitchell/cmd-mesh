@@ -81,6 +81,9 @@ importers:
 
   packages/cmd-mesh:
     dependencies:
+      '@ark/util':
+        specifier: 0.56.2
+        version: 0.56.2
       '@bomb.sh/tab':
         specifier: ^0.0.22
         version: 0.0.22

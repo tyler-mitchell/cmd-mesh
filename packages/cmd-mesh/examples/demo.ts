@@ -10,6 +10,8 @@ const show = (label: string, value: unknown) => {
 // 1. direct calls: defaults, morphs — sync handlers are sync functions
 show("snapshot direct (defaults)", mesh.snapshot({ directory: "./public" }))
 show("snapshot direct (explicit)", mesh.snapshot({ directory: ".", depth: "4", verbose: true }))
+// the lone required parameter, passed bare
+show("snapshot direct (shorthand)", mesh.snapshot("./public"))
 
 // 2. narrow rejection — sync, so it throws
 try {

@@ -131,6 +131,23 @@ const argsOf = (cmd: CompiledCommand) => ({
   toJsonSchema: () => inputSchema(cmd)
 })
 
+/** the shorthand call form: a command whose input is one required
+ * parameter takes that value bare. an array is a value; any other
+ * object is the input record itself, so the two forms never collide. */
+const soleRequired = (cmd: CompiledCommand): Option.Option<string> => {
+  const required = cmd.parameters.filter((p) => p.required)
+  const sole = required[0]
+  return required.length === 1 && sole !== undefined ? Option.some(sole.key) : Option.none()
+}
+
+const callInput = (cmd: CompiledCommand, input: unknown): unknown =>
+  input === undefined ? {}
+    : typeof input === "object" && input !== null && !globalThis.Array.isArray(input) ? input
+    : Option.match(soleRequired(cmd), {
+      onNone: () => input,
+      onSome: (key) => ({ [key]: input })
+    })
+
 const buildCommandModule = (
   cmd: CompiledCommand,
   runtime: MeshRuntime,
@@ -143,7 +160,7 @@ const buildCommandModule = (
       runAuto(
         runtime,
         withResources(cmd.path, specs, (resources) =>
-          invokeValues(cmd, input ?? {}, makeCtx(runtime, "call", resources), options))
+          invokeValues(cmd, callInput(cmd, input), makeCtx(runtime, "call", resources), options))
       ),
     {
       args: argsOf(cmd),

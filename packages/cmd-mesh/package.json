@@ -35,10 +35,11 @@
     "prepare": "pnpm run build",
     "test": "vitest run",
     "test:cost": "vitest run --config vitest.cost.config.ts",
-    "test:types": "tsx contract.attest.ts",
+    "test:types": "tsx contract.attest.ts && tsx typed-functions.attest.ts",
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@ark/util": "0.56.2",
     "@bomb.sh/tab": "^0.0.22",
     "@clack/prompts": "^1.7.0",
     "@effect/platform-node": "catalog:",
