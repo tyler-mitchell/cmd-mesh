@@ -32,7 +32,7 @@ const pkgctl = program({
         pkgs: [["string[]", "@", { cli: "[...pkgs]" }], "=", () => []],
         filter: [["string[]", "@", { cli: "--filter <filters...>, -F" }], "=", () => []],
         registry: [
-          ["string", "@", { cli: "--registry", env: "PKGCTL_REGISTRY" }],
+          ["string", "@", { cli: { usage: "--registry", env: "PKGCTL_REGISTRY" } }],
           "=",
           "https://registry.npmjs.org"
         ]

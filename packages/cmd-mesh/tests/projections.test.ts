@@ -411,7 +411,7 @@ describe("per-parameter surface hiding (contract: 08-final grammar rules)", () =
           push: {
             description: "push",
             mcp: { hidden: true },
-            input: { token: { type: "string", required: true, mcp: { hidden: true }, cli: "--token" } },
+            input: { token: ["string", "@", { mcp: { hidden: true }, cli: "--token" }] },
             output: { ok: "boolean" },
             run: () => ({ ok: true })
           }
@@ -436,8 +436,8 @@ describe("per-parameter surface hiding (contract: 08-final grammar rules)", () =
         commands: {
           go: {
             description: "go",
-            input: { dir: { type: "string", cli: { usage: "<dir>", hidden: true } } },
-            run: (input: { dir: string }) => input.dir
+            input: { dir: ["string", "@", { cli: { usage: "<dir>", hidden: true } }] },
+            run: (input) => input.dir
           }
         }
       })
@@ -459,11 +459,11 @@ describe("scoped arktype vocabulary as parameter types", () => {
         push: {
           description: "push",
           input: {
-            env: { type: vocabulary.Environment, cli: "--env" },
-            replicas: { type: vocabulary.Replicas, cli: "--replicas" }
+            "env?": [vocabulary.Environment, "@", { cli: "--env" }],
+            "replicas?": [vocabulary.Replicas, "@", { cli: "--replicas" }]
           },
           output: { env: "string" },
-          run: (input: { readonly env?: string }) => ({ env: input.env ?? "none" })
+          run: (input) => ({ env: input.env ?? "none" })
         }
       }
     })
@@ -498,9 +498,9 @@ describe("static suggestions beside enumerable literals", () => {
         use: {
           description: "use",
           input: {
-            preset: { type: "'fast' | 'slow'", suggest: ["fast", "custom"], cli: "--preset" }
+            "preset?": ["'fast' | 'slow'", "@", { suggest: ["fast", "custom"], cli: "--preset" }]
           },
-          run: (input: { readonly preset?: string }) => input.preset ?? "none"
+          run: (input) => input.preset ?? "none"
         }
       }
     })
@@ -523,9 +523,9 @@ describe("suggestion generators", () => {
         focus: {
           description: "focus a workspace package",
           input: {
-            pkg: { type: "string", suggest: workspacePackages, cli: "<pkg>" }
+            pkg: ["string", "@", { suggest: workspacePackages, cli: "<pkg>" }]
           },
-          run: (input: { readonly pkg: string }) => input.pkg
+          run: (input) => input.pkg
         }
       }
     })
@@ -541,19 +541,22 @@ describe("suggestion generators", () => {
         checkout: {
           description: "checkout",
           input: {
-            branch: {
-              type: "string",
-              suggest: Object.assign(
-                () => {
-                  throw new Error("git broke")
-                },
-                {}
-              ) as () => ReadonlyArray<string>,
-              cli: "<branch>"
-            },
-            fallback: { type: "string", suggest: ["main", "develop"], cli: "--from" }
+            branch: [
+              "string",
+              "@",
+              {
+                suggest: Object.assign(
+                  () => {
+                    throw new Error("git broke")
+                  },
+                  {}
+                ) as () => ReadonlyArray<string>,
+                cli: "<branch>"
+              }
+            ],
+            "fallback?": ["string", "@", { suggest: ["main", "develop"], cli: "--from" }]
           },
-          run: (input: { readonly branch: string }) => input.branch
+          run: (input) => input.branch
         }
       }
     })
@@ -730,7 +733,10 @@ describe("arktype meta descriptions", () => {
           "plain?": ["string", "@", { cli: "--plain" }]
         },
         output: { "port?": "number" },
-        run: (input) => (input.port === undefined ? {} : { port: input.port })
+        // annotated: a Type instance inside a "@" tuple does not carry its
+        // inference through — see docs/internal/backlog.md
+        run: (input: { readonly port?: number }) =>
+          input.port === undefined ? {} : { port: input.port }
       }
     }
   })

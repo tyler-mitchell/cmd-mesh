@@ -254,7 +254,7 @@ describe("repeatable flags (commander value-slot notation)", () => {
           input: {
             item: ["string", "@", { cli: "<item>" }],
             tag: [
-              ["string[]", "@", { cli: "--tag <tags...>", env: "MARK_TAG" }],
+              ["string[]", "@", { cli: { usage: "--tag <tags...>", env: "MARK_TAG" } }],
               "=",
               () => []
             ]
