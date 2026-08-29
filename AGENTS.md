@@ -177,7 +177,8 @@ an edit is one `reload` call away instead of a host restart:
     "repokit": {
       "command": "<repo>/node_modules/.bin/mcp-reloader",
       "args": ["--cwd", "<repo>/apps/repokit",
-               "--", "node", "--import", "tsx", "src/bin.ts", "mcp"]
+               "--", "node", "--import", "tsx",
+               "--conditions=development", "src/bin.ts", "mcp"]
     }
   }
 }
@@ -187,10 +188,15 @@ The backend's tools surface unchanged and one extra tool appears:
 `reload`. After editing any of repokit, repo-ops or cmd-mesh, call
 `reload`, then call the tools normally — the connection stays up.
 
-No `--build` is passed, because the launch line already runs source: one
-re-spawn picks up all three packages together. That also sidesteps the
-dist tripwire, where a source change stays invisible until every package
-downstream of it rebuilds.
+No `--build` is passed, because the launch line already runs source.
+
+`--conditions=development` is what makes that reach the OTHER packages.
+cmd-mesh and repo-ops each declare a `development` export condition
+pointing at `src`, so under that flag repokit imports their source
+rather than their `dist`. Without it only repokit's own edits land, and
+a cmd-mesh change stays invisible until every package downstream of it
+rebuilds — the dist tripwire. The condition is inert for published
+consumers, who never pass the flag.
 
 `--cwd` is repokit's own directory so `tsx` resolves from there, and the
 backend after `--` must be a direct executable — `mcp-reloader` cannot

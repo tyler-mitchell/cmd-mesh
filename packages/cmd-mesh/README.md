@@ -114,7 +114,16 @@ A cmd-mesh program is a stdio server: the bin plus the argument `mcp`.
 ```sh
 mesh mcp install           # the client this project already uses
 mesh mcp install codex     # or name one
+mesh mcp install --dev     # while developing the program itself
 ```
+
+`--dev` registers the server under
+[`mcp-reloader`](https://npmjs.com/package/mcp-reloader), which
+supervises it and adds a `reload` tool: after an edit, one call
+re-spawns the server and the client keeps its connection instead of
+restarting. Run it from the source entry and the flags that entry runs
+under — a loader, an export condition — travel into the written
+command, so the supervised process resolves its imports the same way.
 
 | client | file | key |
 | --- | --- | --- |

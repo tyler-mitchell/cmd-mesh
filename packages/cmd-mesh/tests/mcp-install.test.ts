@@ -1,6 +1,12 @@
 import { createFile, defineFileSystemStorage, getPath } from "package-management"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
-import { detectMcpClient, installMcpClient, mcpClientIds, mcpInvocation } from "../src/install.js"
+import {
+  detectMcpClient,
+  installMcpClient,
+  mcpClientIds,
+  mcpDevInvocation,
+  mcpInvocation
+} from "../src/install.js"
 
 // a fixed invocation keeps these cases about the FILES; what a client
 // must spawn is its own concern, covered separately below
@@ -27,7 +33,9 @@ const read = async (base: typeof projectFs, key: string): Promise<string> => {
 
 beforeAll(async () => {
   // seeding a file is what brings each base directory into existence
-  createFile(`${project}/.keep`, "")
+  // a real package, so <package_folder> resolves here rather than to
+  // whatever encloses the temp directory
+  createFile(`${project}/package.json`, `{"name":"probe","version":"0.0.0"}\n`)
   createFile(`${home}/.codex/.keep`, "")
   process.env["HOME"] = home
   process.chdir(project)
@@ -146,7 +154,35 @@ describe("what a client is told to spawn", () => {
   it("spawns the running script through its own interpreter when there is no installed bin", () => {
     const { command, args } = mcpInvocation("mytool")
     expect(command).toBe(process.execPath)
-    expect(args[0]).toBe(process.argv[1])
+    // the script sits after the interpreter's own flags, before `mcp`
+    expect(args[args.length - 2]).toBe(process.argv[1])
+  })
+})
+
+describe("the development wiring", () => {
+  it("carries the interpreter's own flags into a source invocation", () => {
+    // without the loader and conditions this process runs under, the
+    // client spawns a process that cannot resolve its own imports
+    const { args } = mcpInvocation("mytool")
+    for (const flag of process.execArgv) expect(args).toContain(flag)
+    expect(args[args.length - 1]).toBe("mcp")
+  })
+
+  it("refuses when mcp-reloader is not installed, rather than writing a config that cannot spawn", () => {
+    expect(() => mcpDevInvocation({ command: "/bin/node", args: ["/p/bin.ts", "mcp"] }))
+      .toThrow(/mcp-reloader is not installed/)
+  })
+
+  it("wraps the invocation under mcp-reloader, backend after `--`", () => {
+    createFile(`${project}/node_modules/.bin/mcp-reloader`, "")
+    const base = { command: "/bin/node", args: [`${project}/src/bin.ts`, "mcp"] } as const
+    const dev = mcpDevInvocation(base)
+    expect(dev.command.endsWith("mcp-reloader")).toBe(true)
+    expect(dev.args[0]).toBe("--cwd")
+    const separator = dev.args.indexOf("--")
+    expect(separator).toBeGreaterThan(0)
+    // the backend must survive verbatim: mcp-reloader spawns it directly
+    expect(dev.args.slice(separator + 1)).toEqual([base.command, ...base.args])
   })
 })
 

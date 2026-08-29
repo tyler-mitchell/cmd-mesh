@@ -25,7 +25,14 @@ import {
 } from "./completion.js"
 import { Exec } from "./exec.js"
 import { promptArgv } from "./interactive.js"
-import { detectMcpClient, installMcpClient, isMcpClientId, mcpClientIds, mcpInvocation } from "./install.js"
+import {
+  detectMcpClient,
+  installMcpClient,
+  isMcpClientId,
+  mcpClientIds,
+  mcpDevInvocation,
+  mcpInvocation
+} from "./install.js"
 import { externalArgv, invokeParsed, invokeValues, withResources } from "./invoke.js"
 import { buildMcpServer, collectTools, inputSchema, serveMcp } from "./mcp.js"
 import { Predicate } from "effect"
@@ -207,10 +214,13 @@ const installEffect = (
   rest: ReadonlyArray<string>
 ): Effect.Effect<number> =>
   Effect.gen(function*() {
-    const named = Array.head(rest)
-    if (rest.length > 1 || (Option.isSome(named) && !isMcpClientId(named.value))) {
+    // `--dev` supervises the server so an edit is one `reload` call
+    const dev = Array.contains(rest, "--dev")
+    const positional = Array.filter(rest, (token) => token !== "--dev")
+    const named = Array.head(positional)
+    if (positional.length > 1 || (Option.isSome(named) && !isMcpClientId(named.value))) {
       yield* Console.error(
-        `mcp install takes one of: ${Array.join(mcpClientIds, ", ")}`
+        `mcp install takes [--dev] and one of: ${Array.join(mcpClientIds, ", ")}`
       )
       return 2
     }
@@ -225,7 +235,10 @@ const installEffect = (
     }
     // the program's own name: what its package `bin` puts on PATH, and
     // the only value that resolves once the host runs it detached
-    return yield* Effect.try(() => installMcpClient(name, mcpInvocation(name), client.value)).pipe(
+    return yield* Effect.try(() => {
+      const base = mcpInvocation(name)
+      return installMcpClient(name, dev ? mcpDevInvocation(base) : base, client.value)
+    }).pipe(
       Effect.flatMap((file) => Console.log(`registered ${name} in ${file}`).pipe(Effect.as(0))),
       Effect.catch((error) => Console.error(`${error}`).pipe(Effect.as(1)))
     )

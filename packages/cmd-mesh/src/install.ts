@@ -11,8 +11,19 @@ import { createFile, getPath, modifyJSONFile } from "package-management"
 // a file edit that keeps what the file already holds: these are the
 // user's own editor settings.
 
+/** where a project-scoped client's config belongs. A client opens the
+ * repository, not the directory a command happened to run in, so a
+ * monorepo package must still write to the root. */
+const projectRoot = (): string => {
+  try {
+    return getPath({ to: "<workspace_folder>" })
+  } catch {
+    return getPath({ to: "<cwd>" })
+  }
+}
+
 interface McpClientSpec {
-  /** the config file this client reads */
+  /** the config file this client reads, under its scope's root */
   readonly file: string
   /** the path whose existence means this client is in use here */
   readonly detect: string
@@ -28,37 +39,37 @@ interface McpClientSpec {
 
 const clients = {
   claude: {
-    file: "<cwd>/.mcp.json",
-    detect: "<cwd>/.mcp.json",
+    file: "/.mcp.json",
+    detect: "/.mcp.json",
     key: "mcpServers",
     format: "json",
     global: false
   },
   cursor: {
-    file: "<cwd>/.cursor/mcp.json",
-    detect: "<cwd>/.cursor",
+    file: "/.cursor/mcp.json",
+    detect: "/.cursor",
     key: "mcpServers",
     format: "json",
     global: false
   },
   vscode: {
-    file: "<cwd>/.vscode/mcp.json",
-    detect: "<cwd>/.vscode",
+    file: "/.vscode/mcp.json",
+    detect: "/.vscode",
     key: "servers",
     format: "json",
     typed: true,
     global: false
   },
   windsurf: {
-    file: "<user_home>/.codeium/windsurf/mcp_config.json",
-    detect: "<user_home>/.codeium/windsurf",
+    file: "~/.codeium/windsurf/mcp_config.json",
+    detect: "~/.codeium/windsurf",
     key: "mcpServers",
     format: "json",
     global: true
   },
   codex: {
-    file: "<user_home>/.codex/config.toml",
-    detect: "<user_home>/.codex",
+    file: "~/.codex/config.toml",
+    detect: "~/.codex",
     key: "mcp_servers",
     format: "toml",
     global: true
@@ -74,6 +85,12 @@ export const isMcpClientId = (value: string): value is McpClientId =>
 
 const exists = (path: string): boolean =>
   getPath({ to: path, checkExistence: true }) !== undefined
+
+/** a client's path under the root its scope names */
+const pathOf = (spec: McpClientSpec, path: string): string =>
+  `${spec.global ? getPath({ to: "<user_home>" }) : projectRoot()}${
+    path.startsWith("~") ? path.slice(1) : path
+  }`
 
 /** what a client must actually spawn. A host started from its own
  * launcher inherits no shell PATH additions, so a workspace-local bin
@@ -95,6 +112,39 @@ const binIn = (alias: "<package_folder>/node_modules/.bin" | "<workspace_folder>
  * absolutely. An installed dependency has a `.bin` entry; a program
  * still being developed has only the script now running, which is
  * spawned through the same interpreter that is running it. */
+export interface McpInvocation {
+  readonly command: string
+  readonly args: ReadonlyArray<string>
+}
+
+/** the same invocation under `mcp-reloader`, which supervises it and
+ * adds a `reload` tool: after editing, one call re-spawns the server
+ * with the connection intact instead of restarting the host. No build
+ * command is passed — a bin run from source needs no build step, which
+ * is also what makes edits to every package upstream land at once. */
+export const mcpDevInvocation = (base: McpInvocation): McpInvocation => {
+  const reloader = Option.orElse(
+    binIn("<package_folder>/node_modules/.bin", "mcp-reloader"),
+    () => binIn("<workspace_folder>/node_modules/.bin", "mcp-reloader")
+  )
+  if (Option.isNone(reloader)) {
+    throw new Error("mcp-reloader is not installed — add it, then run this again")
+  }
+  // the backend runs from ITS OWN package, not from wherever install was
+  // invoked — a loader like tsx resolves relative to that package
+  const entry = base.args.length > 1 ? base.args[0]! : base.command
+  return {
+    command: reloader.value,
+    args: [
+      "--cwd",
+      getPath({ to: "<package_folder>", cwd: entry.slice(0, entry.lastIndexOf("/")) }),
+      "--",
+      base.command,
+      ...base.args
+    ]
+  }
+}
+
 export const mcpInvocation = (
   name: string
 ): { readonly command: string; readonly args: ReadonlyArray<string> } => {
@@ -104,15 +154,24 @@ export const mcpInvocation = (
   )
   if (Option.isSome(installed)) return { command: installed.value, args: ["mcp"] }
   const script = globalThis.process.argv[1]
+  // the interpreter's own flags travel with it: a source entry needs the
+  // loader and conditions it is running under, or the client spawns a
+  // process that cannot resolve its own imports
   return script === undefined
     ? { command: name, args: ["mcp"] }
-    : { command: globalThis.process.execPath, args: [script, "mcp"] }
+    : {
+      command: globalThis.process.execPath,
+      args: [...globalThis.process.execArgv, script, "mcp"]
+    }
 }
 
 /** the client whose config this working directory already carries.
  * project-local only — see `global` above */
 export const detectMcpClient = (): Option.Option<McpClientId> =>
-  Array.findFirst(mcpClientIds, (id) => !clients[id].global && exists(clients[id].detect))
+  Array.findFirst(
+    mcpClientIds,
+    (id) => !clients[id].global && exists(pathOf(clients[id], clients[id].detect))
+  )
 
 /** a toml table is appended as text rather than re-serialized, so every
  * comment and hand-written line in the user's config survives */
@@ -156,13 +215,13 @@ export const installMcpClient = (
   client: McpClientId
 ): string => {
   const spec: McpClientSpec = clients[client]
-  const file = getPath({ to: spec.file })
+  const file = pathOf(spec, spec.file)
   if (spec.format === "toml") {
-    const source = exists(spec.file) ? readFileSync(file, "utf-8") : ""
+    const source = exists(file) ? readFileSync(file, "utf-8") : ""
     createFile(file, withTomlTable(source, tomlTable(spec.key, name, invocation)))
     return file
   }
-  if (!exists(spec.file)) createFile(file, "{}\n")
+  if (!exists(file)) createFile(file, "{}\n")
   const entry = spec.typed === true
     ? { type: "stdio", ...invocation }
     : { ...invocation }
