@@ -154,9 +154,11 @@ declare const promptParameter: (
 // ── token emission (the argv grammar, verbatim from argv.ts rules) ──
 // boolean true      → "--flag"          (nothing when false)
 // boolean false     → "--no-flag"       (only when defaulted true)
-// flag value        → "--flag", value   (variadic: repeated pairs)
-//   value leading "-" → "--flag=value"  (one token; the parser's
-//   `--flag=value` form — a bare next-token would read as a flag)
+// flag value        → "--flag", value   (variadic: repeated pairs;
+//   REVISED at implementation: a declared flag consumes its next token
+//   unconditionally (argv.ts walk), so hyphen-leading values need no
+//   `=` form — the earlier rule was falsified by a consumer witness
+//   and removed. invoke.ts's external reconstruction is the precedent.)
 // positional        → value             (variadic: spread, in order)
 declare const emit: (
   p: CompiledParameter,

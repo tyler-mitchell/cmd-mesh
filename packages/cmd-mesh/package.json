@@ -36,6 +36,7 @@
   },
   "dependencies": {
     "@bomb.sh/tab": "^0.0.22",
+    "@clack/prompts": "^1.7.0",
     "@effect/platform-node": "catalog:",
     "@modelcontextprotocol/sdk": "catalog:",
     "arktype": "catalog:",

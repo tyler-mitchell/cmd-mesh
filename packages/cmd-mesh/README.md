@@ -291,6 +291,23 @@ through missing directories), `definePackageManagerClient`,
 `importer`/`importMap`/`definePackage` (install-on-missing imports), and
 the `PackageJson`/`PackageInfo`/`PackageName` types.
 
+## Guided invocation
+
+`cli.interactive(path?)` walks the same compiled model as prompts:
+select a command (descriptions as hints, `cli.default` preselected),
+answer one typed prompt per parameter — booleans confirm, enumerable
+literals select, suggestion sources autocomplete, everything else is
+text validated by the parameter's own token morph, so the prompt can
+never accept what the parser would reject — then preview the
+equivalent command line and dispatch it through the ordinary cli path
+(same rendering, same exit codes; cancelling exits 130). `path`
+pre-selects a starting command; without a terminal it exits 1.
+
+```ts
+await mesh.cli.interactive()          // full walk from the root
+await mesh.cli.interactive(["build"]) // start at a command
+```
+
 ## Shell completion
 
 Completion runs on [`@bomb.sh/tab`](https://github.com/bombshell-dev/tab)
