@@ -11,6 +11,7 @@
   "files": [
     "CHANGELOG.md",
     "dist",
+    "docs",
     "LICENSE",
     "README.md",
     "skill-data"
