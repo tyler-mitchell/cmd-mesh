@@ -49,7 +49,8 @@ export class Exec extends Context.Service<Exec, {
             ChildProcess.make(bin, args, {
               ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
               ...(env === undefined ? {} : { env, extendEnv: true }),
-              ...(inherit ? { stdin: "inherit", stdout: "inherit", stderr: "inherit" } : {})
+              ...(inherit ? { stdin: "inherit", stdout: "inherit", stderr: "inherit" } : {}),
+              ...(options?.stdin === undefined ? {} : { stdin: options.stdin })
             })
           )
           if (inherit) {

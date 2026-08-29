@@ -148,6 +148,10 @@ export interface ExecOptions {
    * "inherit" streams the child straight to the parent terminal — the
    * result then carries empty output strings and the exit code */
   readonly stdio?: "capture" | "inherit"
+  /** "ignore" gives the child no input at all, so a binary that reads
+   * stdin sees end-of-input immediately instead of waiting for a write
+   * that never comes. The default leaves the pipe open. */
+  readonly stdin?: "pipe" | "ignore"
   /** kill the process and fail if it runs longer than this */
   readonly timeoutMs?: number
   /** exit codes that count as success — any other exit throws

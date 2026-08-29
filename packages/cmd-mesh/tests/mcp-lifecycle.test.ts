@@ -1,6 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
-import { spawn } from "node:child_process"
+import { getPath } from "package-management"
 import { describe, expect, it } from "vitest"
 import { program } from "../src/index.js"
 
@@ -28,11 +28,26 @@ describe("the mcp server's lifecycle", () => {
   // bin: an in-memory pair closes both ends itself and would pass even
   // with the server waiting forever
   it("exits 0 when its client closes stdin", async () => {
-    const bin = new URL("../examples/bin.ts", import.meta.url).pathname
-    const child = spawn("node", ["--import", "tsx", bin, "mcp"], { stdio: ["pipe", "pipe", "pipe"] })
-    child.stdin.end()
-    const code = await new Promise<number | null>((resolve) => child.on("exit", resolve))
-    expect(code).toBe(0)
+    const bin = getPath({ to: "<package_folder>/examples/bin.ts" })
+    // the program's own process affordance, which reports the exit code
+    // rather than throwing on it
+    const runner = program({
+      name: "runner",
+      commands: {
+        boot: {
+          description: "start the bin with no input at all",
+          // stdin: "ignore" IS the client going away — the server sees
+          // end-of-input immediately
+          run: (_input, ctx) =>
+            ctx.exec("node", ["--import", "tsx", bin, "mcp"], {
+              stdin: "ignore",
+              timeoutMs: 25_000
+            })
+        }
+      }
+    })
+    const result = await runner.boot()
+    expect(result.exitCode).toBe(0)
   }, 30_000)
 
   it("serves its tools over a real client before closing", async () => {

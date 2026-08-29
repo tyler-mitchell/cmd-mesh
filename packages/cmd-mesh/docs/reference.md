@@ -118,7 +118,7 @@ declared union is a TypeScript error at the declaration site.
 
 | member | meaning |
 | --- | --- |
-| `ctx.exec(bin, args, options?)` | Effect process spawner behind a promise. Options: `cwd`, `env`, `timeoutMs`, `stdio: "inherit"`, `successCodes`, `preferLocal` (prepend the workspace `node_modules/.bin`; a no-op outside a repository) |
+| `ctx.exec(bin, args, options?)` | Effect process spawner behind a promise. Options: `cwd`, `env`, `timeoutMs`, `stdio: "inherit"`, `stdin: "ignore"` (the child sees end-of-input at once, instead of waiting on a pipe nothing writes to), `successCodes`, `preferLocal` (prepend the workspace `node_modules/.bin`; a no-op outside a repository) |
 | `ctx.project` / `ctx.workspace` | `package-management`'s consumer surfaces, whole |
 | `ctx.resources` | acquired program resources, typed from the declaration |
 | `ctx.surface` | `"call"` · `"cli"` · `"mcp"` |

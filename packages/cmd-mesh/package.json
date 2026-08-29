@@ -45,6 +45,7 @@
     "@effect/platform-node": "catalog:",
     "@modelcontextprotocol/sdk": "catalog:",
     "arktype": "catalog:",
+    "confbox": "^0.2.4",
     "effect": "catalog:",
     "nostics": "^1.2.0",
     "package-management": "^0.1.0"

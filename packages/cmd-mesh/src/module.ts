@@ -25,6 +25,7 @@ import {
 } from "./completion.js"
 import { Exec } from "./exec.js"
 import { promptArgv } from "./interactive.js"
+import { detectMcpClient, installMcpClient, isMcpClientId, mcpClientIds } from "./install.js"
 import { externalArgv, invokeParsed, invokeValues, withResources } from "./invoke.js"
 import { buildMcpServer, collectTools, inputSchema, serveMcp } from "./mcp.js"
 import { Predicate } from "effect"
@@ -197,6 +198,37 @@ const completeEffect = (
         )
     })
     return completionLines(compiled, words, dynamic)
+  })
+
+/** `mcp install [client]`: register this bin with an editor. The client
+ * is detected from the working directory unless one is named. */
+const installEffect = (
+  name: string,
+  rest: ReadonlyArray<string>
+): Effect.Effect<number> =>
+  Effect.gen(function*() {
+    const named = Array.head(rest)
+    if (rest.length > 1 || (Option.isSome(named) && !isMcpClientId(named.value))) {
+      yield* Console.error(
+        `mcp install takes one of: ${Array.join(mcpClientIds, ", ")}`
+      )
+      return 2
+    }
+    const client = Option.isSome(named) && isMcpClientId(named.value)
+      ? Option.some(named.value)
+      : detectMcpClient()
+    if (Option.isNone(client)) {
+      yield* Console.error(
+        `no editor config found here — name one of: ${Array.join(mcpClientIds, ", ")}`
+      )
+      return 2
+    }
+    // the program's own name: what its package `bin` puts on PATH, and
+    // the only value that resolves once the host runs it detached
+    return yield* Effect.try(() => installMcpClient(name, name, client.value)).pipe(
+      Effect.flatMap((file) => Console.log(`registered ${name} in ${file}`).pipe(Effect.as(0))),
+      Effect.catch((error) => Console.error(`${error}`).pipe(Effect.as(1)))
+    )
   })
 
 const serveEffect = (
@@ -403,11 +435,13 @@ export const program = <
         // serving forever on it would hide the mistake
         const run = Array.head(tokens).pipe(Option.contains("mcp"))
           ? tokens.length > 1
-            ? runtime.runPromise(
-              Console.error(
-                `mcp takes no further arguments (got: ${Array.join(Array.drop(tokens, 1), " ")})`
-              ).pipe(Effect.as(2))
-            )
+            ? tokens[1] === "install"
+              ? runtime.runPromise(installEffect(compiled.name, Array.drop(tokens, 2)))
+              : runtime.runPromise(
+                Console.error(
+                  `mcp takes no further arguments (got: ${Array.join(Array.drop(tokens, 1), " ")})`
+                ).pipe(Effect.as(2))
+              )
             : runtime.runPromise(
               serveEffect(runtime, compiled, version, specs).pipe(
                 Effect.as(0),

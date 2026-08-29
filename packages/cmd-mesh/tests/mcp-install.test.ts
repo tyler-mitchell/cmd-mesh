@@ -1,0 +1,129 @@
+import { createFile, defineFileSystemStorage, getPath } from "package-management"
+import { afterAll, beforeAll, describe, expect, it } from "vitest"
+import { detectMcpClient, installMcpClient, mcpClientIds } from "../src/install.js"
+
+// `mcp install` edits the user's own editor settings, so every case here
+// asserts that what was already in the file is still there afterwards.
+// A fake home keeps the globally-scoped clients off the real one.
+
+const root = getPath({ to: `<user_tmpdir>/cmd-mesh-install-${process.pid}` })
+const home = `${root}/home`
+const project = `${root}/project`
+
+const projectFs = defineFileSystemStorage({ base: project })
+const homeFs = defineFileSystemStorage({ base: home })
+
+const enteredFrom = process.cwd()
+const realHome = process.env["HOME"]
+
+const read = async (base: typeof projectFs, key: string): Promise<string> => {
+  const value = await base.storage.getItem(key)
+  return typeof value === "string" ? value : JSON.stringify(value)
+}
+
+beforeAll(async () => {
+  // seeding a file is what brings each base directory into existence
+  createFile(`${project}/.keep`, "")
+  createFile(`${home}/.codex/.keep`, "")
+  process.env["HOME"] = home
+  process.chdir(project)
+})
+
+afterAll(async () => {
+  process.chdir(enteredFrom)
+  if (realHome === undefined) delete process.env["HOME"]
+  else process.env["HOME"] = realHome
+  await projectFs.deleteFileSystem()
+  await homeFs.deleteFileSystem()
+})
+
+describe("registering with each client", () => {
+  it("writes claude's project file", async () => {
+    installMcpClient("mytool", "mytool", "claude")
+    expect(JSON.parse(await read(projectFs, ".mcp.json"))).toEqual({
+      mcpServers: { mytool: { command: "mytool", args: ["mcp"] } }
+    })
+  })
+
+  it("writes cursor's project file", async () => {
+    installMcpClient("mytool", "mytool", "cursor")
+    expect(JSON.parse(await read(projectFs, ".cursor/mcp.json"))).toEqual({
+      mcpServers: { mytool: { command: "mytool", args: ["mcp"] } }
+    })
+  })
+
+  it("names the transport for vscode, which asks for it", async () => {
+    installMcpClient("mytool", "mytool", "vscode")
+    expect(JSON.parse(await read(projectFs, ".vscode/mcp.json"))).toEqual({
+      servers: { mytool: { type: "stdio", command: "mytool", args: ["mcp"] } }
+    })
+  })
+
+  it("writes windsurf's home file", async () => {
+    const file = installMcpClient("mytool", "mytool", "windsurf")
+    expect(file.startsWith(home)).toBe(true)
+    expect(JSON.parse(await read(homeFs, ".codeium/windsurf/mcp_config.json"))).toMatchObject({
+      mcpServers: { mytool: { command: "mytool", args: ["mcp"] } }
+    })
+  })
+
+  it("covers every declared client", () => {
+    expect(mcpClientIds).toEqual(["claude", "cursor", "vscode", "windsurf", "codex"])
+  })
+})
+
+describe("keeping what the file already holds", () => {
+  it("leaves another server's json entry alone", async () => {
+    createFile(`${project}/.mcp.json`, `{"mcpServers":{"other":{"command":"other-bin"}}}`)
+    installMcpClient("mytool", "mytool", "claude")
+    expect(JSON.parse(await read(projectFs, ".mcp.json")).mcpServers).toEqual({
+      other: { command: "other-bin" },
+      mytool: { command: "mytool", args: ["mcp"] }
+    })
+  })
+
+  it("leaves a toml file's comments and entries intact", async () => {
+    createFile(
+      `${home}/.codex/config.toml`,
+      `# my own note\nmodel = "gpt-5"\n\n[mcp_servers.existing]\ncommand = "existing-bin"\n`
+    )
+    installMcpClient("mytool", "mytool", "codex")
+    const after = await read(homeFs, ".codex/config.toml")
+    expect(after).toContain("# my own note")
+    expect(after).toContain("[mcp_servers.existing]")
+    expect(after).toContain("[mcp_servers.mytool]")
+  })
+
+  it("does not register a toml entry twice", async () => {
+    installMcpClient("mytool", "mytool", "codex")
+    installMcpClient("mytool", "mytool", "codex")
+    const after = await read(homeFs, ".codex/config.toml")
+    expect(after.match(/\[mcp_servers\.mytool\]/g)).toHaveLength(1)
+  })
+})
+
+// a directory of its own: the cases above leave .cursor and .vscode behind,
+// and detection would rightly find them
+describe("detection", () => {
+  const bare = `${root}/bare`
+
+  beforeAll(() => {
+    createFile(`${bare}/.keep`, "")
+    process.chdir(bare)
+  })
+
+  afterAll(() => {
+    process.chdir(project)
+  })
+
+  it("never selects a client whose config lives in the user's home", () => {
+    // both global configs exist by now, so a home-reaching detection would
+    // silently edit settings outside this project
+    expect(detectMcpClient()._tag).toBe("None")
+  })
+
+  it("selects the project-local client that is present", () => {
+    createFile(`${bare}/.mcp.json`, "{}\n")
+    expect(detectMcpClient()).toMatchObject({ value: "claude" })
+  })
+})

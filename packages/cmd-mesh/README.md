@@ -109,14 +109,25 @@ mcp: {
 ## Installing the server in a client
 
 A cmd-mesh program is a stdio server: the bin plus the argument `mcp`.
-Clients differ only in the file and the key:
+`mcp install` registers it, keeping everything the config already holds:
 
-| client | file | entry |
+```sh
+mesh mcp install           # the client this project already uses
+mesh mcp install codex     # or name one
+```
+
+| client | file | key |
 | --- | --- | --- |
-| Claude Code | `.mcp.json` | `{ "mcpServers": { "mesh": { "command": "mesh", "args": ["mcp"] } } }` |
-| Cursor | `.cursor/mcp.json` | same as Claude Code |
-| VSCode | `.vscode/mcp.json` | `{ "servers": { "mesh": { "type": "stdio", "command": "mesh", "args": ["mcp"] } } }` |
-| Windsurf | `~/.codeium/windsurf/mcp_config.json` | same as Claude Code |
+| Claude Code | `.mcp.json` | `mcpServers` |
+| Cursor | `.cursor/mcp.json` | `mcpServers` |
+| VSCode | `.vscode/mcp.json` | `servers`, and the entry names `type: "stdio"` |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` | `mcpServers` |
+| Codex | `~/.codex/config.toml` | `mcp_servers` |
+
+Bare `mcp install` only ever picks a client whose config lives in this
+project. Windsurf and Codex keep theirs in your home directory, so they
+are named outright rather than detected — a project command should not
+edit settings outside the project on its own.
 
 Before wiring a client, run the server by hand — `mesh mcp` reads
 JSON-RPC on stdin, and closing stdin exits `0`. A client that starts
