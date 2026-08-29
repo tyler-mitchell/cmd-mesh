@@ -1,9 +1,16 @@
 {
   "name": "repo-ops",
   "version": "0.0.0",
-  "private": true,
   "description": "The closed-distribution repository operations (Bumpy release procedure, CI runs, dependabot PRs) as mountable cmd-mesh modules.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tyler-mitchell/cmd-mesh.git",
+    "directory": "packages/repo-ops"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "files": [
     "dist"
