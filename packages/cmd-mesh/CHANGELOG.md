@@ -2,6 +2,17 @@
 
 
 
+
+## 0.4.0
+<sub>2026-08-29</sub>
+
+- *(minor)*
+  Added successCodes to ctx.exec: a declared success set makes any other exit throw ExternalExit, the same vocabulary external commands use.
+- *(minor)*
+  Added ctx.project and ctx.workspace (package-management's repository resolution, manifest, dependency, and package-manager surfaces) to handlers and suggest generators, and re-exported the repository toolkit (getPath, modifyJSON/modifyJSONFile, createFile, importer, workspace, project) from the package index.
+- *(minor)*
+  Raised the Node floor to 22, matching the runtime the caller-location and dependency stack require; Node 20 reached end of life in April 2026.
+
 ## 0.3.0
 <sub>2026-08-28</sub>
 
