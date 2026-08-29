@@ -103,3 +103,19 @@ mcp: { examples: [{ args: { who: 7 } }] }    // ✗ who must be a string
 
 Two subcommands claim the same name, aliases included. A subcommand
 token must resolve to exactly one child.
+
+## CMSH1013
+
+A parameter carries a field the model does not have. A declaration
+reaches the compiler through a `const` generic, whose constraint is
+checked by assignability — and assignability ignores extra properties,
+so a misspelled field is invisible to `tsc`. The declaration is
+rejected here instead.
+
+```ts
+paths: { type: "string", cli: { usage: "<...paths>", complete: "filepaths" } }  // ✗ no cli.complete
+paths: { type: "string", suggest: "filepaths", cli: "<...paths>" }              // ✓
+```
+
+Parameter fields are `type`, `description`, `suggest`, `required`,
+`cli`, `mcp`. The `cli` object's fields are `usage`, `env`, `hidden`.

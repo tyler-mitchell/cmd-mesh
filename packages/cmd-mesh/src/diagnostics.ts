@@ -58,6 +58,11 @@ export const diagnostics = defineDiagnostics({
       why: (p: { token: string; owners: string }) =>
         `subcommand name ${p.token} is claimed by ${p.owners}`,
       fix: "Rename one of the subcommands or aliases."
+    },
+    CMSH1013: {
+      why: (p: { key: string; known: string }) =>
+        `unknown parameter field ${p.key} — known fields are ${p.known}`,
+      fix: "Correct the spelling, or move the value to the field that owns it."
     }
   }
 })

@@ -395,6 +395,30 @@ describe("external declaration validation", () => {
       expect(message).toMatch(/--same is claimed by a and b/)
     }
   })
+
+  // a `const` generic checks its constraint by assignability, which
+  // ignores excess properties — tsc cannot see a misspelled field, so
+  // the interpreter has to. this exact typo shipped in repo-ops and
+  // silently dropped git add's filepath completion.
+  it("rejects a misspelled parameter field the compiler cannot see", () => {
+    expect(() =>
+      external({
+        name: "tool",
+        commands: {
+          add: { input: { paths: { type: "string", cli: { usage: "<...paths>", complete: "filepaths" } } } }
+        }
+      })
+    ).toThrow(/CMSH1013.*cli\.complete/s)
+  })
+
+  it("rejects a misspelled descriptor field", () => {
+    expect(() =>
+      external({
+        name: "tool",
+        commands: { go: { input: { where: { type: "string", sugest: "folders", cli: "<where>" } } } }
+      })
+    ).toThrow(/CMSH1013.*sugest/s)
+  })
 })
 
 describe("externals mounted in a program", () => {

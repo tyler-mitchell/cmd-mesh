@@ -220,6 +220,33 @@ const commandIssues = (
   return Array.appendAll(collisions, misplacedVariadic)
 }
 
+// a declaration is authored by hand and reaches the compiler through a
+// `const` generic, where the constraint is checked by assignability —
+// which ignores excess properties. an unknown field is therefore silent
+// to tsc, so the interpreter is the only place that can reject a typo.
+const descriptorFields = ["type", "description", "suggest", "required", "cli", "mcp"]
+const cliFields = ["usage", "env", "hidden"]
+
+const strayFields = (value: unknown, known: ReadonlyArray<string>): ReadonlyArray<string> =>
+  Predicate.isObject(value)
+    ? Array.filter(
+      Record.keys(value as globalThis.Record<string, unknown>),
+      (key) => !Array.contains(known, key)
+    )
+    : []
+
+const descriptorIssues = (at: string, rawDef: ParameterDef): ReadonlyArray<DeclarationIssue> =>
+  String.isString(rawDef) ? [] : pipe(
+    Array.appendAll(
+      Array.map(strayFields(rawDef, descriptorFields), (key) => ({ key, known: descriptorFields })),
+      Array.map(strayFields(rawDef.cli, cliFields), (key) => ({ key: `cli.${key}`, known: cliFields }))
+    ),
+    Array.map(({ key, known }) => ({
+      at,
+      problem: issueText(diagnostics.CMSH1013({ key, known: Array.join(known, ", ") }))
+    }))
+  )
+
 const compileParameter = (key: string, rawDef: ParameterDef): CompiledParameter => {
   const descriptor = normalizeDescriptor(rawDef)
   const cli = normalizeCli(descriptor.cli)
@@ -429,6 +456,9 @@ const collectCommand = (
       result._tag === "failed"
         ? [{ at: `${at} · ${key}`, problem: issueText(diagnostics.CMSH1001({ error: result.problem })) }]
         : []),
+    Array.appendAll(
+      Array.flatMap(Record.toEntries(merged), ([key, def]) => descriptorIssues(`${at} · ${key}`, def))
+    ),
     Array.appendAll(Array.flatMap(parameters, (p) => parameterIssues(`${at} · ${p.key}`, p))),
     Array.appendAll(commandIssues(at, parameters)),
     Array.appendAll(
