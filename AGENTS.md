@@ -1,5 +1,26 @@
 # Agent Workflow
 
+## Autonomous operation
+
+When an autonomous mission is active (an advance gate, a goal, or an
+explicit self-drive instruction), the agent holds standing decision
+authority in this repository. Releases, publishes, deletions and
+demolitions, dependency changes, API and contract changes, new
+packages, and roadmap additions are the agent's own decisions under
+the mission. The agent waits ONLY on: spending money beyond
+established tooling, repositories or accounts the user explicitly
+marked hands-off, and destruction of data that exists nowhere else.
+Writing "awaiting your ruling" or requesting permission for work
+outside that reserved list is a named failure. Deference is churn;
+asking is idling.
+
+The work queue is `docs/audit/backlog.md`: the top unblocked item is
+always the next work. When the queue is empty, derive the next
+functional item from the repository's state, append it, and begin it.
+Producing substantially the same completion or holding statement two
+turns in a row is prohibited; a prior turn's own "this is blocked"
+classification is never evidence — re-derive from the repository.
+
 ## Shared branches
 
 - Daily branch: `main`
