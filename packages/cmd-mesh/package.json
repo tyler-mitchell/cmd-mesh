@@ -30,6 +30,7 @@
     "check": "pnpm run typecheck && pnpm run test && pnpm run test:types && pnpm run check:pack",
     "check:pack": "pnpm run build && publint && attw --pack . --profile esm-only",
     "prepack": "pnpm run build",
+    "prepare": "pnpm run build",
     "test": "vitest run",
     "test:types": "tsx contract.attest.ts",
     "typecheck": "tsc --project tsconfig.json --noEmit"

@@ -20,9 +20,16 @@ Commands: `check <filter>` runs a package script with live streamed output
 grep-style rows for humans, `structuredContent` for agents); `context`
 (cli-hidden, agents only) reports branch/commits/dirty state; `packages`
 lists the workspace's packages through `ctx.workspace` — no git plumbing,
-and the same surface drives the `--pkg` completion generator; `release`
-(mcp-hidden, humans only) bumps a manifest version with `--dry-run`
-planning and enum-completed `<bump>`.
+and the same surface drives `check`'s filter completion.
+
+repokit also IS the repository's closed-distribution command contract:
+the `ci`, `release` (with `promote`), and `deps` groups declare every
+operational script — the root `package.json` scripts delegate to this
+bin by name (`"release:status": "node apps/repokit/dist/bin.js release
+status"`), the `prepare` lifecycle guarantees the dists on every
+install (CI included), and `repokit mcp` hands agents the same
+operations as typed tools. Terminal-bound commands (`ci watch`,
+`ci logs`, `release add`) stream and stay off the MCP surface.
 
 Build a real bin with `pnpm --filter repokit build` → `dist/bin.js`
 (`repokit` via the package `bin` field). Claude registration:
