@@ -64,6 +64,35 @@ member, exit code, and argv convention — live in
 skill at `skill-data/core/SKILL.md`; agents discover usage from the
 installed tarball.
 
+## Importing an existing spec
+
+A large binary does not need its surface written by hand when a
+completion spec already describes it. `importExternal` converts one into
+a declaration, with the source grammar named as data:
+
+```ts
+import { external, importExternal } from "cmd-mesh"
+
+const git = external(
+  importExternal({
+    format: "fig",
+    bin: "git",
+    subcommands: figGitSpec,        // the withfig/autocomplete shape
+    curation: {
+      status: ["--short", "--branch"],
+      commit: ["--message", "--all"]
+    }
+  })
+)
+```
+
+`curation` names, per subcommand, exactly the flags to keep — it is
+mandatory, because an uncurated program carries 100-plus options per
+command. Fig declares no requiredness for option values and no output
+contracts, so curation supplies both. A `filepaths` or `folders`
+template becomes the parameter's suggestion source; runtime-only fields
+drop. [docs/reference.md](./docs/reference.md) lists the full mapping.
+
 ## Safety is a contract
 
 ```ts

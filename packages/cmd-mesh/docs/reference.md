@@ -48,13 +48,36 @@ this page lists.
 | `"[...name]"` / `"<...name>"` | variadic (zero ok / at least one) |
 | `"--flag, -f"` | flag with short alias |
 | `"--tag <tags...>"` | repeatable flag → array |
-| `cli: { usage, env, hidden, complete }` | object form: usage plus env fallback (argv > env > default), per-surface hiding, completion source |
+| `cli: { usage, env, hidden }` | object form: usage plus env fallback (argv > env > default) and per-surface hiding |
 | `suggest` | `"folders"` · `"filepaths"` · a const generator `(ctx: SuggestContext) => Promise<string[]>` |
 | no `cli` | derived `--flag`; union members tab-complete |
 
 A parameter's `type` is any ArkType definition. Structured parameters
 take real objects on the value boundary and a JSON token on the CLI, and
 project full nested JSON Schemas to MCP.
+
+## Importing an external declaration
+
+`importExternal(source)` converts a foreign command description into an
+`external()` declaration. The source grammar travels as data.
+
+| field | meaning |
+| --- | --- |
+| `format` | the source grammar; `"fig"` reads the `withfig/autocomplete` shape |
+| `bin` | the binary — becomes the declaration's `name` |
+| `subcommands` | the source's subcommand list |
+| `curation` | per subcommand, exactly the flag tokens to keep; mandatory |
+
+| Fig field | becomes |
+| --- | --- |
+| option `name` array | `--long, -s` usage |
+| option with `args` | a `string` parameter; without `args`, `boolean` |
+| `args.isOptional` / `args.isVariadic` | `<x>` · `[x]` · `<...x>` · `[...x]` positional usage |
+| `args.template` | `suggest: "filepaths"` or `"folders"`; other templates drop |
+| `generators`, `insertValue`, `icon`, `priority` | dropped — runtime-only |
+
+Fig carries no requiredness for option values and no output contracts.
+Curation supplies both.
 
 ## MCP surface
 

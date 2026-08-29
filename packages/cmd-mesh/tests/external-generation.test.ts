@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { external, figToExternal, program } from "../src/index.js"
+import { external, importExternal, program } from "../src/index.js"
 import type { FigSubcommand } from "../src/index.js"
 
 // the fixture is a verbatim structural subset of withfig/autocomplete
@@ -33,11 +33,13 @@ interface ParameterView {
   readonly key: string
   readonly usage: string
   readonly boolean: boolean
+  readonly suggestionSource?: string
 }
 
-describe("figToExternal", () => {
+describe("importExternal", () => {
   const generated = external(
-    figToExternal({
+    importExternal({
+      format: "fig",
       bin: "git",
       subcommands: figGitSubset,
       curation: {
@@ -63,6 +65,11 @@ describe("figToExternal", () => {
     expect(byKey["all"]!.usage).toBe("--all, -a")
     expect(byKey["all"]!.boolean).toBe(true)
     expect(byKey["pathspec"]!.usage).toBe("[...pathspec]")
+  })
+
+  it("carries a filepaths template through as the parameter's suggestion source", () => {
+    const pathspec = commandSpec("commit").parameters.find((p) => p.key === "pathspec")!
+    expect(pathspec.suggestionSource).toBe("filepaths")
   })
 
   it("curation excludes everything not allow-listed", () => {
