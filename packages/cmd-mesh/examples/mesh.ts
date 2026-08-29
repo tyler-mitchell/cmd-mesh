@@ -39,8 +39,7 @@ export const mesh = program({
             "@",
             {
               description: "traversal depth",
-              cli: "--depth, -d",
-              env: "MESH_DEPTH",
+              cli: { usage: "--depth, -d", env: "MESH_DEPTH" },
             },
           ],
           "=",

@@ -30,6 +30,38 @@ describe("the fluent default spelling", () => {
   })
 })
 
+// CMSH1013 moved with the model: the hazard was never "a stray descriptor
+// field", it was "a misspelled key that silently does nothing". Metadata is
+// where those keys live now. TypeScript catches these through ArkEnv; a
+// JavaScript caller has no check, which is why the runtime guard stays.
+describe("a misspelled metadata key is rejected", () => {
+  const bad = (input: unknown) => () => program({ name: "t", commands: { c: { input, run: () => 1 } } } as never)
+
+  it("rejects a stray metadata key", () => {
+    expect(bad({ x: ["string", "@", { clii: "--x" }] })).toThrow(/CMSH1013.*clii/s)
+  })
+
+  it("rejects a stray mcp key, which would leave a secret advertised", () => {
+    expect(bad({ x: ["string", "@", { mcp: { hiden: true } }] })).toThrow(/CMSH1013.*hiden/s)
+  })
+
+  it("rejects a stray cli key", () => {
+    expect(bad({ x: ["string", "@", { cli: { usage: "--x", hiden: true } }] })).toThrow(/CMSH1013.*hiden/s)
+  })
+
+  it("accepts every key the model does know", () => {
+    expect(bad({
+      x: ["string", "@", {
+        cli: { usage: "--x", env: "X", hidden: true },
+        mcp: { hidden: true },
+        suggest: "filepaths",
+        description: "d",
+        default: "v"
+      }]
+    })).not.toThrow()
+  })
+})
+
 describe("cli token path", () => {
   it("reports the compiled boundaries for snapshot", () => {
     const compiled = (mesh as any)[Symbol.for("cmd-mesh/mounted")]

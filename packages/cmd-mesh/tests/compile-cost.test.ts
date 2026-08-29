@@ -10,11 +10,15 @@ import { program } from "../src/index.js"
 const command = (n: number) => ({
   description: `command ${n}`,
   input: {
-    entry: { type: "string", cli: "<entry>" },
-    port: { type: "string.integer.parse = '3000'", cli: { usage: "--port, -p", env: `X_${n}_PORT` } },
-    level: { type: "'debug' | 'info' | 'warn' = 'info'" },
-    tags: { type: "string", cli: "--tag <tags...>" },
-    verbose: { type: "boolean", cli: "--verbose, -v" }
+    entry: ["string", "@", { cli: "<entry>" }],
+    port: [
+      "string.integer.parse",
+      "@",
+      { cli: { usage: "--port, -p", env: `X_${n}_PORT` }, default: "3000" }
+    ],
+    level: ["'debug' | 'info' | 'warn'", "@", { default: "info" }],
+    tags: ["string[]", "@", { cli: "--tag <tags...>", default: () => [] }],
+    verbose: ["boolean", "@", { cli: "--verbose, -v", default: false }]
   },
   output: { url: "string", tags: "string[]" },
   run: (input: { entry: string; port: number; tags: string[] }) => ({

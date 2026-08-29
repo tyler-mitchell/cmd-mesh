@@ -308,6 +308,42 @@ const commandFieldIssues = (at: string, decl: unknown): ReadonlyArray<Declaratio
   ])
 }
 
+// this package's metadata keys plus the ArkType-native ones it reads.
+// TypeScript rejects a stray key through `ArkEnv`, but a JavaScript
+// caller has no check, and a misspelled key silently does nothing — an
+// incorrect `mcp` would leave a secret advertised to agents.
+const metaFields = [
+  "cli",
+  "mcp",
+  "suggest",
+  "description",
+  "examples",
+  "default",
+  "deprecated",
+  "title",
+  "format",
+  "alias",
+  "onFail"
+]
+
+const metaIssues = (at: string, rawDef: ParameterDef): ReadonlyArray<DeclarationIssue> => {
+  const meta = metaOf(rawDef) as globalThis.Record<string, unknown>
+  return strayIssues(at, [
+    ...Array.map(strayFields(meta, metaFields), (key) => ({ key, known: metaFields })),
+    ...Array.map(strayFields(normalizeCli(metaOf(rawDef).cli), cliFields), (key) => ({
+      key: `cli.${key}`,
+      known: cliFields
+    })),
+    ...Array.map(strayFields(metaOf(rawDef).mcp, mcpParameterFields), (key) => ({
+      key: `mcp.${key}`,
+      known: mcpParameterFields
+    }))
+  ])
+}
+
+const cliFields = ["usage", "env", "hidden"]
+const mcpParameterFields = ["hidden"]
+
 const compileParameter = (rawKey: string, rawDef: ParameterDef): CompiledParameter => {
   const key = bareKey(rawKey)
   // probe the def at property position: defaults only exist there, and
@@ -448,11 +484,12 @@ const collectCommand = (
   )
   const parameters = pipe(
     Array.flatMap(attempts, ({ result }) => result._tag === "ok" ? [result.value] : []),
-    Array.map((p) =>
-      Option.isSome(Record.get(inherited, p.key)) && (decl.input?.[p.key]) === undefined
-        ? { ...p, global: true }
-        : p
-    )
+    Array.map((p) => {
+      // bare names: an ArkType key carries its own optionality
+      const inheritedHere = Array.contains(Array.map(Record.keys(inherited), bareKey), p.key)
+      const ownHere = Array.contains(Array.map(Record.keys(decl.input ?? {}), bareKey), p.key)
+      return inheritedHere && !ownHere ? { ...p, global: true } : p
+    })
   )
   const outputAttempt = decl.output === undefined
     ? undefined
@@ -462,6 +499,9 @@ const collectCommand = (
       result._tag === "failed"
         ? [{ at: `${at} · ${key}`, problem: issueText(diagnostics.CMSH1001({ error: result.problem })) }]
         : []),
+    Array.appendAll(
+      Array.flatMap(Record.toEntries(merged), ([key, def]) => metaIssues(`${at} · ${bareKey(key)}`, def))
+    ),
     Array.appendAll(Array.flatMap(parameters, (p) => parameterIssues(`${at} · ${p.key}`, p))),
     Array.appendAll(hiddenRequiredIssues(at, parameters, decl.mcp?.hidden === true)),
     Array.appendAll(commandIssues(at, parameters)),
@@ -647,9 +687,12 @@ const collectExternalCommand = (
   const { commands: _children, ...withoutChildren } = decl
   // a command redefining a binary-global key would make one token mean
   // two things in a single invocation — undiagnosable from the spawn
+  // an ArkType key carries its own optionality, so compare bare names:
+  // "repo?" and "repo" are the same parameter
+  const globalKeys = Array.map(Record.keys(globals), bareKey)
   const collisionIssues = pipe(
     Record.keys(decl.input ?? {}),
-    Array.filter((key) => Option.isSome(Record.get(globals, key))),
+    Array.filter((key) => Array.contains(globalKeys, bareKey(key))),
     Array.map((key) => ({
       at: Array.join(path, " "),
       problem: `parameter ${key} redefines a binary-global option`
@@ -663,7 +706,7 @@ const collectExternalCommand = (
     input: { ...globals, ...decl.input }
   })
   const marked = Array.map(base.parameters, (p) =>
-    Option.isSome(Record.get(globals, p.key)) ? { ...p, global: true } : p)
+    Array.contains(globalKeys, p.key) ? { ...p, global: true } : p)
   const childPairs = Record.map(decl.commands ?? {}, (child, childName): Collected =>
     collectExternalCommand(
       bin,
