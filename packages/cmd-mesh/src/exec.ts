@@ -1,10 +1,11 @@
-import { delimiter } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { Array, Context, Effect, Fiber, Layer, Stream } from "effect"
 import { getPath, getWorkspaceFolder } from "package-management"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import { ExecFailure, ExternalExit } from "./errors.js"
 import type { ExecOptions, ExecResult } from "./types.js"
+
+const pathDelimiter = globalThis.process.platform === "win32" ? ";" : ":"
 
 const collectText = (stream: Stream.Stream<Uint8Array, unknown>): Effect.Effect<string, unknown> =>
   stream.pipe(
@@ -41,7 +42,7 @@ export class Exec extends Context.Service<Exec, {
             PATH: [
               getPath({ to: "<workspace_folder>/node_modules/.bin", ...cwdOption }),
               options?.env?.PATH ?? globalThis.process.env.PATH ?? ""
-            ].join(delimiter)
+            ].join(pathDelimiter)
           }
         const base = Effect.gen(function*() {
           const handle = yield* spawner.spawn(

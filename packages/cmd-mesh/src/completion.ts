@@ -33,7 +33,10 @@ export const unitCandidates = (t: AnyType): ReadonlyArray<string> =>
  * time — the sync filesystem read is the tab-handler seam. the current
  * word's directory part steers the listing (`src/co<TAB>` lists src/),
  * and entries carry that prefix so the shell's own filter matches.
- * exported: the interactive projection offers the same listing. */
+ * exported: the interactive projection offers the same listing.
+ * the `node:fs` import is the package's one sanctioned platform
+ * exception: tab handlers are synchronous, and no owned affordance
+ * lists a directory synchronously. */
 export const sourceCandidates = (source: string, current: string): ReadonlyArray<string> =>
   Effect.runSync(
     Effect.try(() => {
