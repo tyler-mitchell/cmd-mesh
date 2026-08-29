@@ -17,7 +17,9 @@ Commands: `check <filter>` runs a package script with live streamed output
 (`stdio: "inherit"` + `timeoutMs`); `search` and `todos` run
 `git grep --untracked` anchored at the repository toplevel (structured `{file, line, text}` results — rendered as
 grep-style rows for humans, `structuredContent` for agents); `context`
-(cli-hidden, agents only) reports branch/commits/dirty state; `release`
+(cli-hidden, agents only) reports branch/commits/dirty state; `packages`
+lists the workspace's packages through `ctx.workspace` — no git plumbing,
+and the same surface drives the `--pkg` completion generator; `release`
 (mcp-hidden, humans only) bumps a manifest version with `--dry-run`
 planning and enum-completed `<bump>`.
 

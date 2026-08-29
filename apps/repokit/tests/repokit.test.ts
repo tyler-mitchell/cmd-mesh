@@ -32,6 +32,17 @@ describe("context", () => {
   })
 })
 
+describe("packages", () => {
+  it("lists this workspace's packages with relative dirs", async () => {
+    const packages = await repokit.packages()
+    const names = packages.map((pkg) => pkg.name)
+    expect(names).toContain("cmd-mesh")
+    expect(names).toContain("repokit")
+    const self = packages.find((pkg) => pkg.name === "repokit")
+    expect(self).toMatchObject({ dir: "apps/repokit", version: "0.1.0" })
+  })
+})
+
 describe("release", () => {
   it("plans a bump without writing on --dry-run", async () => {
     const dir = await mkdtemp(join(tmpdir(), "repokit-"))
@@ -73,5 +84,9 @@ describe("cli surface", () => {
   it("runs completion generators against the real repo", async () => {
     const candidates = await repokit.cli.complete(["release", "--pkg", "apps/"])
     expect(candidates).toContain("apps/repokit/package.json")
+  })
+
+  it("completes check's filter with workspace package names", async () => {
+    await expect(repokit.cli.complete(["check", "cmd"])).resolves.toContain("cmd-mesh")
   })
 })

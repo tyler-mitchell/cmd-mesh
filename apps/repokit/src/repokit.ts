@@ -2,6 +2,7 @@
 // CONSUMER writes them — plain async functions over the promise surface,
 // no Effect — because exercising the real consumer contract is the point.
 import { readFile, writeFile } from "node:fs/promises"
+import { relative } from "node:path"
 import { program } from "cmd-mesh"
 import type { Ctx, SuggestContext } from "cmd-mesh"
 
@@ -45,17 +46,11 @@ const bumpSegment = { major: 0, minor: 1, patch: 2 } as const
 // completion generators must be hoisted (or have annotated parameters):
 // an inline arrow is context-sensitive and would collapse the command's
 // type inference
-const packageManifests = async ({ exec }: SuggestContext): Promise<ReadonlyArray<string>> => {
-  const top = await exec("git", ["rev-parse", "--show-toplevel"])
-  const found = await exec("git", [
-    "ls-files",
-    "--cached",
-    "--others",
-    "--exclude-standard",
-    "*package.json",
-    "**/package.json"
-  ], { cwd: top.stdout.trim() })
-  return found.stdout.split("\n").filter((line) => line.length > 0)
+const packageManifests = ({ workspace }: SuggestContext): ReadonlyArray<string> => {
+  const root = workspace.workspaceRootDir() ?? process.cwd()
+  return workspace
+    .packageList({ includeRoot: true })
+    .map((pkg) => relative(root, pkg.path))
 }
 
 export const repokit = program({
@@ -117,10 +112,27 @@ export const repokit = program({
         }
       }
     },
+    packages: {
+      description: "workspace packages, structured",
+      output: [{ name: "string", "version?": "string", dir: "string" }, "[]"],
+      run: (_input, ctx) => {
+        const root = ctx.workspace.workspaceRootDir() ?? process.cwd()
+        return ctx.workspace.packageList().map((pkg) => ({
+          name: pkg.name,
+          version: pkg.packageJson.version,
+          dir: relative(root, pkg.dirpath)
+        }))
+      }
+    },
     check: {
       description: "run a package script with live output",
       input: {
-        filter: { type: "string", description: "pnpm --filter selector", cli: "<filter>" },
+        filter: {
+          type: "string",
+          description: "pnpm --filter selector",
+          suggest: (ctx: SuggestContext) => ctx.workspace.packageNames(),
+          cli: "<filter>"
+        },
         script: { type: "string = 'typecheck'", description: "script to run" },
         timeout: { type: "string.integer.parse = '600000'", description: "timeout in ms" }
       },
