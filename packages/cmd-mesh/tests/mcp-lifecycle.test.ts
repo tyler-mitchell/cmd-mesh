@@ -3,6 +3,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { getPath } from "package-management"
 import { describe, expect, it } from "vitest"
 import { program } from "../src/index.js"
+import { captureCli } from "./fixtures/capture.js"
 
 // A host starts an mcp server as a child process and closes its stdin
 // to stop it. `serve()` must RESOLVE there: a server that waited
@@ -21,6 +22,21 @@ const tool = program({
       run: (input) => ({ text: `hello ${input.name}` })
     }
   }
+})
+
+describe("advertising the mcp surface", () => {
+  it("names mcp in the composed bin's help", async () => {
+    const { out } = await captureCli(() => tool.main(["--help"]))
+    expect(out).toMatch(/^ {2}mcp {25}serve this program to agents over stdio$/m)
+    expect(out).toMatch(/^ {2}mcp install {17}register this program with an editor$/m)
+  })
+
+  it("stays silent about mcp in a cli-only bin's help", async () => {
+    // `cli.run()` serves no agents, so naming mcp there would be a lie
+    const { out } = await captureCli(() => tool.cli.run(["--help"]))
+    expect(out).toContain("complete <shell>")
+    expect(out).not.toMatch(/\bmcp\b/)
+  })
 })
 
 describe("the mcp server's lifecycle", () => {

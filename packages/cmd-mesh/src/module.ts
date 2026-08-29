@@ -253,13 +253,18 @@ const runCli = (
   version: string,
   specs: Resources,
   argv: ReadonlyArray<string>,
-  binName?: string
+  options?: { readonly binName?: string | undefined; readonly mcp?: boolean }
 ): Effect.Effect<number, never, Exec> =>
   Effect.gen(function*() {
+    const binName = options?.binName
+    const help = (command: CompiledCommand) =>
+      renderHelp(command, {
+        builtins: command === compiled,
+        mcp: options?.mcp === true
+      })
     const routed = yield* routeArgv(compiled, argv)
     return yield* Match.value(routed).pipe(
-      Match.tag("help", ({ command }) =>
-        Console.log(renderHelp(command, { builtins: command === compiled })).pipe(Effect.as(0))),
+      Match.tag("help", ({ command }) => Console.log(help(command)).pipe(Effect.as(0))),
       Match.tag("version", () => Console.log(version).pipe(Effect.as(0))),
       Match.tag("complete", ({ words }) =>
         Effect.gen(function*() {
@@ -280,7 +285,7 @@ const runCli = (
         }).pipe(Effect.as(0))),
       Match.tag("run", ({ command, record, json }) =>
         isGroup(command)
-          ? Console.log(renderHelp(command, { builtins: command === compiled })).pipe(Effect.as(0))
+          ? Console.log(help(command)).pipe(Effect.as(0))
           : Effect.gen(function*() {
             const parsed = yield* parseTokens(command, record)
             const result = yield* withResources(command.path, specs, (resources) =>
@@ -449,7 +454,11 @@ export const program = <
               )
             )
           : runtime.runPromise(
-            runCli(runtime, compiled, version, specs, tokens, argv === undefined ? invokedBinName() : undefined)
+            runCli(runtime, compiled, version, specs, tokens, {
+              // main() IS the composed bin, so its help names the mcp surface
+              mcp: true,
+              ...(argv === undefined ? { binName: invokedBinName() } : {})
+            })
           )
         return argv === undefined ? asBin(run) : run
       },
@@ -465,7 +474,7 @@ export const program = <
               version,
               specs,
               argv ?? Array.drop(globalThis.process.argv, 2),
-              argv === undefined ? invokedBinName() : undefined
+              argv === undefined ? { binName: invokedBinName() } : undefined
             )
           )
           return argv === undefined ? asBin(run) : run
