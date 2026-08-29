@@ -25,13 +25,15 @@
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
     "prepare": "pnpm run build",
+    "test": "vitest run",
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
     "cmd-mesh": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   },
   "engines": {
     "node": ">=22"

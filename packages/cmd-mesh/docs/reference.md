@@ -9,6 +9,7 @@ this page lists.
 | --- | --- |
 | `module(input)` / `module.sub(input)` | the program itself: typed invocation, handler-synchronous (the argument is optional when every key is optional). A command whose input is ONE required parameter also takes that value bare — `git.commit("message")`. A plain-object value keeps only the record form, because the two would be ambiguous |
 | `module.args` | compiled value-boundary ArkType surface (`assert`/`allows`/`toJsonSchema`) |
+| `module.cmd.argv(input)` | externals only: the argv this command would emit, without spawning. The same reconstruction the spawn runs, so a test asserts the real tokens a wrapped binary receives |
 | `module.main(argv?)` | the composed bin: head token `mcp` serves the MCP projection, anything else runs the CLI projection. Bare `main()` reads process argv and owns the exit code — a complete `bin.ts` is `await mytool.main()`. A program whose own vocabulary needs the word `mcp` uses `cli.run()` as its bin instead |
 | `module.cli.run(argv?)` | the CLI projection alone: parse, route, run, render, resolve exit code; routes `--help`, `--version`, and the `complete` protocol |
 | `module.cli.help(path?)` / `module.cli.complete(words)` | rendered help (usage, Arguments/Options with `[possible values: …]`, defaults, required markers, root Built-in row); completion candidates |

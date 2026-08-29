@@ -25,7 +25,7 @@ import {
 } from "./completion.js"
 import { Exec } from "./exec.js"
 import { promptArgv } from "./interactive.js"
-import { invokeParsed, invokeValues, withResources } from "./invoke.js"
+import { externalArgv, invokeParsed, invokeValues, withResources } from "./invoke.js"
 import { buildMcpServer, collectTools, inputSchema, serveMcp } from "./mcp.js"
 import { Predicate } from "effect"
 import { renderHelp, renderResult, usageLine } from "./render.js"
@@ -164,6 +164,10 @@ const buildCommandModule = (
       ),
     {
       args: argsOf(cmd),
+      // argv reconstruction is parse-only, so it stays synchronous
+      ...(cmd.kind === "external"
+        ? { argv: (input?: unknown) => Effect.runSync(externalArgv(cmd, callInput(cmd, input))) }
+        : {}),
       ...Record.map(cmd.children, (child) => buildCommandModule(child, runtime, specs))
     }
   )

@@ -1,4 +1,5 @@
 import { program } from "cmd-mesh"
+import { git } from "./git.js"
 import { captured, printText, text } from "./run.js"
 
 export const deps = program({
@@ -34,7 +35,12 @@ export const deps = program({
       safety: "action",
       output: text,
       cli: { render: printText },
-      run: (_input, ctx) => captured(ctx, "git", ["pull", "--ff-only", "origin", "main"])
+      run: async (_input, ctx) => ({
+        text: (await git.pull(
+          { ffOnly: true, remote: "origin", branch: "main" },
+          { cwd: ctx.workspace.workspaceRootDir() }
+        )).trimEnd()
+      })
     }
   }
 })

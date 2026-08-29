@@ -140,6 +140,26 @@ const runHandler = Effect.fn("cmd-mesh/runHandler")(function*(
   })
 })
 
+/** the argv this external command would emit for an input, without
+ * spawning — the same reconstruction `runExternal` executes, so a
+ * witness asserts the real tokens rather than a copy of the rules */
+export const externalArgv = (
+  cmd: CompiledCommand,
+  input: unknown
+): Effect.Effect<ReadonlyArray<string>, InvalidInput | InvalidOutput> =>
+  parseWith(
+    cmd.valueType,
+    input ?? {},
+    (summary) => new InvalidInput({ path: cmd.path, summary })
+  ).pipe(
+    Effect.map((parsed) =>
+      externalArgs(
+        Option.getOrThrow(cmd.external).argPath,
+        cmd.parameters,
+        parsed as Readonly<globalThis.Record<string, unknown>>
+      ))
+  )
+
 /** run an already-parsed input record through the command */
 export const invokeParsed = (
   cmd: CompiledCommand,

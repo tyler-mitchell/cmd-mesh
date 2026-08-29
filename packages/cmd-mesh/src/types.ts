@@ -521,6 +521,10 @@ export type ExternalCommandFn<
     : (input: I, options?: ExternalCallOptions) => R)
   & BareFn<I, R, [options?: ExternalCallOptions]>
 
+type ExternalArgvFn<I> =
+  & ({} extends I ? (input?: I) => ReadonlyArray<string> : (input: I) => ReadonlyArray<string>)
+  & BareFn<I, ReadonlyArray<string>>
+
 export type ExternalModule<D extends ExternalDecl> =
   & Mounted
   & {
@@ -530,6 +534,11 @@ export type ExternalModule<D extends ExternalDecl> =
 export type ExternalCommandModule<C extends ExternalCommandDecl, RIn = {}> =
   & ExternalCommandFn<C, RIn>
   & { readonly args: ArgsType<HandlerInput<Merge<RIn, InputOf<C>>>> }
+  /** the argv this command would emit, without spawning the binary —
+   * mirrors the call surface, shorthand included */
+  & {
+    readonly argv: ExternalArgvFn<CallInput<Merge<RIn, InputOf<C>>>>
+  }
   & (C extends { readonly commands: infer M extends globalThis.Record<string, ExternalCommandDecl> }
     ? { readonly [K in keyof M]: ExternalCommandModule<M[K], RIn> }
     : {})

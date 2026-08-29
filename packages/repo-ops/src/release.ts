@@ -1,5 +1,6 @@
 import { createFile, program } from "cmd-mesh"
 import type { Ctx } from "cmd-mesh"
+import { git } from "./git.js"
 import { captured, printText, streamed, text } from "./run.js"
 
 const scratchDir = async (ctx: Ctx, label: string): Promise<{ dir: string; drop: () => Promise<void> }> => {
@@ -86,7 +87,12 @@ export const createRelease = (packageName: string) =>
         safety: "action",
         output: text,
         cli: { render: printText },
-        run: (_input, ctx) => captured(ctx, "git", ["push", "origin", "main"])
+        run: async (_input, ctx) => ({
+          text: (await git.push(
+            { remote: "origin", branch: "main" },
+            { cwd: ctx.workspace.workspaceRootDir() }
+          )).trimEnd()
+        })
       },
       pr: {
         description: "show the open version PR",
@@ -206,14 +212,16 @@ export const createRelease = (packageName: string) =>
         },
         output: text,
         cli: { render: printText },
-        run: (input, ctx) =>
-          captured(
-            ctx,
-            "git",
-            input.merge
-              ? ["pull", "--no-rebase", "--no-edit", "origin", "release"]
-              : ["pull", "--ff-only", "origin", "release"]
-          )
+        run: async (input, ctx) => ({
+          text: (await git.pull(
+            {
+              ...(input.merge ? { noRebase: true, noEdit: true } : { ffOnly: true }),
+              remote: "origin",
+              branch: "release"
+            },
+            { cwd: ctx.workspace.workspaceRootDir() }
+          )).trimEnd()
+        })
       },
       promote
     }

@@ -66,7 +66,12 @@ export const git = external({
       description: "pull a ref",
       safety: "action",
       input: {
-        ffOnly: ["boolean", "@", { cli: "--ff-only", default: false }]
+        ffOnly: ["boolean", "@", { cli: "--ff-only", default: false }],
+        // the merge-pull pair, for histories that diverged
+        noRebase: ["boolean", "@", { cli: "--no-rebase", default: false }],
+        noEdit: ["boolean", "@", { cli: "--no-edit", default: false }],
+        "remote?": ["string", "@", { cli: "[remote]" }],
+        "branch?": ["string", "@", { cli: "[branch]" }]
       },
       output: "string"
     }

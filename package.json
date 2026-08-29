@@ -10,7 +10,7 @@
   },
   "scripts": {
     "build": "pnpm --recursive --if-present run build",
-    "check": "pnpm --filter cmd-mesh run check && pnpm --filter repo-ops run typecheck && pnpm --filter repokit run typecheck",
+    "check": "pnpm --filter cmd-mesh run check && pnpm --filter repo-ops run typecheck && pnpm --filter repo-ops run test && pnpm --filter repokit run typecheck",
     "dependencies:close": "node apps/repokit/dist/bin.js deps close",
     "dependencies:list": "node apps/repokit/dist/bin.js deps list",
     "dependencies:merge": "node apps/repokit/dist/bin.js deps merge",
