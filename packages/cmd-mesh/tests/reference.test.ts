@@ -112,7 +112,7 @@ describe("the README reference program", () => {
 
   it("keeps --token out of the mcp tool schema", () => {
     const serve = tool.mcp.tools.find((t) => t.name === "tool_serve")!
-    expect(serve.annotations).toEqual({ readOnlyHint: true })
+    expect(serve.annotations).toEqual({ readOnlyHint: true, destructiveHint: false })
     expect(JSON.stringify(serve.inputSchema)).not.toMatch(/token/)
   })
 

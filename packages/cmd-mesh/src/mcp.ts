@@ -181,10 +181,11 @@ export const collectTools = (root: CompiledCommand): ReadonlyArray<NamedTool> =>
             action: { readOnlyHint: false, destructiveHint: false },
             destructive: { readOnlyHint: false, destructiveHint: true }
           } as const
-          const hints = Option.match(root.safety, {
-            onNone: () => ({}),
-            onSome: (safety) => safetyHints[safety]
-          })
+          // Both hints, always. A client reads an ABSENT destructiveHint
+          // as true, so a command that never declared its safety would
+          // be treated as destructive — an undeclared command is only
+          // unclassified, which is what "action" says.
+          const hints = safetyHints[Option.getOrElse(root.safety, () => "action" as const)]
           const merged = { ...hints, ...Option.getOrElse(root.mcpAnnotations, () => ({})) }
           return Record.isEmptyRecord(merged) ? {} : { annotations: merged }
         })()

@@ -100,7 +100,7 @@ declared union is a TypeScript error at the declaration site.
 | tools | one per visible runnable command, name-collision-safe (`_2` suffixing) |
 | resource `cmd-mesh://spec` | the complete spec descriptor as JSON |
 | tool `<name>_spec` | the same descriptor for clients that only consume tools; a declared tool claiming the name wins |
-| annotations | `readOnlyHint` and `destructiveHint`, both always explicit, derived from `safety` unless overridden |
+| annotations | `readOnlyHint` and `destructiveHint`, both always explicit on every tool, derived from `safety` unless overridden. A command that declares no `safety` is treated as `action` — clients read an ABSENT `destructiveHint` as true, so an undeclared command would otherwise look destructive |
 | `structuredContent` | schema-conformant; non-object outputs wrapped under `result` |
 | undeclared arguments | dropped before the handler — an agent may send any key it invents, so a tool call carries only the parameters the command declares. The cli rejects an undeclared flag outright |
 

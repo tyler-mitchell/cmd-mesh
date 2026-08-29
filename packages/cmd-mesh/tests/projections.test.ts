@@ -77,7 +77,9 @@ describe("mcp tool identity", () => {
     expect(byName["t_look"]!.annotations).toEqual({ readOnlyHint: true, destructiveHint: false })
     expect(byName["t_wipe"]!.annotations).toEqual({ readOnlyHint: false, destructiveHint: true })
     expect(byName["t_tuned"]!.annotations).toEqual({ readOnlyHint: false, destructiveHint: false })
-    expect(byName["t_plain"]!.annotations).toBeUndefined()
+    // a command that never declared its safety is unclassified, not
+    // destructive — and a client reads an ABSENT destructiveHint as true
+    expect(byName["t_plain"]!.annotations).toEqual({ readOnlyHint: false, destructiveHint: false })
     expect(tool.spec.commands.find((c) => c.path.at(-1) === "wipe")!.safety).toBe("destructive")
   })
 

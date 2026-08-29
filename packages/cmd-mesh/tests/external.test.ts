@@ -266,7 +266,7 @@ describe("mounted modules through the parent cli", () => {
     })
     const mounted = program({ name: "host3", version: "0.0.0", commands: { backup } })
     const tool = mounted.mcp.tools.find((t) => t.name === "host3_backup_wipe")!
-    expect(tool.annotations).toEqual({ destructiveHint: true })
+    expect(tool.annotations).toEqual({ readOnlyHint: false, destructiveHint: true })
     expect(mounted.cli.help(["backup", "wipe"])).toMatch(/backup wipe --confirm/)
   })
 })
