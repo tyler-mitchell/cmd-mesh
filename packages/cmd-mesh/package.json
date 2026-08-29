@@ -14,7 +14,8 @@
     "docs",
     "LICENSE",
     "README.md",
-    "skill-data"
+    "skill-data",
+    "src"
   ],
   "type": "module",
   "sideEffects": false,

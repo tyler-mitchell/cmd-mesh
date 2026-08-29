@@ -159,6 +159,51 @@ describe("what a client is told to spawn", () => {
   })
 })
 
+// One declaration, each client's own spelling. A client that has no
+// equivalent for a setting receives nothing for it, rather than a key
+// it would silently ignore.
+describe("projecting the program's server config", () => {
+  const server = {
+    env: { API_TOKEN: "${TOKEN}" },
+    toolTimeoutMs: 30_000,
+    startupTimeoutMs: 45_000
+  } as const
+
+  it("gives claude its millisecond `timeout`", async () => {
+    installMcpClient("mytool", invocation, "claude", server)
+    const entry = JSON.parse(await read(projectFs, ".mcp.json")).mcpServers.mytool
+    expect(entry.env).toEqual({ API_TOKEN: "${TOKEN}" })
+    expect(entry.timeout).toBe(30_000)
+    // claude has no startup timeout, so it is not invented
+    expect(entry.startup_timeout_sec).toBeUndefined()
+    expect(entry.startupTimeoutMs).toBeUndefined()
+  })
+
+  it("converts to codex's seconds", async () => {
+    installMcpClient("mytool", invocation, "codex", server)
+    const after = await read(homeFs, ".codex/config.toml")
+    // whole lines: `= 30` is a substring of `= 30000`, so a contains
+    // check here passes even when the conversion is not happening
+    const lines = after.split("\n")
+    expect(lines).toContain("tool_timeout_sec = 30")
+    expect(lines).toContain("startup_timeout_sec = 45")
+    expect(lines).toContain(`env = { API_TOKEN = "\${TOKEN}" }`)
+  })
+
+  it("gives a client only what it supports", async () => {
+    installMcpClient("mytool", invocation, "cursor", server)
+    const entry = JSON.parse(await read(projectFs, ".cursor/mcp.json")).mcpServers.mytool
+    expect(entry.env).toEqual({ API_TOKEN: "${TOKEN}" })
+    expect(entry.timeout).toBeUndefined()
+  })
+
+  it("writes no settings at all when the program declares none", async () => {
+    installMcpClient("plain", invocation, "claude")
+    const entry = JSON.parse(await read(projectFs, ".mcp.json")).mcpServers.plain
+    expect(Object.keys(entry).sort()).toEqual(["args", "command"])
+  })
+})
+
 describe("the development wiring", () => {
   it("carries the interpreter's own flags into a source invocation", () => {
     // without the loader and conditions this process runs under, the

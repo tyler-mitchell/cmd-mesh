@@ -34,6 +34,7 @@ import {
   mcpInvocation
 } from "./install.js"
 import { externalArgv, invokeParsed, invokeValues, withResources } from "./invoke.js"
+import type { McpServerConfig } from "./types.js"
 import { buildMcpServer, collectTools, inputSchema, serveMcp } from "./mcp.js"
 import { Predicate } from "effect"
 import { renderHelp, renderResult, usageLine } from "./render.js"
@@ -211,7 +212,8 @@ const completeEffect = (
  * is detected from the working directory unless one is named. */
 const installEffect = (
   name: string,
-  rest: ReadonlyArray<string>
+  rest: ReadonlyArray<string>,
+  server?: McpServerConfig
 ): Effect.Effect<number> =>
   Effect.gen(function*() {
     // `--dev` supervises the server so an edit is one `reload` call
@@ -237,7 +239,7 @@ const installEffect = (
     // the only value that resolves once the host runs it detached
     return yield* Effect.try(() => {
       const base = mcpInvocation(name)
-      return installMcpClient(name, dev ? mcpDevInvocation(base) : base, client.value)
+      return installMcpClient(name, dev ? mcpDevInvocation(base) : base, client.value, server)
     }).pipe(
       Effect.flatMap((file) => Console.log(`registered ${name} in ${file}`).pipe(Effect.as(0))),
       Effect.catch((error) => Console.error(`${error}`).pipe(Effect.as(1)))
@@ -454,7 +456,9 @@ export const program = <
         const run = Array.head(tokens).pipe(Option.contains("mcp"))
           ? tokens.length > 1
             ? tokens[1] === "install"
-              ? runtime.runPromise(installEffect(compiled.name, Array.drop(tokens, 2)))
+              ? runtime.runPromise(
+                installEffect(compiled.name, Array.drop(tokens, 2), def.mcp?.server)
+              )
               : runtime.runPromise(
                 Console.error(
                   `mcp takes no further arguments (got: ${Array.join(Array.drop(tokens, 1), " ")})`

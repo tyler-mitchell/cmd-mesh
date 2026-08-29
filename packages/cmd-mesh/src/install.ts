@@ -1,4 +1,5 @@
-import { Array, Option } from "effect"
+import { Array, Option, Predicate } from "effect"
+import type { McpServerConfig } from "./types.js"
 // package-management owns file and config concerns, and now carries
 // `readFile` and a `modifyConfigFile` that covers toml — neither is in
 // the released 0.1.0 yet, so this reads directly until that ships.
@@ -21,6 +22,29 @@ const projectRoot = (): string => {
     return getPath({ to: "<cwd>" })
   }
 }
+
+/** each client's own spelling of the shared server settings. A client
+ * that has no equivalent for one receives nothing for it, rather than a
+ * key it would ignore. */
+const clientSettings = {
+  claude: (s: McpServerConfig) => ({
+    ...(s.env === undefined ? {} : { env: s.env }),
+    ...(s.toolTimeoutMs === undefined ? {} : { timeout: s.toolTimeoutMs })
+  }),
+  cursor: (s: McpServerConfig) => (s.env === undefined ? {} : { env: s.env }),
+  vscode: (s: McpServerConfig) => (s.env === undefined ? {} : { env: s.env }),
+  windsurf: (s: McpServerConfig) => (s.env === undefined ? {} : { env: s.env }),
+  // codex counts in seconds, so the declaration's milliseconds convert
+  codex: (s: McpServerConfig) => ({
+    ...(s.env === undefined ? {} : { env: s.env }),
+    ...(s.toolTimeoutMs === undefined
+      ? {}
+      : { tool_timeout_sec: Math.ceil(s.toolTimeoutMs / 1000) }),
+    ...(s.startupTimeoutMs === undefined
+      ? {}
+      : { startup_timeout_sec: Math.ceil(s.startupTimeoutMs / 1000) })
+  })
+} as const satisfies Readonly<Record<string, (s: McpServerConfig) => object>>
 
 interface McpClientSpec {
   /** the config file this client reads, under its scope's root */
@@ -178,11 +202,20 @@ export const detectMcpClient = (): Option.Option<McpClientId> =>
 const tomlTable = (
   key: string,
   name: string,
-  invocation: { readonly command: string; readonly args: ReadonlyArray<string> }
+  invocation: { readonly command: string; readonly args: ReadonlyArray<string> },
+  settings: Readonly<globalThis.Record<string, unknown>> = {}
 ): ReadonlyArray<string> => [
   `[${key}.${name}]`,
   `command = ${JSON.stringify(invocation.command)}`,
-  `args = ${JSON.stringify(invocation.args)}`
+  `args = ${JSON.stringify(invocation.args)}`,
+  // an inline table keeps the whole entry to one replaceable block
+  ...Object.entries(settings).map(([k, v]) =>
+    `${k} = ${
+      Predicate.isObject(v)
+        ? `{ ${Object.entries(v).map(([ek, ev]) => `${ek} = ${JSON.stringify(ev)}`).join(", ")} }`
+        : JSON.stringify(v)
+    }`
+  )
 ]
 
 /** Written line-wise so every other line of the file survives: a toml
@@ -212,19 +245,21 @@ const withTomlTable = (source: string, table: ReadonlyArray<string>): string => 
 export const installMcpClient = (
   name: string,
   invocation: { readonly command: string; readonly args: ReadonlyArray<string> },
-  client: McpClientId
+  client: McpClientId,
+  server?: McpServerConfig
 ): string => {
   const spec: McpClientSpec = clients[client]
   const file = pathOf(spec, spec.file)
+  const settings = server === undefined ? {} : clientSettings[client](server)
   if (spec.format === "toml") {
     const source = exists(file) ? readFileSync(file, "utf-8") : ""
-    createFile(file, withTomlTable(source, tomlTable(spec.key, name, invocation)))
+    createFile(file, withTomlTable(source, tomlTable(spec.key, name, invocation, settings)))
     return file
   }
   if (!exists(file)) createFile(file, "{}\n")
   const entry = spec.typed === true
-    ? { type: "stdio", ...invocation }
-    : { ...invocation }
+    ? { type: "stdio", ...invocation, ...settings }
+    : { ...invocation, ...settings }
   const result = modifyJSONFile(file, { [`${spec.key}.${name}`]: { value: entry } })
   if (result.error !== undefined) throw result.error
   return file

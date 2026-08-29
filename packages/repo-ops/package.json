@@ -14,7 +14,8 @@
   "type": "module",
   "files": [
     "dist",
-    "skill-data"
+    "skill-data",
+    "src"
   ],
   "exports": {
     ".": {

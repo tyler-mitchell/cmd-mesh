@@ -112,6 +112,26 @@ export interface McpExample {
   readonly description?: string
 }
 
+/** how a client should RUN this program's server, as opposed to how it
+ * should present one tool. Declared once in this vocabulary and units,
+ * then projected into each client's own spelling; a client without a
+ * setting simply does not receive it. */
+export interface McpServerConfig {
+  /** environment for the server process. every client supports this */
+  readonly env?: Readonly<globalThis.Record<string, string>>
+  /** how long one tool call may run. claude spells this `timeout` in
+   * milliseconds, codex `tool_timeout_sec` in seconds */
+  readonly toolTimeoutMs?: number
+  /** how long the server may take to start — codex alone today
+   * (`startup_timeout_sec`) */
+  readonly startupTimeoutMs?: number
+}
+
+/** a program's `mcp` describes the SERVER as well as its own tool */
+export interface McpProgramConfig extends McpCommandConfig {
+  readonly server?: McpServerConfig
+}
+
 export interface McpCommandConfig {
   readonly hidden?: boolean
   /** overrides the derived flattened tool name */
@@ -303,7 +323,7 @@ export interface ProgramDeclOf<Name extends string, RootIn, RootOut, RootR, Cs, 
   readonly cli?: CliCommandConfig<
     RootOut extends undefined ? unknown : OutputOf<{ readonly output: NoInfer<RootOut> }, unknown>
   >
-  readonly mcp?: McpCommandConfig
+  readonly mcp?: McpProgramConfig
 }
 
 export interface ExternalCommandDecl {
