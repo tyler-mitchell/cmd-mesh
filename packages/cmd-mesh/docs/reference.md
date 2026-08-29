@@ -15,7 +15,7 @@ this page lists.
 | `module.cli.help(path?)` / `module.cli.complete(words)` | rendered help (usage, Arguments/Options with `[possible values: …]`, defaults, required markers, root Built-in row); completion candidates |
 | `module.cli.interactive(path?)` | guided invocation: prompts derived from the compiled model, dispatched through the ordinary cli path |
 | `module.mcp.tools` | the projected tool list (name, description, schemas, annotations) |
-| `module.mcp.serve()` | the stdio MCP server (`@modelcontextprotocol/sdk`) |
+| `module.mcp.serve()` | the stdio MCP server (`@modelcontextprotocol/sdk`). While serving, stdout is the transport, so `console.log`/`info`/`debug` from handlers are routed to stderr — a handler logs as it normally would without corrupting the stream. Resolves when the client disconnects, so the bin exits `0` |
 | `module.mcp.server()` | the same server as a connectable instance for a caller-owned transport (an HTTP route, an in-memory test pair) |
 | `module.spec` | the machine-readable self-description: a JSON-serializable tree of every command and parameter. Doc generators and UI generators consume this — never parse help text |
 

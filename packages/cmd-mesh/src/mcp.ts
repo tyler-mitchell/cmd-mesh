@@ -372,6 +372,26 @@ export const buildMcpServer = (
   }
 }
 
+/** While serving, stdout IS the transport: one stray `console.log` in a
+ * handler puts a non-JSON line into the stream. Handlers are ordinary
+ * functions that log like any other code, so the whole console is
+ * pointed at stderr for the life of the server rather than asking every
+ * handler to know where it is running. */
+export const routeConsoleToStderr = (): void => {
+  const current = globalThis.console
+  // pointed at `error`, which already writes to stderr, rather than at
+  // a stream: formatting stays console's own, and this holds under a
+  // host that replaced the global console with its own object
+  const toStderr = current.error.bind(current)
+  globalThis.console = Object.assign(Object.create(current) as Console, {
+    log: toStderr,
+    info: toStderr,
+    debug: toStderr,
+    dir: toStderr,
+    table: toStderr
+  })
+}
+
 /** serve the tools over stdio, until the client disconnects and the
  * transport closes. resolving there is what lets a bin exit 0 — a
  * server that waited forever would leave `main()` unsettled, and the
@@ -386,6 +406,7 @@ export const serveMcp = (
 ): Effect.Effect<void, Error> =>
   Effect.gen(function*() {
     const server = buildMcpServer(root, meta, invoke, runPromise, ctx, spec)
+    routeConsoleToStderr()
     yield* Effect.tryPromise({
       try: () => server.connect(new StdioServerTransport()),
       catch: (cause) => new Error(`mcp transport failed: ${cause}`)

@@ -3,6 +3,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { getPath } from "package-management"
 import { describe, expect, it } from "vitest"
 import { program } from "../src/index.js"
+import { routeConsoleToStderr } from "../src/mcp.js"
 import { captureCli } from "./fixtures/capture.js"
 
 // A host starts an mcp server as a child process and closes its stdin
@@ -22,6 +23,27 @@ const tool = program({
       run: (input) => ({ text: `hello ${input.name}` })
     }
   }
+})
+
+// While serving, stdout IS the transport. A handler is an ordinary
+// function that logs like any other code, so one console.log would put
+// a non-JSON line into the stream.
+describe("keeping stdout to the transport", () => {
+  it("sends a handler's console output where stderr already goes", () => {
+    const original = globalThis.console
+    const seen: Array<string> = []
+    try {
+      globalThis.console = Object.assign(Object.create(original) as Console, {
+        error: (...args: ReadonlyArray<unknown>) => seen.push(args.join(" "))
+      })
+      routeConsoleToStderr()
+      console.log("progress: working on world")
+      console.info("and this")
+      expect(seen).toEqual(["progress: working on world", "and this"])
+    } finally {
+      globalThis.console = original
+    }
+  })
 })
 
 describe("advertising the mcp surface", () => {
