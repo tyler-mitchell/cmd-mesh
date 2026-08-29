@@ -170,10 +170,10 @@ const attempt = <A>(f: () => A): Attempt<A> =>
     })
   )
 
-/** structural problems a single parameter can carry */
 // A suggest string must be a named source. Other values give no candidates.
 const namedSuggestSources = ["filepaths", "folders"]
 
+/** structural problems a single parameter can carry */
 const parameterIssues = (at: string, p: CompiledParameter): ReadonlyArray<DeclarationIssue> =>
   Array.flatMap(
     [

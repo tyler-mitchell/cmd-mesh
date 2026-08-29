@@ -81,7 +81,10 @@ export const issueText = (diagnostic: {
   readonly code: string
   readonly why: string
   readonly fix?: string
+  readonly docs?: string
 }): string =>
-  diagnostic.fix === undefined
-    ? `${diagnostic.code}: ${diagnostic.why}`
-    : `${diagnostic.code}: ${diagnostic.why} (fix: ${diagnostic.fix})`
+  [
+    `${diagnostic.code}: ${diagnostic.why}`,
+    ...(diagnostic.fix === undefined ? [] : [`(fix: ${diagnostic.fix})`]),
+    ...(diagnostic.docs === undefined ? [] : [diagnostic.docs])
+  ].join(" ")

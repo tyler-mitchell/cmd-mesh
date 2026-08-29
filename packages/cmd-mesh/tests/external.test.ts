@@ -436,6 +436,15 @@ describe("external declaration validation", () => {
     ).toThrow(/CMSH1014.*flepaths/s)
   })
 
+  it("anchors every issue at its own errors reference section", () => {
+    expect(() =>
+      external({
+        name: "tool",
+        commands: { add: { input: { paths: { type: "string", suggest: "flepaths", cli: "<paths>" } } } }
+      })
+    ).toThrow(/docs\/errors\.md#cmsh1014/)
+  })
+
   it("rejects a misspelled descriptor field", () => {
     expect(() =>
       external({

@@ -1,13 +1,14 @@
 # Declaration errors
 
 `program()` and `external()` validate the whole declaration and throw
-one `InvalidDeclaration` listing every problem, each line carrying its
-command path, a stable code from this page, and a fix:
+one `InvalidDeclaration` listing every problem. Each line carries its
+command path, a stable code from this page, a fix, and a link to the
+section for that code:
 
 ```
 invalid declaration:
-  tool broken · bad: CMSH1001: ParseError: 'not.a.keyword' is unresolvable (fix: Use a resolvable ArkType definition.)
-  tool broken: CMSH1006: flag --same is claimed by flag and other (fix: Rename one of the flags or aliases.)
+  tool broken · bad: CMSH1001: ParseError: 'not.a.keyword' is unresolvable (fix: Use a resolvable ArkType definition.) https://github.com/tyler-mitchell/cmd-mesh/blob/main/packages/cmd-mesh/docs/errors.md#cmsh1001
+  tool broken: CMSH1006: flag --same is claimed by flag and other (fix: Rename one of the flags or aliases.) https://github.com/tyler-mitchell/cmd-mesh/blob/main/packages/cmd-mesh/docs/errors.md#cmsh1006
 ```
 
 ## CMSH1001
