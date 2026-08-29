@@ -1,5 +1,7 @@
+import { delimiter } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { Array, Context, Effect, Fiber, Layer, Stream } from "effect"
+import { getPath, getWorkspaceFolder } from "package-management"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import { ExecFailure, ExternalExit } from "./errors.js"
 import type { ExecOptions, ExecResult } from "./types.js"
@@ -28,11 +30,24 @@ export class Exec extends Context.Service<Exec, {
         options?: ExecOptions
       ) {
         const inherit = options?.stdio === "inherit"
+        const cwdOption = options?.cwd === undefined ? {} : { cwd: options.cwd }
+        const workspace = options?.preferLocal === true
+          ? getWorkspaceFolder({ ...cwdOption, throwIfNotFound: false })
+          : undefined
+        const env = workspace === undefined
+          ? options?.env
+          : {
+            ...(options?.env ?? {}),
+            PATH: [
+              getPath({ to: "<workspace_folder>/node_modules/.bin", ...cwdOption }),
+              options?.env?.PATH ?? globalThis.process.env.PATH ?? ""
+            ].join(delimiter)
+          }
         const base = Effect.gen(function*() {
           const handle = yield* spawner.spawn(
             ChildProcess.make(bin, args, {
               ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
-              ...(options?.env === undefined ? {} : { env: options.env, extendEnv: true }),
+              ...(env === undefined ? {} : { env, extendEnv: true }),
               ...(inherit ? { stdin: "inherit", stdout: "inherit", stderr: "inherit" } : {})
             })
           )

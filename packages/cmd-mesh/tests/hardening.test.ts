@@ -1,7 +1,11 @@
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { assert, describe, it } from "@effect/vitest"
 import { expect, it as vit } from "vitest"
 import { Effect } from "effect"
 import { compileCommand } from "../src/compile.js"
+import { program } from "../src/index.js"
 import { InvalidDeclaration } from "../src/errors.js"
 import { Exec } from "../src/exec.js"
 import { renderHelp } from "../src/render.js"
@@ -63,6 +67,35 @@ describe("declaration validation", () => {
 })
 
 describe("exec options", () => {
+  vit("preferLocal resolves workspace-local binaries through ctx.exec", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "exec-local-"))
+    await writeFile(join(dir, "package.json"), JSON.stringify({ name: "fixture", version: "0.0.0" }))
+    await writeFile(join(dir, "pnpm-workspace.yaml"), "packages: []\n")
+    const bin = join(dir, "node_modules", ".bin")
+    await mkdir(bin, { recursive: true })
+    await writeFile(join(bin, "probe-local"), "#!/bin/sh\necho local-hit\n", { mode: 0o755 })
+    const env = { PATH: "/usr/bin:/bin" }
+    const tool = program({
+      name: "tool",
+      commands: {
+        miss: {
+          output: "string",
+          run: async (_input, ctx) =>
+            (await ctx.exec("probe-local", [], { cwd: dir, env })).stdout
+        },
+        hit: {
+          output: "string",
+          run: async (_input, ctx) =>
+            (await ctx.exec("probe-local", [], { cwd: dir, env, preferLocal: true })).stdout.trim()
+        }
+      }
+    })
+    const { getWorkspaceFolder } = await import("package-management")
+    expect(getWorkspaceFolder({ cwd: dir, throwIfNotFound: false })).toBe(dir)
+    await expect(tool.miss()).rejects.toThrow(/failed to execute probe-local/)
+    await expect(tool.hit()).resolves.toBe("local-hit")
+  })
+
   it.live("times out and kills the process", () =>
     Effect.gen(function*() {
       const exec = yield* Exec

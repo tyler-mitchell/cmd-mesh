@@ -118,6 +118,12 @@ export interface ExecOptions {
    * `ExternalExit`, the same vocabulary external commands use. omitted,
    * exit codes stay data on the result (branch on `result.exitCode`) */
   readonly successCodes?: ReadonlyArray<number>
+  /** prepend the enclosing workspace's `node_modules/.bin` (resolved
+   * upward from cwd, git root as the fallback) to PATH so
+   * workspace-local binaries resolve regardless of how the process was
+   * started (execa's preferLocal, tinyexec's default); a no-op outside
+   * any repository */
+  readonly preferLocal?: boolean
 }
 
 export type Surface = "cli" | "mcp" | "call"
