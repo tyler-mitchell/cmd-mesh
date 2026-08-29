@@ -4,7 +4,6 @@
 // commands here are what is repository-specific. handlers are written
 // the way a CONSUMER writes them — plain async functions over the
 // promise surface, no Effect.
-import { relative } from "node:path"
 import { program } from "cmd-mesh"
 import type { Ctx, SuggestContext } from "cmd-mesh"
 import { repositoryOperations } from "repo-ops"
@@ -49,6 +48,7 @@ export const repokit = program({
   commands: {
     search: {
       description: "search tracked files, structured results",
+      safety: "read",
       input: {
         pattern: { type: "string", description: "regex to search for", cli: "<pattern>" },
         glob: {
@@ -68,6 +68,7 @@ export const repokit = program({
     },
     todos: {
       description: "collect TODO/FIXME comments",
+      safety: "read",
       input: {
         assignee: { type: "string", description: "filter by @assignee", cli: "--assignee, -a" }
       },
@@ -84,6 +85,7 @@ export const repokit = program({
     },
     context: {
       description: "orient an agent: branch, recent commits, dirty files",
+      safety: "read",
       cli: { hidden: true },
       input: {
         commits: { type: "string.integer.parse = '10'", description: "recent commits to include" }
@@ -103,18 +105,20 @@ export const repokit = program({
     },
     packages: {
       description: "workspace packages, structured",
+      safety: "read",
       output: [{ name: "string", "version?": "string", dir: "string" }, "[]"],
       run: (_input, ctx) => {
         const root = ctx.workspace.workspaceRootDir()
         return ctx.workspace.packageList().map((pkg) => ({
           name: pkg.name,
           version: pkg.packageJson.version,
-          dir: relative(root, pkg.dirpath)
+          dir: pkg.dirpath.startsWith(`${root}/`) ? pkg.dirpath.slice(root.length + 1) : pkg.dirpath
         }))
       }
     },
     check: {
       description: "run a package script with live output",
+      safety: "action",
       input: {
         filter: {
           type: "string",
