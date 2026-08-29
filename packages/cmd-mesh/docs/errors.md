@@ -126,7 +126,8 @@ more dangerous. `mcp: { hiden: true }` does not set `mcp.hidden`. The
 command stays visible to agents.
 
 Parameter fields are `type`, `description`, `suggest`, `required`,
-`cli`, `mcp`; the parameter `cli` object takes `usage`, `env`, `hidden`.
+`cli`, `mcp`; the parameter `cli` object takes `usage`, `env`, `hidden`,
+and the parameter `mcp` object takes `hidden`.
 Command fields are `description`, `input`, `output`, `narrow`, `run`,
 `safety`, `commands`, `cli`, `mcp`, `successCodes`, plus `name`,
 `version`, `resources` and `bin` at a declaration root; the command

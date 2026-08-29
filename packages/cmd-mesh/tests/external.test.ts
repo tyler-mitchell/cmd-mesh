@@ -446,6 +446,19 @@ describe("external declaration validation", () => {
     expect(captured.message).toBe("git exited with 128: fatal: bad")
   })
 
+  it("rejects a misspelled parameter mcp field, which would advertise a secret", () => {
+    expect(() =>
+      external({
+        name: "tool",
+        commands: {
+          push: {
+            input: { token: { type: "string", cli: "--token", mcp: { hiden: true } } as never }
+          }
+        }
+      })
+    ).toThrow(/CMSH1013.*hiden/s)
+  })
+
   it("rejects a suggestion source that lists nothing", () => {
     expect(() =>
       external({

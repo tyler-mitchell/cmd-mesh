@@ -284,10 +284,16 @@ const commandFieldIssues = (at: string, decl: unknown): ReadonlyArray<Declaratio
   ])
 }
 
+const parameterMcpFields = ["hidden"]
+
 const descriptorIssues = (at: string, rawDef: ParameterDef): ReadonlyArray<DeclarationIssue> =>
   String.isString(rawDef) ? [] : strayIssues(at, [
     ...Array.map(strayFields(rawDef, descriptorFields), (key) => ({ key, known: descriptorFields })),
-    ...Array.map(strayFields(rawDef.cli, cliFields), (key) => ({ key: `cli.${key}`, known: cliFields }))
+    ...Array.map(strayFields(rawDef.cli, cliFields), (key) => ({ key: `cli.${key}`, known: cliFields })),
+    ...Array.map(strayFields(rawDef.mcp, parameterMcpFields), (key) => ({
+      key: `mcp.${key}`,
+      known: parameterMcpFields
+    }))
   ])
 
 const compileParameter = (key: string, rawDef: ParameterDef): CompiledParameter => {
