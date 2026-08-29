@@ -62,6 +62,20 @@ describe("program resources", () => {
     expect(await makeTool(log).cli.run(["use"])).toBe(0)
     expect(log).toEqual(["acquire:a", "acquire:b", "release:b", "release:a"])
   })
+
+  it("acquires and releases around an mcp tool call", async () => {
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js")
+    const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js")
+    const log: Array<string> = []
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    await makeTool(log).mcp.server().connect(serverTransport)
+    const client = new Client({ name: "witness", version: "0.0.0" })
+    await client.connect(clientTransport)
+    const result = await client.callTool({ name: "tool_use", arguments: {} })
+    expect((result.content as ReadonlyArray<{ text: string }>)[0]!.text).toContain("aB")
+    expect(log).toEqual(["acquire:a", "acquire:b", "release:b", "release:a"])
+    await client.close()
+  })
 })
 
 const makeCounter = () =>
