@@ -4,11 +4,26 @@
 // program; the one genuine configuration point is the published
 // package name (registry-version). branch names and vocabularies are
 // the playbook itself and stay interpreter-owned here.
+import { delimiter, join } from "node:path"
 import { program } from "cmd-mesh"
 import type { Ctx } from "cmd-mesh"
 
 export interface RepositoryOperationsConfig {
   readonly package: string
+}
+
+// workspace-local binaries (bumpy) must resolve however the bin was
+// invoked — `pnpm run` puts node_modules/.bin on PATH, a direct
+// `node dist/bin.js` or an mcp server does not
+const anchored = (ctx: Ctx): { cwd: string; env: Readonly<Record<string, string>> } => {
+  const cwd = ctx.workspace.workspaceRootDir()
+  return {
+    cwd,
+    env: {
+      ...process.env as Record<string, string>,
+      PATH: [join(cwd, "node_modules", ".bin"), process.env.PATH ?? ""].join(delimiter)
+    }
+  }
 }
 
 // the two operational shapes, anchored at the workspace root
@@ -17,11 +32,7 @@ export interface RepositoryOperationsConfig {
 // declared codes; `captured` returns stdout as `{ text }` for cli
 // rendering and mcp structured content alike.
 const streamed = async (ctx: Ctx, bin: string, args: ReadonlyArray<string>): Promise<{ done: true }> => {
-  await ctx.exec(bin, args, {
-    cwd: ctx.workspace.workspaceRootDir() ?? process.cwd(),
-    stdio: "inherit",
-    successCodes: [0]
-  })
+  await ctx.exec(bin, args, { ...anchored(ctx), stdio: "inherit", successCodes: [0] })
   return { done: true }
 }
 
@@ -31,10 +42,7 @@ const captured = async (
   args: ReadonlyArray<string>,
   successCodes: ReadonlyArray<number> = [0]
 ): Promise<{ text: string }> => {
-  const result = await ctx.exec(bin, args, {
-    cwd: ctx.workspace.workspaceRootDir() ?? process.cwd(),
-    successCodes
-  })
+  const result = await ctx.exec(bin, args, { ...anchored(ctx), successCodes })
   return { text: result.stdout.trimEnd() }
 }
 

@@ -19,7 +19,7 @@ interface GrepLine {
 // operations anchor at the workspace root; ctx.workspace owns that.
 const gitGrep = async (ctx: Ctx, args: ReadonlyArray<string>): Promise<ReadonlyArray<GrepLine>> => {
   const result = await ctx.exec("git", ["grep", "-n", "-I", "--untracked", ...args], {
-    cwd: ctx.workspace.workspaceRootDir() ?? process.cwd()
+    cwd: ctx.workspace.workspaceRootDir()
   })
   if (result.exitCode > 1) {
     throw new Error(`git grep failed (${result.exitCode}): ${result.stderr.trim()}`)
@@ -90,7 +90,7 @@ export const repokit = program({
       },
       output: { branch: "string", recent: "string[]", dirty: "string[]" },
       run: async (input, ctx) => {
-        const root = ctx.workspace.workspaceRootDir() ?? process.cwd()
+        const root = ctx.workspace.workspaceRootDir()
         const branch = await ctx.exec("git", ["branch", "--show-current"], { cwd: root })
         const recent = await ctx.exec("git", ["log", "--oneline", "-n", `${input.commits}`], { cwd: root })
         const dirty = await ctx.exec("git", ["status", "--porcelain"], { cwd: root })
@@ -105,7 +105,7 @@ export const repokit = program({
       description: "workspace packages, structured",
       output: [{ name: "string", "version?": "string", dir: "string" }, "[]"],
       run: (_input, ctx) => {
-        const root = ctx.workspace.workspaceRootDir() ?? process.cwd()
+        const root = ctx.workspace.workspaceRootDir()
         return ctx.workspace.packageList().map((pkg) => ({
           name: pkg.name,
           version: pkg.packageJson.version,
@@ -128,7 +128,7 @@ export const repokit = program({
       output: { filter: "string", script: "string" },
       run: async (input, ctx) => {
         const result = await ctx.exec("pnpm", ["--filter", input.filter, "run", input.script], {
-          cwd: ctx.workspace.workspaceRootDir() ?? process.cwd(),
+          cwd: ctx.workspace.workspaceRootDir(),
           stdio: "inherit",
           timeoutMs: input.timeout
         })
