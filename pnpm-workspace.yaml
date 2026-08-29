@@ -1,6 +1,9 @@
 packages:
   - "apps/*"
   - "packages/*"
+  # spine is superseded and gitignored; kept on disk pending demolition.
+  # excluding it keeps local installs writing the same lockfile CI sees.
+  - "!packages/spine"
 
 allowBuilds:
   esbuild: true
