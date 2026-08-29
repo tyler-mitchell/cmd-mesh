@@ -40,7 +40,7 @@ const gitGrep = async (ctx: Ctx, args: ReadonlyArray<string>): Promise<ReadonlyA
 
 // the operational groups come from repo-ops, configured with the one
 // repository-specific fact they need
-const { release, ci, deps } = repositoryOperations({ package: "cmd-mesh" })
+const { release, ci, deps, git } = repositoryOperations({ package: "cmd-mesh" })
 
 export const repokit = program({
   name: "repokit",
@@ -140,6 +140,7 @@ export const repokit = program({
     },
     ci,
     release,
-    deps
+    deps,
+    git
   }
 })

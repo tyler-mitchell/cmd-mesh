@@ -73,6 +73,14 @@ describe("the operational surface (the closed-distribution contract)", () => {
     const checked = await repokit.release.check()
     expect(checked.text).toMatch(/bump files|No managed packages have changed/)
   })
+
+  it("exposes git as a typed external surface", async () => {
+    // the 08 thesis live: git.status is a typed call over the binary
+    const status = await repokit.git.status({ short: true })
+    expect(status).toBeTypeOf("string")
+    const log = await repokit.git.log({ oneline: true, count: "1" })
+    expect(log.trimEnd().split("\n").length).toBe(1)
+  })
 })
 
 describe("cli surface", () => {
