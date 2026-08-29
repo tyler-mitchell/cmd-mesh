@@ -39,30 +39,50 @@ this page lists.
 | `mcp.examples` | `{ args, description? }[]` — schema-validated at compile time; projected into the tool description, JSON-Schema `examples`, and the spec |
 | `successCodes` | external commands: exit codes that count as success |
 
-## Parameter descriptors
+## Parameters
 
-A parameter is an ArkType definition, or a descriptor that adds
-surface configuration to one. `short: "boolean"` is a complete
-parameter: the flag `--short` is derived from the key. Use the
-descriptor form only for what the key cannot express — a short alias, a
-positional slot, an env fallback, a suggestion source.
+A parameter IS an ArkType definition. `short: "boolean"` is a complete
+parameter: the flag `--short` is derived from the key. Surface bindings
+ride in ArkType metadata, through the `"@"` tuple, for what the type and
+the key cannot express — a short alias, a positional slot, an env
+fallback, a suggestion source.
 
-| form | meaning |
+```ts
+input: {
+  directory: ["string", "@", { cli: "<directory>", suggest: "folders" }],
+  depth: ["string.integer.parse", "@", { cli: "--depth, -d", default: "2" }],
+  "note?": "string"
+}
+```
+
+ArkType owns the domain, optionality, defaults and morphs. A key is
+required unless it ends in `?` or carries a default. A variadic states
+its own array (`"string[]"`), so the notation says only how it is
+spelled. Defaults apply on the INPUT side: a morph's default is a value
+its input domain accepts.
+
+| metadata | meaning |
 | --- | --- |
-| `"boolean"` · `"string.integer.parse = '2'"` | the whole parameter; the flag is derived `--kebab-case` from the key |
+| `cli` | the argv notation, or `{ usage, env, hidden }` — env is the fallback (argv > env > default) |
+| `mcp: { hidden }` | drop the parameter from the mcp tool schema; it still validates if supplied. The parameter must be optional or defaulted, or no agent can call the tool (CMSH1015) |
+| `suggest` | `"folders"` · `"filepaths"` · a const generator `(ctx: SuggestContext) => Promise<string[]>` |
+| `description` · `examples` · `default` · `deprecated` | ArkType's own metadata, read directly |
+
+| notation | meaning |
+| --- | --- |
 | `"<name>"` | required positional |
 | `"[name]"` | optional positional |
-| `"[...name]"` / `"<...name>"` | variadic (zero ok / at least one) |
+| `"[...name]"` / `"<...name>"` | variadic — pair with `"string[]"` or `"string[] >= 1"` |
 | `"--flag, -f"` | flag with short alias |
-| `"--tag <tags...>"` | repeatable flag → array |
-| `cli: { usage, env, hidden }` | object form: usage plus env fallback (argv > env > default) and per-surface hiding |
-| `suggest` | `"folders"` · `"filepaths"` · a const generator `(ctx: SuggestContext) => Promise<string[]>` |
-| `mcp: { hidden }` | drop the parameter from the mcp tool schema; it still validates if supplied. The parameter must be optional or defaulted, or no agent can call the tool (CMSH1015) |
-| no `cli` | derived `--flag`; union members tab-complete |
+| `"--tag <tags...>"` | repeatable flag — pair with `"string[]"` |
+| omitted | derived `--kebab-case` flag; union members tab-complete |
 
-A parameter's `type` is any ArkType definition. Structured parameters
-take real objects on the value boundary and a JSON token on the CLI, and
-project full nested JSON Schemas to MCP.
+Structured parameters take real objects on the value boundary and a JSON
+token on the CLI, and project full nested JSON Schemas to MCP.
+
+Because the declaration is ArkType's own, an unresolvable keyword, an
+unknown metadata key, a misspelled `mcp.hidden`, or a value outside a
+declared union is a TypeScript error at the declaration site.
 
 ## MCP surface
 

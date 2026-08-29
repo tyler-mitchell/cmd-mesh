@@ -12,7 +12,7 @@ const tool = program({
   version: "1.0.0",
   cli: { default: "dev" },
   input: {
-    logLevel: [["'debug' | 'info'", "@", { cli: "--log-level" }], "=", "info"]
+    logLevel: ["'debug' | 'info'", "@", { cli: "--log-level", default: "info" }]
   },
   commands: {
     dev: {
@@ -22,11 +22,10 @@ const tool = program({
         entry: ["string", "@", { cli: "<entry>" }],
         "out?": ["string", "@", { cli: "[out]" }],
         files: ["string[]", "@", { cli: "[...files]", default: () => [] }],
-        port: [
-          "string.integer.parse",
-          "@",
-          { cli: { usage: "--port, -p", env: "TOOL_PORT" }, default: "3000" }
-        ],
+        port: ["string.integer.parse", "@", {
+          cli: { usage: "--port, -p", env: "TOOL_PORT" },
+          default: "3000"
+        }],
         tag: ["string[]", "@", { cli: "--tag <tags...>", default: () => [] }],
         "token?": ["string", "@", { cli: { usage: "--token", hidden: true }, mcp: { hidden: true } }],
         "level?": "'debug' | 'info' | 'warn'"

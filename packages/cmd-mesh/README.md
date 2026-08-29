@@ -14,7 +14,7 @@ const git = external({
     status: {
       description: "working tree status",
       safety: "read",
-      input: { short: { type: "boolean", cli: "--short, -s" } },
+      input: { short: ["boolean", "@", { cli: "--short, -s", default: false }] },
       output: "string"
     }
   }
@@ -28,9 +28,15 @@ const mesh = program({
       description: "record a directory snapshot",
       safety: "action",
       input: {
-        directory: { type: "string", suggest: "folders", cli: "<directory>" },
-        depth: { type: "string.integer.parse = '2'", cli: { usage: "--depth, -d", env: "MESH_DEPTH" } },
-        verbose: { type: "boolean", cli: "--verbose, -v" }
+        // a parameter IS an ArkType definition; surface bindings ride in
+        // its metadata, so ArkType owns the domain, optionality and defaults
+        directory: ["string", "@", { suggest: "folders", cli: "<directory>" }],
+        depth: [
+          "string.integer.parse",
+          "@",
+          { cli: { usage: "--depth, -d", env: "MESH_DEPTH" }, default: "2" }
+        ],
+        verbose: ["boolean", "@", { cli: "--verbose, -v", default: false }]
       },
       run: (input) => ({ snapped: input.directory, depth: input.depth })
       //     ^ inferred: { directory: string; depth: number; verbose: boolean }
