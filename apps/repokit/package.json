@@ -19,7 +19,8 @@
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
-    "cmd-mesh": "workspace:*"
+    "cmd-mesh": "workspace:*",
+    "repo-ops": "workspace:*"
   },
   "devDependencies": {
     "tsx": "catalog:",
