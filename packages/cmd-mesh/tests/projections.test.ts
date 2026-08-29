@@ -87,7 +87,7 @@ describe("mcp tool identity", () => {
         name: "bad",
         commands: { x: { safety: "huge" as never, run: () => "x" } }
       })
-    ).toThrow(/safety must be/)
+    ).toThrow(/CM1010: safety must be .* \(fix: /)
   })
 
   it("projects declared examples into the description, schema, and spec", () => {

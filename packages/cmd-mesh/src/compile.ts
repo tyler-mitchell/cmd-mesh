@@ -2,6 +2,7 @@ import { type, Type } from "arktype"
 import { Array, Effect, Option, Predicate, Record, String, pipe } from "effect"
 import type { DeclarationIssue } from "./errors.js"
 import { InvalidDeclaration } from "./errors.js"
+import { diagnostics, issueText } from "./diagnostics.js"
 import type {
   CliCommandConfig,
   CliParameterConfig,
@@ -173,20 +174,12 @@ const attempt = <A>(f: () => A): Attempt<A> =>
 const parameterIssues = (at: string, p: CompiledParameter): ReadonlyArray<DeclarationIssue> =>
   Array.flatMap(
     [
-      p.binding._tag === "positional" && p.isBoolean
-        ? [`a positional cannot be boolean — booleans are flag presence`]
-        : [],
-      p.binding._tag === "positional" && Option.isSome(p.env)
-        ? [`env fallback is only meaningful on flags`]
-        : [],
-      p.binding._tag === "positional" && p.cliHidden
-        ? [`a positional cannot be cli-hidden — it would corrupt argv order`]
-        : [],
-      p.binding._tag === "flag" && p.binding.variadic && p.isBoolean
-        ? [`a boolean flag cannot take a value slot — presence is its value`]
-        : []
+      p.binding._tag === "positional" && p.isBoolean ? [diagnostics.CM1002()] : [],
+      p.binding._tag === "positional" && Option.isSome(p.env) ? [diagnostics.CM1003()] : [],
+      p.binding._tag === "positional" && p.cliHidden ? [diagnostics.CM1004()] : [],
+      p.binding._tag === "flag" && p.binding.variadic && p.isBoolean ? [diagnostics.CM1005()] : []
     ],
-    (problems) => Array.map(problems, (problem) => ({ at, problem }))
+    (found) => Array.map(found, (diagnostic) => ({ at, problem: issueText(diagnostic) }))
   )
 
 /** cross-parameter problems: flag token collisions, positional ordering */
@@ -206,9 +199,10 @@ const commandIssues = (
       owners.length > 1
         ? [{
           at,
-          problem: `flag ${token} is claimed by ${
-            Array.join(Array.map(owners, ([, key]) => key), " and ")
-          }`
+          problem: issueText(diagnostics.CM1006({
+            token,
+            owners: Array.join(Array.map(owners, ([, key]) => key), " and ")
+          }))
         }]
         : [])
   )
@@ -218,7 +212,7 @@ const commandIssues = (
     Array.findFirstIndex((p) => p.binding._tag === "positional" && p.binding.variadic),
     Option.flatMap((index) =>
       index < positionals.length - 1
-        ? Option.some({ at, problem: `variadic positional must be the last positional` })
+        ? Option.some({ at, problem: issueText(diagnostics.CM1007()) })
         : Option.none()
     ),
     Option.match({ onNone: () => [] as ReadonlyArray<DeclarationIssue>, onSome: (issue) => [issue] })
@@ -432,11 +426,18 @@ const collectCommand = (
     : attempt(() => type(decl.output as never) as AnyType)
   const ownIssuesBase = pipe(
     Array.flatMap(attempts, ({ key, result }) =>
-      result._tag === "failed" ? [{ at: `${at} · ${key}`, problem: result.problem }] : []),
+      result._tag === "failed"
+        ? [{ at: `${at} · ${key}`, problem: issueText(diagnostics.CM1001({ error: result.problem })) }]
+        : []),
     Array.appendAll(Array.flatMap(parameters, (p) => parameterIssues(`${at} · ${p.key}`, p))),
     Array.appendAll(commandIssues(at, parameters)),
     Array.appendAll(
-      outputAttempt?._tag === "failed" ? [{ at: `${at} · output`, problem: outputAttempt.problem }] : []
+      outputAttempt?._tag === "failed"
+        ? [{
+          at: `${at} · output`,
+          problem: issueText(diagnostics.CM1001({ error: outputAttempt.problem }))
+        }]
+        : []
     )
   )
   // with a broken declaration the types are placeholders; program() throws
@@ -450,7 +451,7 @@ const collectCommand = (
       schemaType: assemble(parameters, valueEntry)
     }))
   const assemblyIssues: ReadonlyArray<DeclarationIssue> = assemblyAttempt?._tag === "failed"
-    ? [{ at, problem: assemblyAttempt.problem }]
+    ? [{ at, problem: issueText(diagnostics.CM1001({ error: assemblyAttempt.problem })) }]
     : []
   const assembly = assemblyAttempt?._tag === "ok"
     ? assemblyAttempt.value
@@ -491,9 +492,10 @@ const collectCommand = (
       owners.length > 1
         ? [{
           at,
-          problem: `subcommand name ${token} is claimed by ${
-            Array.join(Array.map(owners, ([, owner]) => owner), " and ")
-          }`
+          problem: issueText(diagnostics.CM1012({
+            token,
+            owners: Array.join(Array.map(owners, ([, owner]) => owner), " and ")
+          }))
         }]
         : [])
   )
@@ -516,18 +518,16 @@ const collectCommand = (
       onSome: (name) =>
         Array.flatMap(
           [
-            decl.run === undefined ? [] : [`cannot declare both run and cli.default`],
-            Option.isSome(Option.flatten(resolvedDefault))
-              ? []
-              : [`cli.default names a missing subcommand: ${name}`]
+            decl.run === undefined ? [] : [diagnostics.CM1008()],
+            Option.isSome(Option.flatten(resolvedDefault)) ? [] : [diagnostics.CM1009({ name })]
           ],
-          (problems) => Array.map(problems, (problem) => ({ at, problem }))
+          (found) => Array.map(found, (diagnostic) => ({ at, problem: issueText(diagnostic) }))
         )
     })
   )
   const safetyIssues: ReadonlyArray<DeclarationIssue> =
     decl.safety !== undefined && !Array.contains(["read", "action", "destructive"], decl.safety)
-      ? [{ at, problem: `safety must be "read", "action" or "destructive" (got: ${decl.safety})` }]
+      ? [{ at, problem: issueText(diagnostics.CM1010({ got: `${decl.safety}` })) }]
       : []
   const exampleIssues: ReadonlyArray<DeclarationIssue> = pipe(
     (decl.mcp?.examples ?? []) as ReadonlyArray<McpExample>,
@@ -536,9 +536,7 @@ const collectCommand = (
         ? []
         : [{
           at,
-          problem: `mcp.examples[${index}] does not satisfy the command's input schema: ${
-            JSON.stringify(example.args)
-          }`
+          problem: issueText(diagnostics.CM1011({ index, args: JSON.stringify(example.args) }))
         }]
     )
   )

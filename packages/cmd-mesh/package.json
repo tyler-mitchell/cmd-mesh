@@ -44,6 +44,7 @@
     "@modelcontextprotocol/sdk": "catalog:",
     "arktype": "catalog:",
     "effect": "catalog:",
+    "nostics": "^1.2.0",
     "package-management": "^0.1.0"
   },
   "devDependencies": {
