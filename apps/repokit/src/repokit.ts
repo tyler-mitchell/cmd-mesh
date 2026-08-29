@@ -51,8 +51,13 @@ const streamed = async (ctx: Ctx, bin: string, args: ReadonlyArray<string>): Pro
   return { done: true }
 }
 
-const captured = async (ctx: Ctx, bin: string, args: ReadonlyArray<string>): Promise<{ text: string }> => {
-  const result = await ctx.exec(bin, args, { cwd: await repoRoot(ctx), successCodes: [0] })
+const captured = async (
+  ctx: Ctx,
+  bin: string,
+  args: ReadonlyArray<string>,
+  successCodes: ReadonlyArray<number> = [0]
+): Promise<{ text: string }> => {
+  const result = await ctx.exec(bin, args, { cwd: await repoRoot(ctx), successCodes })
   return { text: result.stdout.trimEnd() }
 }
 
@@ -158,7 +163,9 @@ const release = program({
       description: "pending bumps and planned versions",
       output: text,
       cli: { render: printText },
-      run: (_input, ctx) => captured(ctx, "bumpy", ["status", "--json"])
+      // bumpy exits 1 when nothing is pending, with the JSON still on
+      // stdout — a report-style exit, not a failure
+      run: (_input, ctx) => captured(ctx, "bumpy", ["status", "--json"], [0, 1])
     },
     push: {
       description: "push the daily branch",
