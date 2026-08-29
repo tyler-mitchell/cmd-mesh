@@ -43,8 +43,10 @@ describe("declaration compile cost", () => {
     // order-of-magnitude tripwire, not a precise budget — wall-clock
     // under parallel suite workers runs several times slower than a
     // cold CLI start, and only a regression that would genuinely
-    // reopen lazy loading (10x) should fail it.
-    expect(elapsed).toBeLessThan(1000)
+    // reopen lazy loading (10x) should fail it. Measured contention on
+    // the full suite reaches ~1330ms, so a 1000ms pin failed on load
+    // alone; 2500 still trips a real 10x regression.
+    expect(elapsed).toBeLessThan(2500)
     console.info(`program(): 5 commands ${time(5)}ms · 20 ${time(20)}ms · 50 ${elapsed.toFixed(1)}ms`)
   })
 })

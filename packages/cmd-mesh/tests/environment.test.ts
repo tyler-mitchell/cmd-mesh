@@ -13,7 +13,10 @@ vi.mock("node:util", async (importOriginal) => {
   return { ...without, default: without }
 })
 
-describe("node 22.0–22.8 (no util.getCallSites)", () => {
+// these two import the whole surface fresh under a module mock, so they
+// pay a cold import while every other worker is importing too; the
+// default 5s timeout trips on contention, not on a real regression.
+describe("node 22.0–22.8 (no util.getCallSites)", { timeout: 30_000 }, () => {
   it("loads the full surface and runs a typed call", async () => {
     const { program } = await import("../src/index.js")
     const tool = program({
