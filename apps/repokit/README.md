@@ -6,6 +6,7 @@ the way a consumer writes them — plain async functions over the promise
 surface, no Effect — because exercising the published contract is the point.
 
 ```sh
+pnpm --filter repokit dev               # bare at a terminal: guided invocation
 pnpm --filter repokit dev -- search "pattern" -g "packages/**/*.ts"
 pnpm --filter repokit dev -- todos --assignee tyler
 pnpm --filter repokit dev -- release patch --dry-run
