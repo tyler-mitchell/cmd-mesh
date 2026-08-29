@@ -1,4 +1,6 @@
 export { external, program } from "./module.js"
+export { figToExternal } from "./fig.js"
+export type { FigConversion, FigOption, FigSubcommand } from "./fig.js"
 
 // the repository toolkit, re-exported whole from package-management —
 // the same day-to-day affordances handlers reach through ctx, importable
