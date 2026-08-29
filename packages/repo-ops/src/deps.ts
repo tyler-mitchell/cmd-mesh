@@ -7,6 +7,7 @@ export const deps = program({
   commands: {
     list: {
       description: "open dependabot PRs",
+      safety: "read",
       output: text,
       cli: { render: printText },
       run: (_input, ctx) =>
@@ -14,6 +15,7 @@ export const deps = program({
     },
     merge: {
       description: "squash-merge one PR",
+      safety: "action",
       input: { pr: { type: "string", description: "PR number", cli: "<pr>" } },
       output: text,
       cli: { render: printText },
@@ -21,6 +23,7 @@ export const deps = program({
     },
     close: {
       description: "close one PR",
+      safety: "action",
       input: { pr: { type: "string", description: "PR number", cli: "<pr>" } },
       output: text,
       cli: { render: printText },
@@ -28,6 +31,7 @@ export const deps = program({
     },
     sync: {
       description: "fast-forward main from origin",
+      safety: "action",
       output: text,
       cli: { render: printText },
       run: (_input, ctx) => captured(ctx, "git", ["pull", "--ff-only", "origin", "main"])

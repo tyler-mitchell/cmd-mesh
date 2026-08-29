@@ -62,6 +62,33 @@ describe("mcp tool identity", () => {
     const audit = deploy.mcp.tools.find((t) => t.name === "deploy_audit_log")!
     expect(audit.annotations).toEqual({ readOnlyHint: true, destructiveHint: false })
   })
+
+  it("projects safety into hint annotations, explicit annotations winning", () => {
+    const tool = program({
+      name: "t",
+      commands: {
+        look: { safety: "read", run: () => "x" },
+        wipe: { safety: "destructive", run: () => "x" },
+        tuned: { safety: "read", mcp: { annotations: { readOnlyHint: false } }, run: () => "x" },
+        plain: { run: () => "x" }
+      }
+    })
+    const byName = Object.fromEntries(tool.mcp.tools.map((t) => [t.name, t]))
+    expect(byName["t_look"]!.annotations).toEqual({ readOnlyHint: true, destructiveHint: false })
+    expect(byName["t_wipe"]!.annotations).toEqual({ readOnlyHint: false, destructiveHint: true })
+    expect(byName["t_tuned"]!.annotations).toEqual({ readOnlyHint: false, destructiveHint: false })
+    expect(byName["t_plain"]!.annotations).toBeUndefined()
+    expect(tool.spec.commands.find((c) => c.path.at(-1) === "wipe")!.safety).toBe("destructive")
+  })
+
+  it("rejects an unknown safety value as a declaration error", () => {
+    expect(() =>
+      program({
+        name: "bad",
+        commands: { x: { safety: "huge" as never, run: () => "x" } }
+      })
+    ).toThrow(/safety must be/)
+  })
 })
 
 describe("mcp input schemas", () => {

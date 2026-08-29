@@ -41,6 +41,7 @@ export type {
   CliCommandConfig,
   CliParameterConfig,
   CliProjection,
+  CommandSafety,
   CommandSpec,
   Ctx,
   ExecOptions,

@@ -128,10 +128,19 @@ export const collectTools = (root: CompiledCommand): ReadonlyArray<NamedTool> =>
           onNone: () => ({}),
           onSome: (o) => ({ outputSchema: o.schema })
         }),
-        ...Option.match(root.mcpAnnotations, {
-          onNone: () => ({}),
-          onSome: (annotations) => ({ annotations })
-        })
+        ...(() => {
+          const safetyHints = {
+            read: { readOnlyHint: true, destructiveHint: false },
+            action: { readOnlyHint: false, destructiveHint: false },
+            destructive: { readOnlyHint: false, destructiveHint: true }
+          } as const
+          const hints = Option.match(root.safety, {
+            onNone: () => ({}),
+            onSome: (safety) => safetyHints[safety]
+          })
+          const merged = { ...hints, ...Option.getOrElse(root.mcpAnnotations, () => ({})) }
+          return Record.isEmptyRecord(merged) ? {} : { annotations: merged }
+        })()
       }
     }]
     : []

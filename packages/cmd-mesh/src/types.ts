@@ -79,6 +79,12 @@ export interface CliCommandConfig<Out = never> {
   readonly examples?: ReadonlyArray<string>
 }
 
+/** safety classification for a command, devframe's taxonomy: drives
+ * MCP hint annotations (read → readOnlyHint, action → readOnlyHint
+ * false, destructive → destructiveHint) and marks what automated
+ * verification may invoke */
+export type CommandSafety = "read" | "action" | "destructive"
+
 export interface McpCommandConfig {
   readonly hidden?: boolean
   /** overrides the derived flattened tool name */
@@ -275,6 +281,7 @@ export interface ExternalCommandDecl {
   /** exit codes that count as success (default [0]) — `git grep`'s
    * 1-means-no-match declares [0, 1]; anything else stays a failure */
   readonly successCodes?: ReadonlyArray<number>
+  readonly safety?: CommandSafety
   readonly commands?: globalThis.Record<string, ExternalCommandDecl>
   readonly cli?: CliCommandConfig
   readonly mcp?: McpCommandConfig
@@ -371,6 +378,9 @@ export interface CommandSpec {
   readonly defaultCommand?: string
   readonly runnable: boolean
   readonly external: boolean
+  /** safety classification — automated verification may invoke only
+   * `read` commands; drives MCP hint annotations */
+  readonly safety?: CommandSafety
   /** external commands: exit codes that count as success — doc gen
    * explains a `git grep`-style exit 1 with this */
   readonly successCodes?: ReadonlyArray<number>

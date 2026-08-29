@@ -11,6 +11,7 @@ export const git = external({
   commands: {
     status: {
       description: "working tree status",
+      safety: "read",
       input: {
         short: { type: "boolean", cli: "--short, -s" },
         branch: { type: "boolean", cli: "--branch, -b" }
@@ -19,6 +20,7 @@ export const git = external({
     },
     log: {
       description: "commit history",
+      safety: "read",
       input: {
         oneline: { type: "boolean", cli: "--oneline" },
         count: { type: "string", description: "limit to n commits", cli: "--max-count, -n" }
@@ -27,6 +29,7 @@ export const git = external({
     },
     diff: {
       description: "changes against the index or a ref",
+      safety: "read",
       input: {
         staged: { type: "boolean", cli: "--staged" },
         path: { type: "string", cli: "[path]" }
@@ -35,6 +38,7 @@ export const git = external({
     },
     add: {
       description: "stage paths",
+      safety: "action",
       input: {
         paths: { type: "string", cli: { usage: "<...paths>", complete: "filepaths" } }
       },
@@ -42,6 +46,7 @@ export const git = external({
     },
     commit: {
       description: "record a commit",
+      safety: "action",
       input: {
         message: { type: "string", description: "commit message", required: true, cli: "--message, -m" },
         all: { type: "boolean", description: "stage tracked changes first", cli: "--all, -a" }
@@ -50,6 +55,7 @@ export const git = external({
     },
     push: {
       description: "push a ref",
+      safety: "action",
       input: {
         remote: { type: "string", cli: "[remote]" },
         branch: { type: "string", cli: "[branch]" }
@@ -58,6 +64,7 @@ export const git = external({
     },
     pull: {
       description: "pull a ref",
+      safety: "action",
       input: {
         ffOnly: { type: "boolean", cli: "--ff-only" }
       },

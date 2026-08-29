@@ -7,18 +7,21 @@ export const ci = program({
   commands: {
     list: {
       description: "recent workflow runs",
+      safety: "read",
       output: text,
       cli: { render: printText },
       run: (_input, ctx) => captured(ctx, "gh", ["run", "list", "--limit", "10"])
     },
     watch: {
       description: "watch one run to completion",
+      safety: "read",
       mcp: { hidden: true },
       input: { run: { type: "string", description: "run id", cli: "<run>" } },
       run: (input, ctx) => streamed(ctx, "gh", ["run", "watch", "--exit-status", input.run])
     },
     logs: {
       description: "failed-job logs",
+      safety: "read",
       mcp: { hidden: true },
       input: { run: { type: "string", description: "run id", cli: "[run]" } },
       run: (input, ctx) =>
@@ -26,6 +29,7 @@ export const ci = program({
     },
     rerun: {
       description: "re-run a failed run",
+      safety: "action",
       input: { run: { type: "string", description: "run id", cli: "[run]" } },
       output: text,
       cli: { render: printText },
@@ -34,6 +38,7 @@ export const ci = program({
     },
     cancel: {
       description: "cancel a run",
+      safety: "action",
       input: { run: { type: "string", description: "run id", cli: "[run]" } },
       output: text,
       cli: { render: printText },
@@ -42,6 +47,7 @@ export const ci = program({
     },
     dispatch: {
       description: "dispatch the ci workflow",
+      safety: "action",
       output: text,
       cli: { render: printText },
       run: (_input, ctx) => captured(ctx, "gh", ["workflow", "run", "ci.yml"])

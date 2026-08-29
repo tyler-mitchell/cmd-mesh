@@ -5,6 +5,7 @@ import { InvalidDeclaration } from "./errors.js"
 import type {
   CliCommandConfig,
   CliParameterConfig,
+  CommandSafety,
   ExternalCommandDecl,
   ExternalDecl,
   McpCommandConfig,
@@ -95,6 +96,7 @@ export interface CompiledCommand {
   readonly mcpHidden: boolean
   readonly mcpName: Option.Option<string>
   readonly mcpAnnotations: Option.Option<Readonly<globalThis.Record<string, unknown>>>
+  readonly safety: Option.Option<CommandSafety>
   /** cli-only presentation override for the command's output */
   readonly cliRender: Option.Option<(output: unknown) => string>
   /** present on external commands: binary, fixed leading argv, and the
@@ -112,6 +114,7 @@ interface RawCommandDecl {
   readonly output?: unknown
   readonly narrow?: (input: any, ctx: any) => boolean
   readonly run?: (input: any, ctx: any) => unknown
+  readonly safety?: string
   readonly commands?: globalThis.Record<string, RawCommandDecl | Mounted>
   readonly cli?: CliCommandConfig<never>
   readonly mcp?: McpCommandConfig
@@ -520,6 +523,10 @@ const collectCommand = (
         )
     })
   )
+  const safetyIssues: ReadonlyArray<DeclarationIssue> =
+    decl.safety !== undefined && !Array.contains(["read", "action", "destructive"], decl.safety)
+      ? [{ at, problem: `safety must be "read", "action" or "destructive" (got: ${decl.safety})` }]
+      : []
   const command: CompiledCommand = {
     kind: "internal",
     name,
@@ -545,6 +552,7 @@ const collectCommand = (
     mcpHidden: decl.mcp?.hidden === true,
     mcpName: Option.fromNullishOr(decl.mcp?.name),
     mcpAnnotations: Option.fromNullishOr(decl.mcp?.annotations),
+    safety: Option.fromNullishOr(decl.safety as CommandSafety | undefined),
     cliRender: Option.fromNullishOr(decl.cli?.render as ((output: unknown) => string) | undefined),
     external: Option.none()
   }
@@ -552,6 +560,7 @@ const collectCommand = (
     ownIssues,
     Array.appendAll(aliasIssues),
     Array.appendAll(defaultIssues),
+    Array.appendAll(safetyIssues),
     Array.appendAll(
       pipe(Record.toEntries(childPairs), Array.flatMap(([, [, childIssues]]) => childIssues))
     )
@@ -664,6 +673,7 @@ export const compileExternal = (decl: ExternalDecl): CompiledCommand => {
     mcpHidden: false,
     mcpName: Option.none(),
     mcpAnnotations: Option.none(),
+    safety: Option.none(),
     cliRender: Option.none(),
     external: Option.some({ bin, argPath: [], successCodes: [0] })
   }

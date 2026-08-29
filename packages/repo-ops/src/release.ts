@@ -7,6 +7,7 @@ const promote = program({
   commands: {
     pr: {
       description: "show the open promotion PR",
+      safety: "read",
       output: text,
       cli: { render: printText },
       run: (_input, ctx) =>
@@ -14,6 +15,7 @@ const promote = program({
     },
     create: {
       description: "open the promotion PR",
+      safety: "action",
       output: text,
       cli: { render: printText },
       run: (_input, ctx) =>
@@ -21,6 +23,7 @@ const promote = program({
     },
     merge: {
       description: "queue the promotion merge",
+      safety: "action",
       output: text,
       cli: { render: printText },
       run: (_input, ctx) => captured(ctx, "gh", ["pr", "merge", "main", "--merge", "--auto"])
@@ -37,18 +40,21 @@ export const createRelease = (packageName: string) =>
     commands: {
       add: {
         description: "author a bump file (interactive)",
+        safety: "action",
         mcp: { hidden: true },
         input: { args: { type: "string", description: "bumpy add arguments", cli: "[...args]" } },
         run: (input, ctx) => streamed(ctx, "bumpy", ["add", ...input.args])
       },
       check: {
         description: "every changed package has a bump",
+        safety: "read",
         output: text,
         cli: { render: printText },
         run: (_input, ctx) => captured(ctx, "bumpy", ["check", "--strict"])
       },
       status: {
         description: "pending bumps and planned versions",
+        safety: "read",
         output: text,
         cli: { render: printText },
         // bumpy exits 1 when nothing is pending, with the JSON still on
@@ -57,12 +63,14 @@ export const createRelease = (packageName: string) =>
       },
       push: {
         description: "push the daily branch",
+        safety: "action",
         output: text,
         cli: { render: printText },
         run: (_input, ctx) => captured(ctx, "git", ["push", "origin", "main"])
       },
       pr: {
         description: "show the open version PR",
+        safety: "read",
         output: text,
         cli: { render: printText },
         run: (_input, ctx) =>
@@ -72,6 +80,7 @@ export const createRelease = (packageName: string) =>
       },
       merge: {
         description: "queue the version PR squash merge",
+        safety: "action",
         output: text,
         cli: { render: printText },
         run: (_input, ctx) =>
@@ -79,18 +88,21 @@ export const createRelease = (packageName: string) =>
       },
       update: {
         description: "update the version PR branch",
+        safety: "action",
         output: text,
         cli: { render: printText },
         run: (_input, ctx) => captured(ctx, "gh", ["pr", "update-branch", "bumpy/version-packages"])
       },
       "registry-version": {
         description: "published version on npm",
+        safety: "read",
         output: text,
         cli: { render: printText },
         run: (_input, ctx) => captured(ctx, "npm", ["view", packageName, "version"])
       },
       sync: {
         description: "synchronize main forward from release",
+        safety: "action",
         input: {
           merge: { type: "boolean", description: "merge-pull when histories diverged", cli: "--merge" }
         },
