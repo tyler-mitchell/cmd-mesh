@@ -28,12 +28,16 @@
     "build": "tsc --project tsconfig.build.json",
     "prepare": "pnpm run build",
     "test": "vitest run",
-    "typecheck": "tsc --project tsconfig.json --noEmit"
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "check:pack": "pnpm run build && publint && attw --pack . --profile esm-only",
+    "check": "pnpm run typecheck && pnpm run test && pnpm run check:pack"
   },
   "dependencies": {
     "cmd-mesh": "workspace:*"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "publint": "^0.3.24",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },

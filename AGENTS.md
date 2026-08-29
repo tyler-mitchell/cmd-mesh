@@ -188,6 +188,13 @@ The backend's tools surface unchanged and one extra tool appears:
 `reload`. After editing any of repokit, repo-ops or cmd-mesh, call
 `reload`, then call the tools normally — the connection stays up.
 
+`reload` swaps the implementation behind the tools a session already
+has. ADDING a command is different: the reload reports it in
+`toolsAdded` and the backend serves it, but a client attached before it
+existed cannot call it — measured 2026-08-30, the call answered "No
+such tool available". Editing is one `reload`; a new command still
+needs a restart.
+
 No `--build` is passed, because the launch line already runs source.
 
 `--conditions=development` is what makes that reach the OTHER packages.
