@@ -42,13 +42,9 @@ export const sourceCandidates = (source: string, current: string): ReadonlyArray
     Effect.try(() => {
       const dir = current.slice(0, current.lastIndexOf("/") + 1)
       const entries = readdirSync(dir === "" ? "." : dir, { withFileTypes: true })
-      if (source === "folders" || source === "directories") {
-        return Array.flatMap(entries, (e) => e.isDirectory() ? [`${dir}${e.name}/`] : [])
-      }
-      if (source === "files" || source === "filepaths") {
-        return Array.map(entries, (e) => e.isDirectory() ? `${dir}${e.name}/` : `${dir}${e.name}`)
-      }
-      return [] as ReadonlyArray<string>
+      return source === "folders"
+        ? Array.flatMap(entries, (e) => e.isDirectory() ? [`${dir}${e.name}/`] : [])
+        : Array.map(entries, (e) => e.isDirectory() ? `${dir}${e.name}/` : `${dir}${e.name}`)
     }).pipe(Effect.orElseSucceed(() => [] as ReadonlyArray<string>))
   )
 

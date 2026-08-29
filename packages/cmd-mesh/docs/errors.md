@@ -106,23 +106,23 @@ token must resolve to exactly one child.
 
 ## CMSH1013
 
-A parameter or command carries a field the model does not have.
-TypeScript's own excess-property check covers a declaration unevenly: it
-reports a stray field typed as one object, and misses one typed as a
-union with a primitive — which is exactly where parameters live
-(`ParameterDef` is `string | ParameterDescriptor`, and `cli` is `string
-| CliParameterConfig`). A caller reaching these functions from
-JavaScript gets no check at all. The declaration is rejected here
-instead.
+A parameter or a command has a field that the model does not have.
+
+TypeScript does not find all of these fields. It reports an unknown
+field when the type is one object. It does not report an unknown field
+when the type is a union with a primitive. Parameters have this union
+type: `ParameterDef` is `string | ParameterDescriptor`, and `cli` is
+`string | CliParameterConfig`. A JavaScript caller has no check. Thus
+the interpreter rejects the declaration.
 
 ```ts
 paths: { type: "string", cli: { usage: "<...paths>", complete: "filepaths" } }  // ✗ no cli.complete
 paths: { type: "string", suggest: "filepaths", cli: "<...paths>" }              // ✓
 ```
 
-The same check covers command fields, where a typo is more dangerous:
-`mcp: { hiden: true }` leaves the command advertised to agents, because
-the real `mcp.hidden` was never set.
+The check also applies to command fields. An incorrect name in `mcp` is
+more dangerous. `mcp: { hiden: true }` does not set `mcp.hidden`. The
+command stays visible to agents.
 
 Parameter fields are `type`, `description`, `suggest`, `required`,
 `cli`, `mcp`; the parameter `cli` object takes `usage`, `env`, `hidden`.
@@ -131,3 +131,19 @@ Command fields are `description`, `input`, `output`, `narrow`, `run`,
 `version`, `resources` and `bin` at a declaration root; the command
 `cli` object takes `hidden`, `alias`, `default`, `render`, `examples`,
 and `mcp` takes `hidden`, `name`, `annotations`, `examples`.
+
+## CMSH1014
+
+The `suggest` field names a source that the model does not know. A
+string value must be a named source. An unknown name gives no candidates
+and shows no error.
+
+```ts
+paths: { type: "string", suggest: "flepaths" }              // ✗ lists nothing
+paths: { type: "string", suggest: "filepaths" }             // ✓ files and folders
+paths: { type: "string", suggest: "folders" }               // ✓ folders only
+paths: { type: "string", suggest: ["src", "test"] }         // ✓ a static list
+```
+
+The named sources are `filepaths` and `folders`. For other candidates,
+use a list of values or a generator function.

@@ -63,6 +63,11 @@ export const diagnostics = defineDiagnostics({
       why: (p: { key: string; known: string }) =>
         `unknown parameter field ${p.key} — known fields are ${p.known}`,
       fix: "Correct the spelling, or move the value to the field that owns it."
+    },
+    CMSH1014: {
+      why: (p: { source: string; known: string }) =>
+        `unknown suggestion source "${p.source}" — named sources are ${p.known}`,
+      fix: "Name a real source, or give a list of values or a generator instead."
     }
   }
 })

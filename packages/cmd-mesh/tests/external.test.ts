@@ -396,10 +396,7 @@ describe("external declaration validation", () => {
     }
   })
 
-  // a `const` generic checks its constraint by assignability, which
-  // ignores excess properties — tsc cannot see a misspelled field, so
-  // the interpreter has to. this exact typo shipped in repo-ops and
-  // silently dropped git add's filepath completion.
+  // This error was in repo-ops. It stopped the completion for git add.
   it("rejects a misspelled parameter field the compiler cannot see", () => {
     expect(() =>
       external({
@@ -411,11 +408,7 @@ describe("external declaration validation", () => {
     ).toThrow(/CMSH1013.*cli\.complete/s)
   })
 
-  // the dangerous one: a typo here leaves the command ADVERTISED to
-  // agents, because the real mcp.hidden was never set. tsc catches this
-  // particular shape, so the cast is what makes the runtime guard the
-  // subject — a caller reaching external() from JavaScript gets no such
-  // help.
+  // TypeScript rejects this field. A JavaScript caller has no check.
   it("rejects a misspelled mcp field instead of exposing the command", () => {
     expect(() =>
       external({
@@ -429,6 +422,15 @@ describe("external declaration validation", () => {
     expect(() =>
       external({ name: "tool", commands: { go: { description: "go", saftey: "read" } } })
     ).toThrow(/CMSH1013.*saftey/s)
+  })
+
+  it("rejects a suggestion source that lists nothing", () => {
+    expect(() =>
+      external({
+        name: "tool",
+        commands: { add: { input: { paths: { type: "string", suggest: "flepaths", cli: "<paths>" } } } }
+      })
+    ).toThrow(/CMSH1014.*flepaths/s)
   })
 
   it("rejects a misspelled descriptor field", () => {

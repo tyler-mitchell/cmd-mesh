@@ -171,13 +171,23 @@ const attempt = <A>(f: () => A): Attempt<A> =>
   )
 
 /** structural problems a single parameter can carry */
+// A suggest string must be a named source. Other values give no candidates.
+const namedSuggestSources = ["filepaths", "folders"]
+
 const parameterIssues = (at: string, p: CompiledParameter): ReadonlyArray<DeclarationIssue> =>
   Array.flatMap(
     [
       p.binding._tag === "positional" && p.isBoolean ? [diagnostics.CMSH1002()] : [],
       p.binding._tag === "positional" && Option.isSome(p.env) ? [diagnostics.CMSH1003()] : [],
       p.binding._tag === "positional" && p.cliHidden ? [diagnostics.CMSH1004()] : [],
-      p.binding._tag === "flag" && p.binding.variadic && p.isBoolean ? [diagnostics.CMSH1005()] : []
+      p.binding._tag === "flag" && p.binding.variadic && p.isBoolean ? [diagnostics.CMSH1005()] : [],
+      Option.match(p.source, {
+        onNone: () => [],
+        onSome: (source) =>
+          Array.contains(namedSuggestSources, source)
+            ? []
+            : [diagnostics.CMSH1014({ source, known: Array.join(namedSuggestSources, ", ") })]
+      })
     ],
     (found) => Array.map(found, (diagnostic) => ({ at, problem: issueText(diagnostic) }))
   )
@@ -220,14 +230,7 @@ const commandIssues = (
   return Array.appendAll(collisions, misplacedVariadic)
 }
 
-// tsc's excess-property check covers a declaration unevenly: it fires
-// on a field typed as one object (mcp.hiden errors) and misses one
-// typed as a union with a primitive, which is where a parameter lives
-// (ParameterDef = string | ParameterDescriptor, cli = string |
-// CliParameterConfig). Observed misses: a stray command field, a stray
-// descriptor field, and cli.complete — the last shipped in repo-ops and
-// silently dropped git add's completion. A JavaScript caller gets no
-// check at all. The interpreter rejects every case.
+// TypeScript does not find all unknown fields. See docs/errors.md.
 const descriptorFields = ["type", "description", "suggest", "required", "cli", "mcp"]
 const cliFields = ["usage", "env", "hidden"]
 
@@ -248,10 +251,7 @@ const strayIssues = (
     problem: issueText(diagnostics.CMSH1013({ key, known: Array.join(known, ", ") }))
   }))
 
-// one list across program commands, external commands, and the root:
-// a field legal on any of them passes everywhere, which costs a little
-// precision and saves threading four sets through two collectors. A
-// typo still lands, because a typo matches no form's vocabulary.
+// One list for all command forms. An incorrect name is not in the list.
 const commandFields = [
   "description",
   "input",
@@ -271,9 +271,7 @@ const commandFields = [
 const cliCommandFields = ["hidden", "alias", "default", "render", "examples"]
 const mcpFields = ["hidden", "name", "annotations", "examples"]
 
-/** a misspelled command field is as invisible to tsc as a misspelled
- * parameter field, and `mcp: { hiden: true }` would advertise a command
- * meant to stay off the agent surface */
+/** An incorrect mcp field keeps a hidden command visible to agents. */
 const commandFieldIssues = (at: string, decl: unknown): ReadonlyArray<DeclarationIssue> => {
   const nested = decl as { readonly cli?: unknown; readonly mcp?: unknown }
   return strayIssues(at, [
