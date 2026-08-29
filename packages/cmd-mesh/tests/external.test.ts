@@ -238,11 +238,11 @@ describe("mounted modules through the parent cli", () => {
     expect(() =>
       external({
         name: "clash",
-        input: { dir: { type: "string", cli: "-C" } },
+        input: { dir: ["string", "@", { cli: "-C" }] },
         commands: {
           run: {
             description: "run",
-            input: { dir: { type: "string", cli: "-C" } },
+            input: { dir: ["string", "@", { cli: "-C" }] },
             output: "string"
           }
         }
@@ -377,11 +377,11 @@ describe("external declaration validation", () => {
       external({
         name: "tool",
         commands: {
-          first: { input: { bad: { type: "not.a.keyword" } } },
+          first: { input: { bad: "not.a.keyword" } },
           second: {
             input: {
-              a: { type: "string", cli: "--same" },
-              b: { type: "string", cli: "--same" }
+              a: ["string", "@", { cli: "--same" }],
+              b: ["string", "@", { cli: "--same" }]
             }
           }
         }
@@ -401,7 +401,7 @@ describe("external declaration validation", () => {
       external({
         name: "tool",
         commands: {
-          add: { input: { paths: { type: "string", cli: { usage: "<...paths>", complete: "filepaths" } } } }
+          add: { input: { paths: ["string[]", "@", { cli: { usage: "<...paths>", complete: "filepaths" } }] } }
         }
       })
     ).toThrow(/CMSH1013.*cli\.complete/s)
@@ -448,7 +448,7 @@ describe("external declaration validation", () => {
         name: "tool",
         commands: {
           push: {
-            input: { token: { type: "string", cli: "--token", mcp: { hiden: true } } as never }
+            input: { token: ["string", "@", { cli: "--token", mcp: { hiden: true } }] as never }
           }
         }
       })
@@ -459,7 +459,7 @@ describe("external declaration validation", () => {
     expect(() =>
       external({
         name: "tool",
-        commands: { add: { input: { paths: { type: "string", suggest: "flepaths", cli: "<paths>" } } } }
+        commands: { add: { input: { paths: ["string", "@", { suggest: "flepaths", cli: "<paths>" }] } } }
       })
     ).toThrow(/CMSH1014.*flepaths/s)
   })
@@ -468,16 +468,16 @@ describe("external declaration validation", () => {
     expect(() =>
       external({
         name: "tool",
-        commands: { add: { input: { paths: { type: "string", suggest: "flepaths", cli: "<paths>" } } } }
+        commands: { add: { input: { paths: ["string", "@", { suggest: "flepaths", cli: "<paths>" }] } } }
       })
     ).toThrow(/docs\/errors\.md#cmsh1014/)
   })
 
-  it("rejects a misspelled descriptor field", () => {
+  it("rejects a misspelled metadata key", () => {
     expect(() =>
       external({
         name: "tool",
-        commands: { go: { input: { where: { type: "string", sugest: "folders", cli: "<where>" } } } }
+        commands: { go: { input: { where: ["string", "@", { sugest: "folders", cli: "<where>" }] } } }
       })
     ).toThrow(/CMSH1013.*sugest/s)
   })
