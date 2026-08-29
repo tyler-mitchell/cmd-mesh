@@ -15,3 +15,6 @@ dist/
 
 docs/internal/
 .tmp/
+
+# `mcp install` writes this machine's own absolute paths into it
+.mcp.json
