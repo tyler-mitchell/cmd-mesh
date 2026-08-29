@@ -119,6 +119,39 @@ describe("mcp tool identity", () => {
     ])
   })
 
+  it("serves the spec as a resource and a paired read tool over a live client", async () => {
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js")
+    const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js")
+    const app = program({
+      name: "live",
+      version: "9.9.9",
+      commands: {
+        greet: { safety: "read", input: { who: { type: "string", cli: "<who>" } }, run: (input) => input.who }
+      }
+    })
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    await app.mcp.server().connect(serverTransport)
+    const client = new Client({ name: "witness", version: "0.0.0" })
+    await client.connect(clientTransport)
+
+    const resources = await client.listResources()
+    expect(resources.resources.map((r) => r.uri)).toEqual(["cmd-mesh://spec"])
+    const read = await client.readResource({ uri: "cmd-mesh://spec" })
+    const spec = JSON.parse((read.contents[0] as { text: string }).text)
+    expect(spec.version).toBe("9.9.9")
+    expect(spec.commands[0].path).toEqual(["live", "greet"])
+
+    const tools = await client.listTools()
+    const specTool = tools.tools.find((t) => t.name === "live_spec")!
+    expect(specTool.annotations).toEqual({ readOnlyHint: true, destructiveHint: false })
+    const called = await client.callTool({ name: "live_spec", arguments: {} })
+    expect((called.structuredContent as { spec: { version: string } }).spec.version).toBe("9.9.9")
+
+    const greeted = await client.callTool({ name: "live_greet", arguments: { who: "world" } })
+    expect((greeted.content as ReadonlyArray<{ text: string }>)[0]!.text).toContain("world")
+    await client.close()
+  })
+
   it("rejects an example that does not satisfy the input schema", () => {
     expect(() =>
       program({

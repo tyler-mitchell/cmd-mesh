@@ -26,7 +26,7 @@ import {
 import { Exec } from "./exec.js"
 import { promptArgv } from "./interactive.js"
 import { invokeParsed, invokeValues, withResources } from "./invoke.js"
-import { collectTools, inputSchema, serveMcp } from "./mcp.js"
+import { buildMcpServer, collectTools, inputSchema, serveMcp } from "./mcp.js"
 import { Predicate } from "effect"
 import { renderHelp, renderResult, usageLine } from "./render.js"
 import { project, workspace } from "package-management"
@@ -191,7 +191,8 @@ const serveEffect = (
     (cmd, input, ctx) =>
       withResources(cmd.path, specs, (resources) => invokeValues(cmd, input, { ...ctx, resources })),
     (effect, signal) => runAbortable(runtime, effect, signal),
-    makeCtx(runtime, "mcp")
+    makeCtx(runtime, "mcp"),
+    deepFrozen(specOf(compiled, version))
   )
 
 const runCli = (
@@ -436,7 +437,17 @@ export const program = <
       },
       mcp: {
         tools: deepFrozen(Array.map(collectTools(compiled), (t) => t.tool)),
-        serve: () => runtime.runPromise(Effect.asVoid(serveEffect(runtime, compiled, version, specs)))
+        serve: () => runtime.runPromise(Effect.asVoid(serveEffect(runtime, compiled, version, specs))),
+        server: () =>
+          buildMcpServer(
+            compiled,
+            { name: compiled.name, version },
+            (cmd, input, ctx) =>
+              withResources(cmd.path, specs, (resources) => invokeValues(cmd, input, { ...ctx, resources })),
+            (effect, signal) => runAbortable(runtime, effect, signal),
+            makeCtx(runtime, "mcp"),
+            deepFrozen(specOf(compiled, version))
+          )
       },
       spec: deepFrozen(specOf(compiled, version)),
       [mounted]: compiled

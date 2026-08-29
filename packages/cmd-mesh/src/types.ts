@@ -416,6 +416,10 @@ export interface McpTool {
 export interface McpProjection {
   readonly tools: ReadonlyArray<McpTool>
   serve(): Promise<void>
+  /** the same server as a connectable instance for a caller-owned
+   * transport — an HTTP route, a test pair; `serve()` is the stdio
+   * production path */
+  server(): import("@modelcontextprotocol/sdk/server/index.js").Server
 }
 
 /** the cli projection: parse, route, run, render, resolve exit code.

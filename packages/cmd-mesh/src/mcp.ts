@@ -1,9 +1,14 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js"
+import {
+  CallToolRequestSchema,
+  ListResourcesRequestSchema,
+  ListToolsRequestSchema,
+  ReadResourceRequestSchema
+} from "@modelcontextprotocol/sdk/types.js"
 import { Array, Effect, Option, Predicate, Record, pipe } from "effect"
 import type { AnyType, CompiledCommand } from "./compile.js"
-import type { Ctx, McpTool } from "./types.js"
+import type { CommandSpec, Ctx, McpTool } from "./types.js"
 
 // the mcp projection: the same compiled model as typed tools. input schemas
 // come from the value-boundary type (agents speak canonical JSON), via
@@ -215,36 +220,93 @@ const textResult = (text: string, isError?: boolean): ToolResult => ({
   ...(isError === true ? { isError: true } : {})
 })
 
-/** serve the tools over stdio; the effect stays alive until the process ends */
-export const serveMcp = (
+const SPEC_URI = "cmd-mesh://spec"
+
+/** the spec both ways, devframe's precedent: a resource for clients
+ * that read resources, and a paired read tool because many MCP clients
+ * only consume tools. a declared tool claiming the name wins. */
+const specToolFor = (rootName: string): McpTool => ({
+  name: `${rootName}_spec`,
+  description:
+    `The complete command surface of ${rootName} as one JSON descriptor: every command with its input schema, output schema, safety, and examples. Read it to plan calls instead of probing. Safe to call freely.`,
+  inputSchema: { type: "object", properties: {} },
+  outputSchema: { type: "object", properties: { spec: {} }, required: ["spec"] },
+  annotations: { readOnlyHint: true, destructiveHint: false }
+})
+
+/** the server as a pure factory over any transport — stdio in
+ * production, an in-memory pair in witnesses */
+export const buildMcpServer = (
   root: CompiledCommand,
   meta: { readonly name: string; readonly version: string },
   invoke: (cmd: CompiledCommand, input: unknown, ctx: Ctx) => Effect.Effect<unknown, unknown, any>,
   runPromise: <A>(effect: Effect.Effect<A, never, any>, signal?: AbortSignal) => Promise<A>,
-  ctx: Ctx
-): Effect.Effect<never, Error> =>
-  Effect.gen(function*() {
+  ctx: Ctx,
+  spec: CommandSpec
+): Server => {
+  {
     const tools = collectTools(root)
     const byName = Record.fromEntries(Array.map(tools, (t) => [t.tool.name, t] as const))
-    const server = new Server({ name: meta.name, version: meta.version }, { capabilities: { tools: {} } })
+    const specTool = Option.fromNullishOr(
+      Record.has(byName, `${meta.name}_spec`) ? undefined : specToolFor(meta.name)
+    )
+    const server = new Server(
+      { name: meta.name, version: meta.version },
+      { capabilities: { tools: {}, resources: {} } }
+    )
+    server.setRequestHandler(ListResourcesRequestSchema, async () => ({
+      resources: [{
+        uri: SPEC_URI,
+        name: "spec",
+        description: `The complete command surface of ${meta.name} as one JSON descriptor.`,
+        mimeType: "application/json"
+      }]
+    }))
+    server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+      if (request.params.uri !== SPEC_URI) {
+        throw new Error(`unknown resource: ${request.params.uri}`)
+      }
+      return {
+        contents: [{ uri: SPEC_URI, mimeType: "application/json", text: JSON.stringify(spec, null, 2) }]
+      }
+    })
     server.setRequestHandler(ListToolsRequestSchema, async () => ({
-      tools: Array.map(tools, (t) => ({
-        name: t.tool.name,
-        description: t.tool.description,
-        inputSchema: t.tool.inputSchema as { readonly type: "object" },
-        ...(t.tool.outputSchema === undefined
-          ? {}
-          : { outputSchema: t.tool.outputSchema as { readonly type: "object" } }),
-        ...(t.tool.annotations === undefined ? {} : { annotations: t.tool.annotations })
-      }))
+      tools: [
+        ...Array.map(tools, (t) => ({
+          name: t.tool.name,
+          description: t.tool.description,
+          inputSchema: t.tool.inputSchema as { readonly type: "object" },
+          ...(t.tool.outputSchema === undefined
+            ? {}
+            : { outputSchema: t.tool.outputSchema as { readonly type: "object" } }),
+          ...(t.tool.annotations === undefined ? {} : { annotations: t.tool.annotations })
+        })),
+        ...Option.match(specTool, {
+          onNone: () => [],
+          onSome: (tool) => [{
+            name: tool.name,
+            description: tool.description,
+            inputSchema: tool.inputSchema as { readonly type: "object" },
+            outputSchema: tool.outputSchema as { readonly type: "object" },
+            annotations: tool.annotations
+          }]
+        })
+      ]
     }))
     // the sdk demands async handlers: runPromise is the sanctioned bridge,
     // and the request's AbortSignal interrupts the invocation — a
     // cancelled tool call kills any child process it spawned
     server.setRequestHandler(CallToolRequestSchema, (async (request: {
       readonly params: { readonly name: string; readonly arguments?: unknown }
-    }, extra: { readonly signal: AbortSignal }) =>
-      runPromise(
+    }, extra: { readonly signal: AbortSignal }) => {
+      const specCall = Option.filter(specTool, (tool) => tool.name === request.params.name)
+      if (Option.isSome(specCall)) {
+        return {
+          ...textResult(JSON.stringify(spec, null, 2)),
+          structuredContent: { spec }
+        }
+      }
+      return runPromise(
         pipe(
           Record.get(byName, request.params.name),
           Option.match({
@@ -274,7 +336,23 @@ export const serveMcp = (
           })
         ),
         extra.signal
-      )) as never)
+      )
+    }) as never)
+    return server
+  }
+}
+
+/** serve the tools over stdio; the effect stays alive until the process ends */
+export const serveMcp = (
+  root: CompiledCommand,
+  meta: { readonly name: string; readonly version: string },
+  invoke: (cmd: CompiledCommand, input: unknown, ctx: Ctx) => Effect.Effect<unknown, unknown, any>,
+  runPromise: <A>(effect: Effect.Effect<A, never, any>, signal?: AbortSignal) => Promise<A>,
+  ctx: Ctx,
+  spec: CommandSpec
+): Effect.Effect<never, Error> =>
+  Effect.gen(function*() {
+    const server = buildMcpServer(root, meta, invoke, runPromise, ctx, spec)
     yield* Effect.tryPromise({
       try: () => server.connect(new StdioServerTransport()),
       catch: (cause) => new Error(`mcp transport failed: ${cause}`)
