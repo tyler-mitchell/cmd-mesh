@@ -56,7 +56,6 @@ export type {
   Mounted,
   NarrowContext,
   ParameterDef,
-  ParameterDescriptor,
   ParameterSpec,
   ProgramModule,
   ResourceSpec,

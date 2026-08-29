@@ -48,13 +48,16 @@ export const repokit = program({
       description: "search tracked files, structured results",
       safety: "read",
       input: {
-        pattern: { type: "string", description: "regex to search for", cli: "<pattern>" },
-        glob: {
-          type: "string",
-          description: "limit to a pathspec, e.g. 'packages/**/*.ts'",
-          suggest: "filepaths",
-          cli: "--glob, -g"
-        }
+        pattern: ["string", "@", { description: "regex to search for", cli: "<pattern>" }],
+        "glob?": [
+          "string",
+          "@",
+          {
+            description: "limit to a pathspec, e.g. 'packages/**/*.ts'",
+            suggest: "filepaths",
+            cli: "--glob, -g"
+          }
+        ]
       },
       output: [{ file: "string", line: "number", text: "string" }, "[]"],
       run: (input, ctx) =>
@@ -68,7 +71,7 @@ export const repokit = program({
       description: "collect TODO/FIXME comments",
       safety: "read",
       input: {
-        assignee: { type: "string", description: "filter by @assignee", cli: "--assignee, -a" }
+        "assignee?": ["string", "@", { description: "filter by @assignee", cli: "--assignee, -a" }]
       },
       output: [{ file: "string", line: "number", tag: "'TODO' | 'FIXME'", text: "string" }, "[]"],
       run: async (input, ctx) => {
@@ -86,7 +89,7 @@ export const repokit = program({
       safety: "read",
       cli: { hidden: true },
       input: {
-        commits: { type: "string.integer.parse = '10'", description: "recent commits to include" }
+        commits: ["string.integer.parse", "@", { description: "recent commits to include", default: "10" }]
       },
       output: { branch: "string", recent: "string[]", dirty: "string[]" },
       run: async (input, ctx) => {
@@ -118,14 +121,17 @@ export const repokit = program({
       description: "run a package script with live output",
       safety: "action",
       input: {
-        filter: {
-          type: "string",
-          description: "pnpm --filter selector",
-          suggest: (ctx: SuggestContext) => ctx.workspace.packageNames(),
-          cli: "<filter>"
-        },
-        script: { type: "string = 'typecheck'", description: "script to run" },
-        timeout: { type: "string.integer.parse = '600000'", description: "timeout in ms" }
+        filter: [
+          "string",
+          "@",
+          {
+            description: "pnpm --filter selector",
+            suggest: (ctx: SuggestContext) => ctx.workspace.packageNames(),
+            cli: "<filter>"
+          }
+        ],
+        script: ["string", "@", { description: "script to run", default: "typecheck" }],
+        timeout: ["string.integer.parse", "@", { description: "timeout in ms", default: "600000" }]
       },
       output: { filter: "string", script: "string" },
       run: async (input, ctx) => {

@@ -13,7 +13,7 @@ const registry = external({
   commands: {
     publish: {
       description: "publish through the registry binary",
-      input: { tag: { type: "string = 'latest'", cli: "--tag" } },
+      input: { tag: [["string", "@", { cli: "--tag" }], "=", "latest"] },
       output: "string"
     }
   }
@@ -29,9 +29,13 @@ const pkgctl = program({
       description: "install packages",
       cli: { alias: ["i", "add"], examples: ["pkgctl add left-pad --filter workspace-a"] },
       input: {
-        pkgs: { type: "string", cli: "[...pkgs]" },
-        filter: { type: "string", cli: "--filter <filters...>, -F" },
-        registry: { type: "string = 'https://registry.npmjs.org'", cli: { usage: "--registry", env: "PKGCTL_REGISTRY" } }
+        pkgs: [["string[]", "@", { cli: "[...pkgs]" }], "=", () => []],
+        filter: [["string[]", "@", { cli: "--filter <filters...>, -F" }], "=", () => []],
+        registry: [
+          ["string", "@", { cli: "--registry", env: "PKGCTL_REGISTRY" }],
+          "=",
+          "https://registry.npmjs.org"
+        ]
       },
       output: { pkgs: "string[]", filters: "string[]", registry: "string" },
       run: (input) => ({
@@ -57,7 +61,7 @@ const pkgctl = program({
         },
         focus: {
           description: "focus one workspace",
-          input: { name: { type: "'a' | 'b'", cli: "<name>" } },
+          input: { name: ["'a' | 'b'", "@", { cli: "<name>" }] },
           output: { focused: "string" },
           run: (input: { readonly name: string }) => ({ focused: input.name })
         }
@@ -128,7 +132,7 @@ describe("nested default children", () => {
           commands: {
             dev: {
               description: "dev",
-              input: { watch: { type: "boolean", cli: "--watch" } },
+              input: { watch: [["boolean", "@", { cli: "--watch" }], "=", false] },
               output: { via: "string", watch: "boolean" },
               run: (input: { readonly watch: boolean }) => ({ via: "dev", watch: input.watch })
             }
@@ -151,7 +155,7 @@ describe("repository questions through ctx", () => {
       commands: {
         deps: {
           description: "report a dependency's presence",
-          input: { name: { type: "string", cli: "<name>" } },
+          input: { name: ["string", "@", { cli: "<name>" }] },
           output: { name: "string", declared: "boolean", pkg: "string" },
           run: (input: { readonly name: string }, ctx) => {
             const self = ctx.project("<package_folder>")

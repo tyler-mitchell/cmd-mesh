@@ -27,6 +27,10 @@ const toolName = (cmd: CompiledCommand): string =>
 /** parameter descriptions and suggestion examples live in the
  * descriptor, not the ArkType def — fold them into a projected schema.
  * every schema surface shares this; it is not mcp-specific. */
+// ArkType emits every metadata key into JSON Schema, so this package's
+// own surface bindings would reach agents as schema fields.
+const surfaceKeys = ["cli", "suggest", "env", "hidden"]
+
 const documentSchema = (schema: unknown, cmd: CompiledCommand): unknown => {
   if (!Predicate.isObject(schema) || !Predicate.hasProperty(schema, "properties")) return schema
   const properties = (schema as { readonly properties: globalThis.Record<string, unknown> }).properties
@@ -39,7 +43,10 @@ const documentSchema = (schema: unknown, cmd: CompiledCommand): unknown => {
         onSome: (p) =>
           Predicate.isObject(prop)
             ? {
-              ...prop,
+              ...Record.filter(
+                prop as globalThis.Record<string, unknown>,
+                (_, k) => !Array.contains(surfaceKeys, k)
+              ),
               ...Option.match(p.description, {
                 onNone: () => ({}),
                 onSome: (description) =>
@@ -49,6 +56,12 @@ const documentSchema = (schema: unknown, cmd: CompiledCommand): unknown => {
               ...Option.match(p.staticSuggestions, {
                 onNone: () => ({}),
                 onSome: (examples) => Predicate.hasProperty(prop, "examples") ? {} : { examples }
+              }),
+              // the input-side projection carries no default — the value
+              // lives on the optional prop node, which .in drops
+              ...Option.match(p.defaultValue, {
+                onNone: () => ({}),
+                onSome: (value) => Predicate.hasProperty(prop, "default") ? {} : { default: value }
               })
             }
             : prop
@@ -58,8 +71,10 @@ const documentSchema = (schema: unknown, cmd: CompiledCommand): unknown => {
 }
 
 /** the full documented input schema — the `args` surface's projection */
+// the schema describes what a caller may SEND, so it projects the input
+// side. a morph has no JSON Schema representation; its input domain does.
 export const inputSchema = (cmd: CompiledCommand): unknown =>
-  documentSchema(jsonSchemaOf(cmd.schemaType), cmd)
+  documentSchema(jsonSchemaOf((cmd.schemaType as { readonly in: unknown }).in), cmd)
 
 /** the mcp projection additionally drops mcp-hidden parameters from the
  * advertised schema and its required list */
@@ -152,7 +167,10 @@ export const collectTools = (root: CompiledCommand): ReadonlyArray<NamedTool> =>
       tool: {
         name: toolName(root),
         description: describedWithExamples(root),
-        inputSchema: withSchemaExamples(withParameterDocs(jsonSchemaOf(root.schemaType), root), root),
+        inputSchema: withSchemaExamples(
+          withParameterDocs(jsonSchemaOf((root.schemaType as AnyType).in), root),
+          root
+        ),
         ...Option.match(output, {
           onNone: () => ({}),
           onSome: (o) => ({ outputSchema: o.schema })

@@ -42,26 +42,48 @@ export interface CliParameterConfig {
   readonly hidden?: boolean
 }
 
-export interface ParameterDescriptor {
-  /** any ArkType definition: a string ("string.integer.parse = '3000'"),
-   * an object def ({ a: "string" }), a tuple expression, or a Type
-   * instance. structured (non-string-def) parameters take a JSON token on
-   * the cli and real values on the call/mcp surface. */
-  readonly type: unknown
-  readonly description?: string
-  /** candidate values, universal to every surface. hoist generator
-   * functions to consts with annotated parameters — inline arrows are
-   * context-sensitive and collapse the command's type inference. */
-  readonly suggest?: SuggestSource
-  /** flags are optional unless required; positionals ignore this */
-  readonly required?: boolean
-  readonly cli?: string | CliParameterConfig
-  /** drop this parameter from the mcp tool schema; it still validates
-   * if supplied (secrets and internals stay unadvertised to agents) */
-  readonly mcp?: { readonly hidden?: boolean }
+/** surface bindings ride in ArkType metadata, so a parameter IS an
+ * ArkType property definition: `["string", "@", { cli: "<who>" }]`.
+ * ArkType owns the domain, optionality, defaults and morphs; this
+ * package owns only what argv and agents need on top. */
+// ArkType already carries `description`, `examples`, `deprecated` and
+// `default`; those are not redeclared. Everything below is a fact ArkType
+// cannot know: how the value reaches the program, and which surfaces show
+// it. NAME UNSETTLED for `argv` — see docs/internal/backlog.md.
+declare global {
+  interface ArkEnv {
+    meta(): {
+      /** how the parameter is written on the command line: "<x>" a
+       * required positional, "[x]" optional, "<...xs>" variadic,
+       * "--flag, -f" a flag and its aliases. omitted ⇒ a derived
+       * --kebab-case flag. */
+      cli?: string
+      /** environment variable fallback (argv > env > default) */
+      env?: string
+      /** candidate values, universal to every surface: shell completion
+       * is their cli projection, schema examples their mcp projection.
+       * hoist generator functions to consts with annotated parameters —
+       * inline arrows are context-sensitive and collapse inference. */
+      suggest?: SuggestSource
+      /** surfaces that omit this parameter. it still parses and still
+       * validates when supplied — hiding is presentation, never a
+       * security boundary. a positional cannot be cli-hidden: that
+       * would corrupt argv order for everything after it. */
+      hidden?: Surface | ReadonlyArray<Surface>
+    }
+  }
 }
 
-export type ParameterDef = string | ParameterDescriptor
+/** an input record is an ArkType object definition. validation is
+ * ArkType's own: a valid definition returns unchanged, an invalid one
+ * returns ArkType's error message, which makes the argument fail to
+ * assign at the declaration site. */
+export type ValidateInput<I> = I & type.validate<I>
+
+/** an output contract is any ArkType definition, validated the same way */
+export type ValidateOutput<O> = O & type.validate<O>
+
+export type ParameterDef = unknown
 
 export interface CliCommandConfig<Out = never> {
   readonly hidden?: boolean
@@ -176,61 +198,32 @@ export interface Ctx {
 }
 
 // ─── static inference ───────────────────────────────────────────────────────
-// what the compiler must produce, computed from the declaration literal.
-// param def string → ArkType inference; cli usage notation → optionality
-// and variadic shape.
-
-export type DefOf<P> = P extends string ? P : P extends { readonly type: infer D } ? D : never
-
-export type UsageOf<P> = P extends { readonly cli: infer C }
-  ? C extends string ? C : C extends { readonly usage: infer U extends string } ? U : ""
-  : ""
-
-/** raw inference of a morphing def is its morph signature — distill to the
- * output side, which is what handlers and callers see */
-type OutOf<P> = distill<type.infer<DefOf<P>>, "out">
-
-/** any notation carrying `...`: variadic positionals (`<...xs>`,
- * `[...xs]`) and repeatable flags (`--tag <tags...>`) */
-type IsVariadic<P> = UsageOf<P> extends `${string}...${string}` ? true : false
-type IsPositional<P> = UsageOf<P> extends `<${string}` | `[${string}` ? true : false
-type IsOptionalPositional<P> = UsageOf<P> extends `[${string}` ? true : false
-type HasDefault<P> = DefOf<P> extends `${string}=${string}` ? true : false
-type IsBoolean<P> = [OutOf<P>] extends [boolean] ? true : false
-type IsRequiredFlag<P> = P extends { readonly required: true } ? true : false
-
-type ValueOf<P> = IsVariadic<P> extends true ? ReadonlyArray<OutOf<P>> : OutOf<P>
-
-/** optional at the call boundary: defaulted, optional positional, or a
- * non-required flag (booleans default false, plain flags may be absent) */
-type CallOptional<P> = HasDefault<P> extends true ? true
-  : IsOptionalPositional<P> extends true ? true
-  : IsPositional<P> extends true ? false
-  : IsRequiredFlag<P> extends true ? false
-  : true
-
-/** still possibly absent when the handler runs: no default fills it */
-type HandlerOptional<P> = HasDefault<P> extends true ? false
-  : IsBoolean<P> extends true ? false
-  : IsVariadic<P> extends true ? false
-  : CallOptional<P>
+// `input` is an ArkType object definition, so ArkType's own inference is
+// the whole answer. its two sides ARE this package's two boundaries:
+// the input side is what a caller may supply (defaults and optional keys
+// omitted, morph inputs accepted), the output side what a handler
+// receives (defaults applied, morphs run).
 
 type Show<T> = { [K in keyof T]: T[K] } & {}
 
-export type CallInput<I> = Show<
-  & { readonly [K in keyof I as CallOptional<I[K]> extends true ? never : K]: ValueOf<I[K]> }
-  & { readonly [K in keyof I as CallOptional<I[K]> extends true ? K : never]?: ValueOf<I[K]> }
->
+/** later keys win, the type-level twin of the runtime spread that joins
+ * program-level options to a command's own input */
+type Merge<A, B> = Show<Omit<A, keyof B> & B>
 
-export type HandlerInput<I> = Show<
-  & { readonly [K in keyof I as HandlerOptional<I[K]> extends true ? never : K]: ValueOf<I[K]> }
-  & { readonly [K in keyof I as HandlerOptional<I[K]> extends true ? K : never]?: ValueOf<I[K]> }
->
+/** the call surface — ArkType's input side */
+export type CallInput<I> = Show<type.infer.In<I>>
+
+/** the handler surface — ArkType's output side */
+export type HandlerInput<I> = Show<type.infer.Out<I>>
 
 type InputOf<C> = C extends { readonly input: infer I } ? I : {}
 
-export type OutputOf<C, R> = C extends { readonly output: infer O } ? distill<type.infer<O>, "out">
+// `output` is an optional field, so `infer O` carries `| undefined` —
+// strip it, or the contract widens instead of constraining
+export type OutputOf<C, R> = C extends { readonly output: infer O }
+  ? [O] extends [undefined] ? Awaited<R> : distill<type.infer<NonNullable<O>>, "out">
   : Awaited<R>
+
 
 // ─── declaration inference ──────────────────────────────────────────────────
 // reverse-mapped-type pattern. TS inverts a homomorphic mapped type only
@@ -246,16 +239,29 @@ export type OutputOf<C, R> = C extends { readonly output: infer O } ? distill<ty
 // are mounted subprograms (`commands: { cache }`), each with its own full
 // inference — mounting is the contract's nesting mechanism anyway.
 
+// `input` and `output` are validated by ArkType itself, in place: a valid
+// definition passes through, an invalid one becomes ArkType's error
+// message and the declaration stops assigning.
 export type CommandsData<M> = {
-  readonly [N in keyof M]: M[N] extends Mounted ? M[N] : { readonly [K in keyof M[N]]: M[N][K] }
+  readonly [N in keyof M]: M[N] extends Mounted ? M[N] : {
+    readonly [K in keyof M[N]]: K extends "input" ? ValidateInput<M[N][K]>
+      : K extends "output" ? ValidateOutput<M[N][K]>
+      : M[N][K]
+  }
 }
 
 /** program-level options (root input) join every command's handler and
  * call surface — the same model as an external's binary-global options */
 export type CommandsOverlay<M, Rs, RIn = {}, Rsrc = {}> = {
   readonly [N in keyof Rs]: {
-    readonly run?: (input: HandlerInput<RIn & InputOf<M[N & keyof M]>>, ctx: Ctx & WithResources<Rsrc>) => Rs[N]
-    readonly narrow?: (input: HandlerInput<RIn & InputOf<M[N & keyof M]>>, ctx: NarrowContext) => boolean
+    readonly run?: (
+      input: HandlerInput<Merge<RIn, InputOf<M[N & keyof M]>>>,
+      ctx: Ctx & WithResources<Rsrc>
+    ) => Rs[N]
+    readonly narrow?: (
+      input: HandlerInput<Merge<RIn, InputOf<M[N & keyof M]>>>,
+      ctx: NarrowContext
+    ) => boolean
     // typed from the declared output contract only — referencing Rs here
     // would make the reverse mapped type uninvertible and collapse
     // handler inference. a contract-less command renders `unknown`.
@@ -270,8 +276,8 @@ export interface ProgramDeclOf<Name extends string, RootIn, RootOut, RootR, Cs, 
   /** program-level resources, acquired per invocation around every
    * handler of this program's own commands */
   readonly resources?: Rsrc
-  readonly input?: RootIn
-  readonly output?: RootOut
+  readonly input?: ValidateInput<RootIn>
+  readonly output?: ValidateOutput<RootOut>
   readonly narrow?: (input: HandlerInput<NoInfer<RootIn>>, ctx: NarrowContext) => boolean
   readonly run?: (input: HandlerInput<NoInfer<RootIn>>, ctx: Ctx & WithResources<NoInfer<Rsrc>>) => RootR
   readonly commands?: CommandsData<Cs> & CommandsOverlay<NoInfer<Cs>, Rs, NoInfer<RootIn>, NoInfer<Rsrc>>
@@ -285,7 +291,8 @@ export interface ProgramDeclOf<Name extends string, RootIn, RootOut, RootR, Cs, 
 
 export interface ExternalCommandDecl {
   readonly description?: string
-  readonly input?: globalThis.Record<string, ParameterDef>
+  /** an ArkType object definition; surface bindings ride in metadata */
+  readonly input?: object
   /** ArkType definition applied to stdout on success */
   readonly output?: unknown
   /** exit codes that count as success (default [0]) — `git grep`'s
@@ -305,7 +312,7 @@ export interface ExternalDecl {
   /** the binary's GLOBAL options (git's `-C`, `--no-pager`): emitted
    * before the subcommand path and available on every command's call
    * surface. command-level input emits after the subcommand. */
-  readonly input?: globalThis.Record<string, ParameterDef>
+  readonly input?: object
   readonly commands: globalThis.Record<string, ExternalCommandDecl>
 }
 
@@ -335,13 +342,13 @@ type CommandResult<C, R> = [R] extends [Promise<unknown>] ? Promise<OutputOf<C, 
 
 /** the input argument is optional whenever every key is optional.
  * RIn: program-level options joining this command's call surface. */
-export type CommandFn<C, R, RIn = {}> = {} extends CallInput<RIn & InputOf<C>>
-  ? (input?: CallInput<RIn & InputOf<C>>) => CommandResult<C, R>
-  : (input: CallInput<RIn & InputOf<C>>) => CommandResult<C, R>
+export type CommandFn<C, R, RIn = {}> = {} extends CallInput<Merge<RIn, InputOf<C>>>
+  ? (input?: CallInput<Merge<RIn, InputOf<C>>>) => CommandResult<C, R>
+  : (input: CallInput<Merge<RIn, InputOf<C>>>) => CommandResult<C, R>
 
 export type CommandModule<C, R, RIn = {}> =
   & CommandFn<C, R, RIn>
-  & { readonly args: ArgsType<HandlerInput<RIn & InputOf<C>>> }
+  & { readonly args: ArgsType<HandlerInput<Merge<RIn, InputOf<C>>>> }
   & (C extends { readonly commands: infer M } ? {
       readonly [K in keyof M]: M[K] extends Mounted ? M[K] : CommandModule<M[K], unknown, RIn>
     }
@@ -475,9 +482,9 @@ type ExternalIn<D> = D extends { readonly input: infer I } ? I : {}
 
 /** an external always crosses a process boundary — inherently async.
  * global (root-level) parameters join every command's call surface. */
-export type ExternalCommandFn<C, RIn> = {} extends CallInput<RIn & InputOf<C>>
-  ? (input?: CallInput<RIn & InputOf<C>>, options?: ExternalCallOptions) => Promise<OutputOf<C, Promise<string>>>
-  : (input: CallInput<RIn & InputOf<C>>, options?: ExternalCallOptions) => Promise<OutputOf<C, Promise<string>>>
+export type ExternalCommandFn<C, RIn> = {} extends CallInput<Merge<RIn, InputOf<C>>>
+  ? (input?: CallInput<Merge<RIn, InputOf<C>>>, options?: ExternalCallOptions) => Promise<OutputOf<C, Promise<string>>>
+  : (input: CallInput<Merge<RIn, InputOf<C>>>, options?: ExternalCallOptions) => Promise<OutputOf<C, Promise<string>>>
 
 export type ExternalModule<D extends ExternalDecl> =
   & Mounted
@@ -487,7 +494,7 @@ export type ExternalModule<D extends ExternalDecl> =
 
 export type ExternalCommandModule<C extends ExternalCommandDecl, RIn = {}> =
   & ExternalCommandFn<C, RIn>
-  & { readonly args: ArgsType<HandlerInput<RIn & InputOf<C>>> }
+  & { readonly args: ArgsType<HandlerInput<Merge<RIn, InputOf<C>>>> }
   & (C extends { readonly commands: infer M extends globalThis.Record<string, ExternalCommandDecl> }
     ? { readonly [K in keyof M]: ExternalCommandModule<M[K], RIn> }
     : {})

@@ -5,7 +5,6 @@ import { InvalidDeclaration } from "./errors.js"
 import { diagnostics, issueText } from "./diagnostics.js"
 import type {
   CliCommandConfig,
-  CliParameterConfig,
   CommandSafety,
   ExternalCommandDecl,
   ExternalDecl,
@@ -13,8 +12,9 @@ import type {
   McpExample,
   Mounted,
   ParameterDef,
-  ParameterDescriptor,
-  SuggestGenerator
+  SuggestGenerator,
+  SuggestSource,
+  Surface
 } from "./types.js"
 import { mounted } from "./types.js"
 
@@ -123,11 +123,40 @@ interface RawCommandDecl {
   readonly mcp?: McpCommandConfig
 }
 
-const normalizeCli = (cli: string | CliParameterConfig | undefined): CliParameterConfig =>
-  cli === undefined ? {} : String.isString(cli) ? { usage: cli } : cli
+/** surface bindings authored as ArkType metadata */
+interface ParameterMeta {
+  readonly description?: string
+  /** the argv notation — a positional slot, or a flag and its aliases */
+  readonly cli?: string
+  readonly env?: string
+  readonly suggest?: SuggestSource
+  readonly hidden?: Surface | ReadonlyArray<Surface>
+}
 
-const normalizeDescriptor = (def: ParameterDef): ParameterDescriptor =>
-  String.isString(def) ? { type: def } : def
+const hiddenFrom = (meta: ParameterMeta, surface: Surface): boolean =>
+  meta.hidden === surface
+  || (globalThis.Array.isArray(meta.hidden) && Array.contains(meta.hidden, surface))
+
+/** an ArkType key carries its own optionality: "note?" is optional */
+const bareKey = (key: string): string => String.endsWith("?")(key) ? key.slice(0, -1) : key
+
+/** surface bindings come from the AUTHORED definition, not the parsed
+ * type: ArkType drops a morph's metadata behind a default wrapper, where
+ * no public face (meta, in, out) still carries it. walks the two tuple
+ * operators a parameter can use — "@" annotates, "=" defaults. */
+const metaOf = (def: unknown): ParameterMeta => {
+  if (globalThis.Array.isArray(def)) {
+    if (def[1] === "@") return { ...metaOf(def[0]), ...(def[2] as ParameterMeta) }
+    if (def[1] === "=") return metaOf(def[0])
+    return {}
+  }
+  return Predicate.hasProperty(def, "meta") ? ((def as { meta: ParameterMeta }).meta ?? {}) : {}
+}
+
+/** the type a single argv token is measured against: a variadic declares
+ * its array, so its tokens are measured against the element */
+const elementOf = (t: AnyType): AnyType =>
+  Effect.runSync(Effect.try(() => t.get(0) as AnyType).pipe(Effect.orElseSucceed(() => t)))
 
 const parseBinding = (key: string, usage: string): Binding => {
   const trimmed = String.trim(usage)
@@ -230,10 +259,6 @@ const commandIssues = (
   return Array.appendAll(collisions, misplacedVariadic)
 }
 
-// TypeScript does not find all unknown fields. See docs/errors.md.
-const descriptorFields = ["type", "description", "suggest", "required", "cli", "mcp"]
-const cliFields = ["usage", "env", "hidden"]
-
 const strayFields = (value: unknown, known: ReadonlyArray<string>): ReadonlyArray<string> =>
   Predicate.isObject(value) && !Predicate.isFunction(value)
     ? Array.filter(
@@ -284,95 +309,47 @@ const commandFieldIssues = (at: string, decl: unknown): ReadonlyArray<Declaratio
   ])
 }
 
-const parameterMcpFields = ["hidden"]
-
-const descriptorIssues = (at: string, rawDef: ParameterDef): ReadonlyArray<DeclarationIssue> =>
-  String.isString(rawDef) ? [] : strayIssues(at, [
-    ...Array.map(strayFields(rawDef, descriptorFields), (key) => ({ key, known: descriptorFields })),
-    ...Array.map(strayFields(rawDef.cli, cliFields), (key) => ({ key: `cli.${key}`, known: cliFields })),
-    ...Array.map(strayFields(rawDef.mcp, parameterMcpFields), (key) => ({
-      key: `mcp.${key}`,
-      known: parameterMcpFields
-    }))
-  ])
-
-const compileParameter = (key: string, rawDef: ParameterDef): CompiledParameter => {
-  const descriptor = normalizeDescriptor(rawDef)
-  const cli = normalizeCli(descriptor.cli)
-  const binding = parseBinding(key, cli.usage ?? "")
+const compileParameter = (rawKey: string, rawDef: ParameterDef): CompiledParameter => {
+  const key = bareKey(rawKey)
   // probe the def at property position: defaults only exist there, and
   // applying the probe to {} both detects a default and evaluates it
   // through its own morph into the value domain.
-  const probe = type({ v: descriptor.type } as never) as AnyType
+  const probe = type({ v: rawDef } as never) as AnyType
   const probed = probe({})
   const defaulted = !(probed instanceof type.errors)
   const defaultValue = defaulted ? Option.some((probed as { v: unknown }).v) : Option.none()
   const inner = probe.get("v") as AnyType
-  // a defaulted def's extracted type is the default wrapper; boolean-ness
-  // must be read off the unwrapped output side
-  const isBoolean = defaulted
-    ? (inner.out.exclude("undefined") as AnyType).extends("boolean")
-    : inner.extends("boolean")
-  // authored arktype meta (`.describe(...)`) is a description source; a
-  // default wrapper hides it one level down on the unwrapped output side
-  const metaDescription = Option.fromNullishOr(
-    (inner.meta as { readonly description?: string }).description
-  ).pipe(
-    Option.orElse(() =>
-      defaulted
-        ? Option.fromNullishOr(
-          ((inner.out.exclude("undefined") as AnyType).meta as { readonly description?: string })
-            .description
-        )
-        : Option.none()
-    )
-  )
+  // a default wrapper hides both the domain and the metadata one level
+  // down, on the unwrapped output side
+  const unwrapped = defaulted ? (inner.out.exclude("undefined") as AnyType) : inner
+  const meta = metaOf(rawDef)
+  const binding = parseBinding(key, meta.cli ?? "")
   return {
     key,
-    def: descriptor.type,
+    def: rawDef,
     binding,
-    description: Option.fromNullishOr(descriptor.description).pipe(
-      Option.orElse(() => metaDescription)
-    ),
-    source: String.isString(descriptor.suggest) ? Option.some(descriptor.suggest) : Option.none(),
-    staticSuggestions: globalThis.Array.isArray(descriptor.suggest)
-      ? Option.some(descriptor.suggest)
+    description: Option.fromNullishOr(meta.description),
+    source: String.isString(meta.suggest) ? Option.some(meta.suggest) : Option.none(),
+    staticSuggestions: globalThis.Array.isArray(meta.suggest) ? Option.some(meta.suggest) : Option.none(),
+    generator: Predicate.isFunction(meta.suggest)
+      ? Option.some(meta.suggest as SuggestGenerator)
       : Option.none(),
-    generator: Predicate.isFunction(descriptor.suggest)
-      ? Option.some(descriptor.suggest as SuggestGenerator)
-      : Option.none(),
-    env: Option.fromNullishOr(cli.env),
-    cliHidden: cli.hidden === true,
-    mcpHidden: descriptor.mcp?.hidden === true,
-    required: descriptor.required === true,
+    env: Option.fromNullishOr(meta.env),
+    cliHidden: hiddenFrom(meta, "cli"),
+    mcpHidden: hiddenFrom(meta, "mcp"),
+    // ArkType owns optionality: an unmarked, undefaulted key is required
+    required: !String.endsWith("?")(rawKey) && !defaulted,
     defaulted,
     defaultValue,
     defaultFactory: defaulted ? Option.some(() => (probe({}) as { v: unknown }).v) : Option.none(),
-    isBoolean,
+    // ArkType models boolean as `false | true`, which does not satisfy
+    // .extends("boolean") once a default wrapper has been stripped
+    isBoolean: unwrapped.expression === "boolean",
     global: false,
     inner
   }
 }
 
-const isRequiredVariadic = (p: CompiledParameter): boolean =>
-  p.binding._tag === "positional"
-    ? p.binding.variadic && !p.binding.optional
-    : p.binding.variadic && p.required
-
-const isOptionalNoDefault = (p: CompiledParameter): boolean => {
-  if (p.defaulted || p.isBoolean) return false
-  if (p.binding._tag === "positional") {
-    return p.binding.optional && !p.binding.variadic
-  }
-  return !p.required
-}
-
-const valueRequired = (p: CompiledParameter): boolean => {
-  if (p.defaulted) return false
-  if (p.binding.variadic) return isRequiredVariadic(p)
-  if (p.isBoolean) return p.required
-  return !isOptionalNoDefault(p)
-}
 
 const hiddenRequiredIssues = (
   at: string,
@@ -380,14 +357,9 @@ const hiddenRequiredIssues = (
   commandHiddenFromMcp: boolean
 ): ReadonlyArray<DeclarationIssue> =>
   commandHiddenFromMcp ? [] : Array.flatMap(parameters, (p) =>
-    p.mcpHidden && valueRequired(p)
+    p.mcpHidden && p.required
       ? [{ at: `${at} · ${p.key}`, problem: issueText(diagnostics.CMSH1015()) }]
       : [])
-
-const variadicOf = (base: AnyType, p: CompiledParameter): AnyType => {
-  const array = base.array() as AnyType
-  return isRequiredVariadic(p) ? (array.atLeastLength(1) as AnyType) : array
-}
 
 const isVariadic = (p: CompiledParameter): boolean => p.binding.variadic
 
@@ -396,20 +368,18 @@ const isVariadic = (p: CompiledParameter): boolean => p.binding.variadic
  * so Type instances classify the same as the string defs they equal */
 const takesRawToken = (p: CompiledParameter): boolean =>
   String.isString(p.def) || Effect.runSync(
-    Effect.try(() => ((p.inner.in as AnyType).extract("string") as AnyType).expression !== "never").pipe(
-      Effect.orElseSucceed(() => false)
-    )
+    Effect.try(() => {
+      const base = p.binding.variadic ? elementOf(tokenDomain(p)) : tokenDomain(p)
+      return ((base.extract("string") as AnyType).expression !== "never")
+    }).pipe(Effect.orElseSucceed(() => false))
   )
 
-/** a structured (non-string-def) parameter consumes a JSON token on the
- * cli: parse the token, then pipe into the declared definition. a
- * defaultable def is illegal as a `.to` target — a defaulted structured
- * param pipes into its unwrapped output type instead (defaults are the
- * value boundary's job on this path anyway) */
-const jsonToken = (p: CompiledParameter): AnyType =>
-  type("string.json.parse").to(
-    (p.defaulted ? ((p.inner.out as AnyType).exclude("undefined")) : p.def) as never
-  ) as AnyType
+/** the input domain a token is measured against, with any default
+ * wrapper stripped — the wrapper hides an array from the element check */
+const tokenDomain = (p: CompiledParameter): AnyType => {
+  const input = p.inner.in as AnyType
+  return p.defaulted ? (input.exclude("undefined") as AnyType) : input
+}
 
 /** boolean flags cross the token boundary as presence booleans or as the
  * literal tokens of `--flag=value`; the literal set follows the effect
@@ -424,49 +394,16 @@ const booleanTokenType = type("boolean")
  * and defaults are enforced by the value boundary, which the cli path
  * always runs after this one */
 const tokenEntry = (p: CompiledParameter): readonly [string, unknown] => {
+  // every entry is optional and stays in the declared INPUT domain: the
+  // value boundary runs after this one on the cli path and owns morphs,
+  // defaults and requiredness. morphing here too would run them twice.
+  // presence is a boolean flag's token, so it is never a raw or json value
+  if (p.isBoolean) return [`${p.key}?`, booleanTokenType]
   if (!takesRawToken(p)) {
-    const wrapped = jsonToken(p)
-    return [`${p.key}?`, isVariadic(p) ? variadicOf(wrapped, p) : wrapped]
+    const parsed = type("string.json.parse") as AnyType
+    return [`${p.key}?`, isVariadic(p) ? (parsed.array() as AnyType) : parsed]
   }
-  // an optional variadic (`[...xs]`) is present-and-empty when omitted;
-  // a required one (`<...xs>`) demands at least one value
-  if (isVariadic(p)) {
-    return isRequiredVariadic(p)
-      ? [p.key, variadicOf(p.inner, p)]
-      : [p.key, [variadicOf(p.inner, p), "=", () => []]]
-  }
-  // a required boolean stays required: presence is its true value and
-  // omission is a reportable error, not a silent false
-  if (p.isBoolean) {
-    if (p.defaulted) {
-      return [p.key, [booleanTokenType, "=", () => Option.getOrThrow(p.defaultFactory)()]]
-    }
-    return p.required ? [p.key, booleanTokenType] : [p.key, [booleanTokenType, "=", false]]
-  }
-  if (isOptionalNoDefault(p)) return [`${p.key}?`, p.inner]
-  return [p.key, p.def]
-}
-
-/** entry for the value side: output-domain types with defaults evaluated
- * through the morph at compile time. a defaulted prop's extracted .out
- * carries `| undefined` from the default wrapper — strip it, or it breaks
- * the JSON Schema projection. */
-const valueEntry = (p: CompiledParameter): readonly [string, unknown] => {
-  const rawOut = p.inner.out as AnyType
-  const out = p.defaulted ? (rawOut.exclude("undefined") as AnyType) : rawOut
-  if (isVariadic(p)) {
-    return isRequiredVariadic(p)
-      ? [p.key, variadicOf(out, p)]
-      : [p.key, [variadicOf(out, p), "=", () => []]]
-  }
-  if (p.isBoolean && !p.defaulted) {
-    return p.required ? [p.key, out] : [p.key, [out, "=", false]]
-  }
-  if (p.defaulted) {
-    return [p.key, [out, "=", () => Option.getOrThrow(p.defaultFactory)()]]
-  }
-  if (isOptionalNoDefault(p)) return [`${p.key}?`, out]
-  return [p.key, out]
+  return [`${p.key}?`, tokenDomain(p)]
 }
 
 const assemble = (
@@ -522,9 +459,6 @@ const collectCommand = (
       result._tag === "failed"
         ? [{ at: `${at} · ${key}`, problem: issueText(diagnostics.CMSH1001({ error: result.problem })) }]
         : []),
-    Array.appendAll(
-      Array.flatMap(Record.toEntries(merged), ([key, def]) => descriptorIssues(`${at} · ${key}`, def))
-    ),
     Array.appendAll(Array.flatMap(parameters, (p) => parameterIssues(`${at} · ${p.key}`, p))),
     Array.appendAll(hiddenRequiredIssues(at, parameters, decl.mcp?.hidden === true)),
     Array.appendAll(commandIssues(at, parameters)),
@@ -545,7 +479,9 @@ const collectCommand = (
     ? undefined
     : attempt(() => ({
       tokenType: assemble(parameters, tokenEntry),
-      schemaType: assemble(parameters, valueEntry)
+      // the value boundary IS the declared ArkType type — nothing is
+      // reassembled, so what is declared and what is enforced cannot drift
+      schemaType: type(merged as never) as AnyType
     }))
   const assemblyIssues: ReadonlyArray<DeclarationIssue> = assemblyAttempt?._tag === "failed"
     ? [{ at, problem: issueText(diagnostics.CMSH1001({ error: assemblyAttempt.problem })) }]
@@ -760,7 +696,7 @@ export const compileExternal = (decl: ExternalDecl): CompiledCommand => {
   const childPairs = Record.map(decl.commands, (child, childName): Collected =>
     collectExternalCommand(
       bin,
-      decl.input ?? {},
+      (decl.input ?? {}) as Readonly<globalThis.Record<string, ParameterDef>>,
       [String.kebabCase(childName)],
       childName,
       [decl.name, childName],

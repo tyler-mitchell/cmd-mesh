@@ -60,7 +60,9 @@ export const createRelease = (packageName: string) =>
         description: "author a bump file (interactive)",
         safety: "action",
         mcp: { hidden: true },
-        input: { args: { type: "string", description: "bumpy add arguments", cli: "[...args]" } },
+        input: {
+          args: ["string[]", "@", { description: "bumpy add arguments", cli: "[...args]", default: () => [] }]
+        },
         run: (input, ctx) => streamed(ctx, "bumpy", ["add", ...input.args])
       },
       check: {
@@ -122,7 +124,11 @@ export const createRelease = (packageName: string) =>
         description: "pack the package and prove the tarball installs and runs",
         safety: "read",
         input: {
-          probe: { type: "string", description: "probe module run from the scratch consumer", suggest: "filepaths", cli: "--probe" }
+          "probe?": [
+            "string",
+            "@",
+            { description: "probe module run from the scratch consumer", suggest: "filepaths", cli: "--probe" }
+          ]
         },
         output: { verified: "string" },
         run: async (input, ctx) => {
@@ -153,8 +159,16 @@ export const createRelease = (packageName: string) =>
         description: "prove the published version installs, runs, and carries provenance",
         safety: "read",
         input: {
-          probe: { type: "string", description: "probe module run from the scratch consumer", suggest: "filepaths", cli: "--probe" },
-          attempts: { type: "string.integer.parse = '10'", description: "registry propagation retries" }
+          "probe?": [
+            "string",
+            "@",
+            { description: "probe module run from the scratch consumer", suggest: "filepaths", cli: "--probe" }
+          ],
+          attempts: [
+            "string.integer.parse",
+            "@",
+            { description: "registry propagation retries", default: "10" }
+          ]
         },
         output: { verified: "string" },
         run: async (input, ctx) => {
@@ -184,7 +198,11 @@ export const createRelease = (packageName: string) =>
         description: "synchronize main forward from release",
         safety: "action",
         input: {
-          merge: { type: "boolean", description: "merge-pull when histories diverged", cli: "--merge" }
+          merge: [
+            "boolean",
+            "@",
+            { description: "merge-pull when histories diverged", cli: "--merge", default: false }
+          ]
         },
         output: text,
         cli: { render: printText },

@@ -17,8 +17,8 @@ const serve = program({
   version: "1.0.0",
   description: "a dev server with root flags and subcommands",
   input: {
-    port: { type: "string.integer.parse = '3000'", cli: "--port, -p" },
-    watch: { type: "boolean", cli: "--watch" }
+    port: [["string.integer.parse", "@", { cli: "--port, -p" }], "=", "3000"],
+    watch: [["boolean", "@", { cli: "--watch" }], "=", false]
   },
   commands: {
     start: {
@@ -43,8 +43,8 @@ const claimant = program({
     info: {
       description: "report host info",
       input: {
-        host: { type: "string = 'localhost'", cli: "--host, -h" },
-        version: { type: "boolean", cli: "--version" }
+        host: [["string", "@", { cli: "--host, -h" }], "=", "localhost"],
+        version: [["boolean", "@", { cli: "--version" }], "=", false]
       },
       output: { host: "string", version: "boolean" },
       run: (input) => ({ host: input.host, version: input.version })
@@ -89,7 +89,7 @@ describe("boolean negation against defaults (citty parser)", () => {
       commands: {
         build: {
           description: "build with cache on by default",
-          input: { cache: { type: "boolean = true", cli: "--cache" } },
+          input: { cache: [["boolean", "@", { cli: "--cache" }], "=", true] },
           output: { cache: "boolean" },
           run: (input: { readonly cache: boolean }) => ({ cache: input.cache })
         }
@@ -109,7 +109,7 @@ describe("boolean negation against defaults (citty parser)", () => {
       commands: {
         build: {
           description: "build",
-          input: { install: { type: "boolean = true", cli: "--install" } },
+          input: { install: [["boolean", "@", { cli: "--install" }], "=", true] },
           output: { install: "boolean" },
           run: (input: { readonly install: boolean }) => ({ install: input.install })
         }
@@ -155,8 +155,8 @@ describe("parent flags before the subcommand (citty resolveSubCommand)", () => {
       version: "0.0.0",
       description: "root invariant over program-level options",
       input: {
-        trace: { type: "boolean", cli: "--trace" },
-        traceFile: { type: "string", cli: "--trace-file" }
+        trace: ["boolean", "@", { cli: "--trace", default: false }],
+        "traceFile?": ["string", "@", { cli: "--trace-file" }]
       },
       narrow: (input, ctx) =>
         input.traceFile === undefined || input.trace ? true : ctx.mustBe("used with --trace"),
@@ -184,7 +184,7 @@ describe("parent flags before the subcommand (citty resolveSubCommand)", () => {
       name: "enved",
       version: "0.0.0",
       input: {
-        region: { type: "string = 'us-east'", cli: { usage: "--region", env: "ENVED_REGION" } }
+        region: ["string", "@", { cli: "--region", env: "ENVED_REGION", default: "us-east" }]
       },
       commands: {
         deploy: {

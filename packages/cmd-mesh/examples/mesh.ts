@@ -8,8 +8,8 @@ export const git = external({
     status: {
       description: "working tree status",
       input: {
-        short: { type: "boolean", cli: "--short, -s" },
-        branch: { type: "boolean", cli: "--branch, -b" },
+        short: [["boolean", "@", { cli: "--short, -s" }], "=", false],
+        branch: [["boolean", "@", { cli: "--branch, -b" }], "=", false],
       },
       output: "string",
     },
@@ -24,22 +24,33 @@ export const mesh = program({
     snapshot: {
       description: "record a directory snapshot",
       input: {
-        directory: {
-          type: "string",
-          description: "directory to snapshot",
-          suggest: "folders",
-          cli: "<directory>",
-        },
-        depth: {
-          type: "string.integer.parse = '2'",
-          description: "traversal depth",
-          cli: { usage: "--depth, -d", env: "MESH_DEPTH" },
-        },
-        verbose: { type: "boolean", cli: "--verbose, -v" },
-        signCert: { type: "string" },
+        directory: [
+          "string",
+          "@",
+          {
+            description: "directory to snapshot",
+            suggest: "folders",
+            cli: "<directory>",
+          },
+        ],
+        depth: [
+          [
+            "string.integer.parse",
+            "@",
+            {
+              description: "traversal depth",
+              cli: "--depth, -d",
+              env: "MESH_DEPTH",
+            },
+          ],
+          "=",
+          "2",
+        ],
+        verbose: [["boolean", "@", { cli: "--verbose, -v" }], "=", false],
+        "signCert?": "string",
         // object ArkType defs are first-class: real object on the
         // call/mcp surface, JSON token on the cli
-        signKey: { type: { a: "string" } },
+        "signKey?": { a: "string" },
       },
       narrow: (input, ctx) =>
         (input.signCert === undefined) === (input.signKey === undefined) ||
@@ -54,8 +65,12 @@ export const mesh = program({
     build: {
       description: "bundle entry files",
       input: {
-        entries: { type: "string", cli: "<...entries>" },
-        outDir: { type: "string = 'dist'", description: "output directory" },
+        entries: ["string[] >= 1", "@", { cli: "<...entries>" }],
+        outDir: [
+          ["string", "@", { description: "output directory" }],
+          "=",
+          "dist",
+        ],
       },
       output: { bundled: "string[]", into: "string" },
       run: (input) => ({ bundled: [...input.entries], into: input.outDir }),

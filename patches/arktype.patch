@@ -1,0 +1,18 @@
+diff --git a/out/parser/property.js b/out/parser/property.js
+index ef4b6e6978bafc54f17ec5d2b26ff07fecb22b7e..3abf2f8827dd180218245b50092b9643e1ac6faf 100644
+--- a/out/parser/property.js
++++ b/out/parser/property.js
+@@ -8,7 +8,12 @@ export const parseProperty = (def, ctx) => {
+             return [ctx.$.parseOwnDefinitionFormat(def[0], ctx), "?"];
+     }
+     // string-embedded defaults/optionals are handled by the string parser
+-    return parseInnerDefinition(def, ctx);
++    const node = parseInnerDefinition(def, ctx);
++    // a `default` in metadata applies as a default, so a property can
++    // carry its annotations and its default in one object
++    if (!isArray(node) && node?.meta?.default !== undefined)
++        return [node, "=", node.meta.default];
++    return node;
+ };
+ // single quote use here is better for TypeScript's inlined error to avoid escapes
+ export const invalidOptionalKeyKindMessage = `Only required keys may make their values optional, e.g. { [mySymbol]: ['number', '?'] }`;

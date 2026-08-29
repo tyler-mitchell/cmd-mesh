@@ -211,8 +211,12 @@ describe("repeatable flags (commander value-slot notation)", () => {
       mark: {
         description: "mark with tags",
         input: {
-          item: { type: "string", cli: "<item>" },
-          tag: { type: "string", description: "may repeat", cli: "--tag <tags...>, -t" }
+          item: ["string", "@", { cli: "<item>" }],
+          tag: [
+            ["string[]", "@", { description: "may repeat", cli: "--tag <tags...>, -t" }],
+            "=",
+            () => []
+          ]
         },
         output: { item: "string", tags: "string[]" },
         run: (input) => ({ item: input.item, tags: [...input.tag] })
@@ -248,8 +252,12 @@ describe("repeatable flags (commander value-slot notation)", () => {
         mark: {
           description: "mark",
           input: {
-            item: { type: "string", cli: "<item>" },
-            tag: { type: "string", cli: { usage: "--tag <tags...>", env: "MARK_TAG" } }
+            item: ["string", "@", { cli: "<item>" }],
+            tag: [
+              ["string[]", "@", { cli: "--tag <tags...>", env: "MARK_TAG" }],
+              "=",
+              () => []
+            ]
           },
           output: { tags: "string[]" },
           run: (input) => ({ tags: [...input.tag] })
@@ -273,13 +281,13 @@ describe("positional notations", () => {
     commands: {
       show: {
         description: "optional positional",
-        input: { path: { type: "string", cli: "[path]" } },
+        input: { "path?": ["string", "@", { cli: "[path]" }] },
         output: { "path?": "string" },
         run: (input) => (input.path === undefined ? {} : { path: input.path })
       },
       pack: {
         description: "optional variadic",
-        input: { entries: { type: "string", cli: "[...entries]" } },
+        input: { entries: [["string[]", "@", { cli: "[...entries]" }], "=", () => []] },
         output: { count: "number" },
         run: (input) => ({ count: input.entries.length })
       }
@@ -324,8 +332,8 @@ describe("positional notations", () => {
           }
         }
       })
-    const head = { type: "string", cli: "<head>" }
-    const tail = { type: "string", cli: "<tail>" }
+    const head = ["string", "@", { cli: "<head>" }]
+    const tail = ["string", "@", { cli: "<tail>" }]
 
     expect(await ok(twoWay({ head, tail }), ["go", "a", "b"]))
       .toEqual({ head: "a", tail: "b" })

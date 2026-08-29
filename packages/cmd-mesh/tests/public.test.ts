@@ -18,7 +18,7 @@ describe("the typed program", () => {
   })
 
   it("accepts explicit value-domain input", () => {
-    expect(mesh.snapshot({ directory: ".", depth: 4, verbose: true })).toEqual({
+    expect(mesh.snapshot({ directory: ".", depth: "4", verbose: true })).toEqual({
       snapped: ".",
       depth: 4,
       verbose: true
@@ -83,7 +83,7 @@ describe("external commands", () => {
       name: "ls",
       commands: {
         show: {
-          input: { path: { type: "string", cli: "<path>" } }
+          input: { path: ["string", "@", { cli: "<path>" }] }
         }
       }
     })
@@ -195,11 +195,11 @@ describe("the mcp projection", () => {
     const audited = program({
       name: "audited2",
       version: "0.0.0",
-      input: { registry: { type: "string = 'https://npm.dev'", cli: "--registry" } },
+      input: { registry: [["string", "@", { cli: "--registry" }], "=", "https://npm.dev"] },
       commands: {
         add: {
           description: "add",
-          input: { pkg: { type: "string", cli: "<pkg>" } },
+          input: { pkg: ["string", "@", { cli: "<pkg>" }] },
           output: { ok: "boolean" },
           run: () => ({ ok: true })
         }

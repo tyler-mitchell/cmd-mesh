@@ -20,17 +20,25 @@ export const deploy = program({
     push: {
       description: "push a service build",
       input: {
-        service: { type: "string", description: "service name", cli: "<service>" },
-        env: {
-          type: "'staging' | 'production' = 'staging'",
-          description: "target environment",
-          cli: { usage: "--env, -e", env: "DEPLOY_ENV" }
-        },
-        message: { type: "string", description: "release note", cli: "--message, -m" },
-        replicas: { type: "string.integer.parse = '2'", description: "replica count", cli: "--replicas" },
-        force: { type: "boolean", description: "skip safety checks", cli: "--force, -f" },
+        service: ["string", "@", { description: "service name", cli: "<service>" }],
+        env: [
+          [
+            "'staging' | 'production'",
+            "@",
+            { description: "target environment", cli: "--env, -e", env: "DEPLOY_ENV" }
+          ],
+          "=",
+          "staging"
+        ],
+        "message?": ["string", "@", { description: "release note", cli: "--message, -m" }],
+        replicas: [
+          ["string.integer.parse", "@", { description: "replica count", cli: "--replicas" }],
+          "=",
+          "2"
+        ],
+        force: [["boolean", "@", { description: "skip safety checks", cli: "--force, -f" }], "=", false],
         // short-only boolean: no long form to derive a negation from
-        watch: { type: "boolean", description: "stream progress", cli: "-w" }
+        watch: [["boolean", "@", { description: "stream progress", cli: "-w" }], "=", false]
       },
       output: {
         service: "string",
@@ -52,9 +60,10 @@ export const deploy = program({
     rollback: {
       description: "roll a service back to a previous release",
       input: {
-        service: { type: "string", cli: "<service>" },
-        to: { type: "string", description: "release id", cli: "--to" },
-        yes: { type: "boolean", description: "confirm destructive rollback", required: true, cli: "--yes" }
+        service: ["string", "@", { cli: "<service>" }],
+        "to?": ["string", "@", { description: "release id", cli: "--to" }],
+        // required with no default: omitting it is a reportable error
+        yes: ["boolean", "@", { description: "confirm destructive rollback", cli: "--yes" }]
       },
       run: (input) => ({ service: input.service, to: input.to, confirmed: input.yes })
     },
@@ -69,8 +78,8 @@ export const deploy = program({
         set: {
           description: "set a config key",
           input: {
-            key: { type: "string", cli: "<key>" },
-            value: { type: "string", cli: "<value>" }
+            key: ["string", "@", { cli: "<key>" }],
+            value: ["string", "@", { cli: "<value>" }]
           },
           // second-level inline handlers lose contextual parameter types —
           // the documented reverse-mapped-inference limit, annotated here
@@ -114,8 +123,8 @@ export const tasks = program({
   version: "1.0.0",
   description: "run a named task",
   input: {
-    task: { type: "string", description: "task to run", cli: "<task>" },
-    silent: { type: "boolean", cli: "--silent, -s" }
+    task: ["string", "@", { description: "task to run", cli: "<task>" }],
+    silent: [["boolean", "@", { cli: "--silent, -s" }], "=", false]
   },
   output: { ran: "string", silent: "boolean" },
   run: (input) => ({ ran: input.task, silent: input.silent })
@@ -133,8 +142,8 @@ export const wrap = program({
     exec: {
       description: "execute a tool with forwarded arguments",
       input: {
-        tool: { type: "string", cli: "<tool>" },
-        args: { type: "string", description: "forwarded arguments", cli: "<...args>" }
+        tool: ["string", "@", { cli: "<tool>" }],
+        args: ["string[]", "@", { description: "forwarded arguments", cli: "<...args>" }]
       },
       output: { tool: "string", args: "string[]" },
       run: (input) => ({ tool: input.tool, args: [...input.args] })
@@ -154,10 +163,14 @@ export const bake = program({
     run: {
       description: "run a build",
       input: {
-        target: { type: "string", cli: "<target>" },
-        cache: { type: "boolean", description: "use the build cache", cli: "--cache" },
-        noCache: { type: "boolean", description: "bypass the build cache", cli: "--no-cache" },
-        quiet: { type: "boolean = false", description: "suppress progress", cli: "--quiet, -q" }
+        target: ["string", "@", { cli: "<target>" }],
+        cache: [["boolean", "@", { description: "use the build cache", cli: "--cache" }], "=", false],
+        noCache: [
+          ["boolean", "@", { description: "bypass the build cache", cli: "--no-cache" }],
+          "=",
+          false
+        ],
+        quiet: [["boolean", "@", { description: "suppress progress", cli: "--quiet, -q" }], "=", false]
       },
       run: (input) => ({
         target: input.target,
@@ -234,7 +247,7 @@ export const fragile = program({
     },
     badNarrow: {
       description: "narrow predicate throws",
-      input: { value: { type: "string", cli: "<value>" } },
+      input: { value: ["string", "@", { cli: "<value>" }] },
       narrow: () => {
         throw new Error("narrow exploded")
       },
@@ -256,8 +269,8 @@ export const git = external({
     revParse: {
       description: "resolve a revision",
       input: {
-        rev: { type: "string", cli: "<rev>" },
-        short: { type: "boolean", cli: "--short" }
+        rev: ["string", "@", { cli: "<rev>" }],
+        short: [["boolean", "@", { cli: "--short" }], "=", false]
       },
       output: "string"
     }

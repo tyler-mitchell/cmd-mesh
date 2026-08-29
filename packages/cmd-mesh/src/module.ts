@@ -36,7 +36,6 @@ import type {
   ExternalCallOptions,
   ExternalDecl,
   ExternalModule,
-  ParameterDef,
   ProgramDeclOf,
   ProgramModule,
   ResourceSpec,
@@ -317,7 +316,7 @@ const errorText = (error: unknown): string =>
 /** interpret a program declaration into its callable module */
 export const program = <
   const Name extends string,
-  const RootIn extends globalThis.Record<string, ParameterDef> = {},
+  const RootIn extends object = {},
   const RootOut = undefined,
   RootR = void,
   const Cs = {},

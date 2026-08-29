@@ -16,7 +16,7 @@ export const deps = program({
     merge: {
       description: "squash-merge one PR",
       safety: "action",
-      input: { pr: { type: "string", description: "PR number", cli: "<pr>" } },
+      input: { pr: ["string", "@", { description: "PR number", cli: "<pr>" }] },
       output: text,
       cli: { render: printText },
       run: (input, ctx) => captured(ctx, "gh", ["pr", "merge", input.pr, "--squash"])
@@ -24,7 +24,7 @@ export const deps = program({
     close: {
       description: "close one PR",
       safety: "action",
-      input: { pr: { type: "string", description: "PR number", cli: "<pr>" } },
+      input: { pr: ["string", "@", { description: "PR number", cli: "<pr>" }] },
       output: text,
       cli: { render: printText },
       run: (input, ctx) => captured(ctx, "gh", ["pr", "close", input.pr])

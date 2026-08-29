@@ -25,7 +25,7 @@ describe("a group with a default child and its own flags", () => {
     name: "vite",
     commands: {
       serve: {
-        input: { port: { type: "string", cli: "--port" } },
+        input: { "port?": ["string", "@", { cli: "--port" }] },
         cli: { default: "dev" },
         commands: {
           dev: {
@@ -48,7 +48,7 @@ describe("a group with a default child and its own flags", () => {
     name: "vite2",
     commands: {
       serve: {
-        input: { config: { type: "string", cli: "--config" } },
+        input: { "config?": ["string", "@", { cli: "--config" }] },
         cli: { default: "dev" },
         commands: {
           dev: {
