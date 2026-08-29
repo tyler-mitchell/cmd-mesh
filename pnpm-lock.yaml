@@ -53,6 +53,9 @@ importers:
       fledgling:
         specifier: 1.2.1
         version: 1.2.1(@gunshi/plugin-i18n@0.36.0)
+      mcp-reloader:
+        specifier: ^0.1.0
+        version: 0.1.0(zod@4.4.3)
       npm:
         specifier: ^11.15.0
         version: 11.19.0
@@ -1318,6 +1321,11 @@ packages:
   math-intrinsics@1.1.0:
     resolution: {integrity: sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==}
     engines: {node: '>= 0.4'}
+
+  mcp-reloader@0.1.0:
+    resolution: {integrity: sha512-ERPKISshlYY0mUh/3s3MBGjF4h84W8oD2UGXriJuQkEeL06W3yyb+FsqdB8ETSAGAJJa1Wl+uxMlZ3+Der6clw==}
+    engines: {node: '>=18'}
+    hasBin: true
 
   media-typer@1.1.0:
     resolution: {integrity: sha512-aisnrDP4GNe06UcKFnV5bfMNPBUw4jsLGaWwWfnH3v02GnBuXX2MCVn5RbrWo0j3pczUilYblq7fQ7Nw2t5XKw==}
@@ -3122,6 +3130,14 @@ snapshots:
   marked@9.1.6: {}
 
   math-intrinsics@1.1.0: {}
+
+  mcp-reloader@0.1.0(zod@4.4.3):
+    dependencies:
+      '@modelcontextprotocol/sdk': 1.29.0(zod@4.4.3)
+    transitivePeerDependencies:
+      - '@cfworker/json-schema'
+      - supports-color
+      - zod
 
   media-typer@1.1.0: {}
 

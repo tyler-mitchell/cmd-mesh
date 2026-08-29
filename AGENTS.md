@@ -164,3 +164,38 @@ Binding for every agent implementing in this repository.
   non-Schema error constructors (`Data.TaggedError`).
 - Process execution goes through `effect/unstable/process` (`ChildProcess` +
   `ChildProcessSpawner`), never `node:child_process` directly.
+
+## Attaching repokit's MCP for development
+
+Attach repokit by running its SOURCE entrypoint under `mcp-reloader`, so
+an edit is one `reload` call away instead of a host restart:
+
+```jsonc
+// .mcp.json — gitignored: it carries this machine's own absolute paths
+{
+  "mcpServers": {
+    "repokit": {
+      "command": "<repo>/node_modules/.bin/mcp-reloader",
+      "args": ["--cwd", "<repo>/apps/repokit",
+               "--", "node", "--import", "tsx", "src/bin.ts", "mcp"]
+    }
+  }
+}
+```
+
+The backend's tools surface unchanged and one extra tool appears:
+`reload`. After editing any of repokit, repo-ops or cmd-mesh, call
+`reload`, then call the tools normally — the connection stays up.
+
+No `--build` is passed, because the launch line already runs source: one
+re-spawn picks up all three packages together. That also sidesteps the
+dist tripwire, where a source change stays invisible until every package
+downstream of it rebuilds.
+
+`--cwd` is repokit's own directory so `tsx` resolves from there, and the
+backend after `--` must be a direct executable — `mcp-reloader` cannot
+wrap an `npm`/shell wrapper. Call `reload` only when the server is idle;
+it re-spawns the backend, so a call in flight fails.
+
+Recreate the file with `node apps/repokit/dist/bin.js mcp install claude`
+for the plain (non-reloading) form, then edit in the wrapper.

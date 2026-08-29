@@ -59,6 +59,7 @@
     "@types/node": "catalog:",
     "@varlock/bumpy": "1.18.1",
     "fledgling": "1.2.1",
+    "mcp-reloader": "^0.1.0",
     "npm": "^11.15.0",
     "typescript": "catalog:"
   }
