@@ -8,6 +8,62 @@ import { program } from "../src/index.js"
 // concurrent calls being independent and child output not being
 // truncated.
 
+describe("program resources", () => {
+  const makeTool = (log: Array<string>) =>
+    program({
+      name: "tool",
+      resources: {
+        a: {
+          acquire: () => {
+            log.push("acquire:a")
+            return "A"
+          },
+          release: () => {
+            log.push("release:a")
+          }
+        },
+        b: {
+          acquire: async () => {
+            log.push("acquire:b")
+            return "B"
+          },
+          release: async () => {
+            log.push("release:b")
+          }
+        }
+      },
+      commands: {
+        use: {
+          output: "string",
+          run: (_input, ctx) => ctx.resources.a.toLowerCase() + ctx.resources.b
+        },
+        boom: {
+          run: () => {
+            throw new Error("boom")
+          }
+        }
+      }
+    })
+
+  it("acquires before the handler and releases in reverse order after it", async () => {
+    const log: Array<string> = []
+    await expect(makeTool(log).use()).resolves.toBe("aB")
+    expect(log).toEqual(["acquire:a", "acquire:b", "release:b", "release:a"])
+  })
+
+  it("releases even when the handler throws", async () => {
+    const log: Array<string> = []
+    await expect(makeTool(log).boom()).rejects.toThrow(/boom/)
+    expect(log).toEqual(["acquire:a", "acquire:b", "release:b", "release:a"])
+  })
+
+  it("releases when the cli surface dispatches the handler", async () => {
+    const log: Array<string> = []
+    expect(await makeTool(log).cli.run(["use"])).toBe(0)
+    expect(log).toEqual(["acquire:a", "acquire:b", "release:b", "release:a"])
+  })
+})
+
 const makeCounter = () =>
   program({
     name: "counter",
@@ -202,7 +258,8 @@ describe("cancellation", () => {
           surface: "call",
           exec: (bin, args, o) => runtime.runPromise(Exec.use((s) => s.exec(bin, args, o))),
           project,
-          workspace
+          workspace,
+          resources: {}
         }
       ),
       controller.signal

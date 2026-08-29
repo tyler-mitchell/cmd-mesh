@@ -128,6 +128,23 @@ export interface ExecOptions {
 
 export type Surface = "cli" | "mcp" | "call"
 
+/** a program-level resource: acquired before a handler runs, released
+ * in reverse acquisition order after it settles — success or failure.
+ * an acquire failure fails the invocation before the handler; a
+ * release rejection surfaces as a defect. */
+export interface ResourceSpec<T> {
+  readonly acquire: () => T | Promise<T>
+  readonly release: (resource: Awaited<T>) => void | Promise<void>
+}
+
+export type AcquiredResources<R> = {
+  readonly [K in keyof R]: R[K] extends ResourceSpec<infer T> ? Awaited<T> : never
+}
+
+export interface WithResources<R> {
+  readonly resources: AcquiredResources<R>
+}
+
 /** interpreter-owned capabilities handed to handlers. not user DI.
  * `project` and `workspace` are package-management's own consumer
  * surfaces, exposed whole — mediated here so handlers stay mockable
@@ -137,6 +154,9 @@ export interface Ctx {
   readonly surface: Surface
   readonly project: typeof project
   readonly workspace: typeof workspace
+  /** the program's acquired resources for this invocation; empty when
+   * the declaration has none */
+  readonly resources: Readonly<globalThis.Record<string, unknown>>
 }
 
 // ─── static inference ───────────────────────────────────────────────────────
@@ -216,9 +236,9 @@ export type CommandsData<M> = {
 
 /** program-level options (root input) join every command's handler and
  * call surface — the same model as an external's binary-global options */
-export type CommandsOverlay<M, Rs, RIn = {}> = {
+export type CommandsOverlay<M, Rs, RIn = {}, Rsrc = {}> = {
   readonly [N in keyof Rs]: {
-    readonly run?: (input: HandlerInput<RIn & InputOf<M[N & keyof M]>>, ctx: Ctx) => Rs[N]
+    readonly run?: (input: HandlerInput<RIn & InputOf<M[N & keyof M]>>, ctx: Ctx & WithResources<Rsrc>) => Rs[N]
     readonly narrow?: (input: HandlerInput<RIn & InputOf<M[N & keyof M]>>, ctx: NarrowContext) => boolean
     // typed from the declared output contract only — referencing Rs here
     // would make the reverse mapped type uninvertible and collapse
@@ -227,15 +247,18 @@ export type CommandsOverlay<M, Rs, RIn = {}> = {
   }
 }
 
-export interface ProgramDeclOf<Name extends string, RootIn, RootOut, RootR, Cs, Rs> {
+export interface ProgramDeclOf<Name extends string, RootIn, RootOut, RootR, Cs, Rs, Rsrc = {}> {
   readonly name: Name
   readonly version?: string
   readonly description?: string
+  /** program-level resources, acquired per invocation around every
+   * handler of this program's own commands */
+  readonly resources?: Rsrc
   readonly input?: RootIn
   readonly output?: RootOut
   readonly narrow?: (input: HandlerInput<NoInfer<RootIn>>, ctx: NarrowContext) => boolean
-  readonly run?: (input: HandlerInput<NoInfer<RootIn>>, ctx: Ctx) => RootR
-  readonly commands?: CommandsData<Cs> & CommandsOverlay<NoInfer<Cs>, Rs, NoInfer<RootIn>>
+  readonly run?: (input: HandlerInput<NoInfer<RootIn>>, ctx: Ctx & WithResources<NoInfer<Rsrc>>) => RootR
+  readonly commands?: CommandsData<Cs> & CommandsOverlay<NoInfer<Cs>, Rs, NoInfer<RootIn>, NoInfer<Rsrc>>
   // render typed from the declared root output, like command-level
   // render (contract-less roots render `unknown`)
   readonly cli?: CliCommandConfig<

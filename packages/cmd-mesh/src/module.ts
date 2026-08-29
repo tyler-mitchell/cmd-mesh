@@ -25,7 +25,7 @@ import {
 } from "./completion.js"
 import { Exec } from "./exec.js"
 import { promptArgv } from "./interactive.js"
-import { invokeParsed, invokeValues } from "./invoke.js"
+import { invokeParsed, invokeValues, withResources } from "./invoke.js"
 import { collectTools, inputSchema, serveMcp } from "./mcp.js"
 import { Predicate } from "effect"
 import { renderHelp, renderResult, usageLine } from "./render.js"
@@ -39,11 +39,14 @@ import type {
   ParameterDef,
   ProgramDeclOf,
   ProgramModule,
+  ResourceSpec,
   Surface
 } from "./types.js"
 import { mounted } from "./types.js"
 
 type MeshRuntime = ManagedRuntime.ManagedRuntime<Exec, never>
+
+type Resources = Readonly<globalThis.Record<string, ResourceSpec<unknown>>>
 
 // the one sanctioned Object.assign seam in this package: a module IS a
 // function carrying its subtree, and Effect has no callable-with-properties
@@ -53,12 +56,17 @@ const callableModule = (
   props: globalThis.Record<string | symbol, unknown>
 ): any => Object.assign(fn, props)
 
-const makeCtx = (runtime: MeshRuntime, surface: Surface): Ctx => ({
+const makeCtx = (
+  runtime: MeshRuntime,
+  surface: Surface,
+  resources: Readonly<globalThis.Record<string, unknown>> = {}
+): Ctx => ({
   surface,
   exec: (bin, args, options) => runtime.runPromise(Exec.use((s) => s.exec(bin, args, options))),
   // the library functions themselves — nothing constructed until called
   project,
-  workspace
+  workspace,
+  resources
 })
 
 /** run an invocation preserving the handler's synchrony: a fiber that
@@ -124,15 +132,23 @@ const argsOf = (cmd: CompiledCommand) => ({
   toJsonSchema: () => inputSchema(cmd)
 })
 
-const buildCommandModule = (cmd: CompiledCommand, runtime: MeshRuntime): any =>
+const buildCommandModule = (
+  cmd: CompiledCommand,
+  runtime: MeshRuntime,
+  specs: Resources = {}
+): any =>
   callableModule(
     // the second argument is external-only execution context (cwd, env,
     // timeout); program commands ignore it by construction
     (input?: unknown, options?: ExternalCallOptions) =>
-      runAuto(runtime, invokeValues(cmd, input ?? {}, makeCtx(runtime, "call"), options)),
+      runAuto(
+        runtime,
+        withResources(cmd.path, specs, (resources) =>
+          invokeValues(cmd, input ?? {}, makeCtx(runtime, "call", resources), options))
+      ),
     {
       args: argsOf(cmd),
-      ...Record.map(cmd.children, (child) => buildCommandModule(child, runtime))
+      ...Record.map(cmd.children, (child) => buildCommandModule(child, runtime, specs))
     }
   )
 
@@ -166,12 +182,14 @@ const completeEffect = (
 const serveEffect = (
   runtime: MeshRuntime,
   compiled: CompiledCommand,
-  version: string
+  version: string,
+  specs: Resources
 ): Effect.Effect<never, Error> =>
   serveMcp(
     compiled,
     { name: compiled.name, version },
-    (cmd, input, ctx) => invokeValues(cmd, input, ctx),
+    (cmd, input, ctx) =>
+      withResources(cmd.path, specs, (resources) => invokeValues(cmd, input, { ...ctx, resources })),
     (effect, signal) => runAbortable(runtime, effect, signal),
     makeCtx(runtime, "mcp")
   )
@@ -180,6 +198,7 @@ const runCli = (
   runtime: MeshRuntime,
   compiled: CompiledCommand,
   version: string,
+  specs: Resources,
   argv: ReadonlyArray<string>,
   binName?: string
 ): Effect.Effect<number, never, Exec> =>
@@ -211,7 +230,8 @@ const runCli = (
           ? Console.log(renderHelp(command, { builtins: command === compiled })).pipe(Effect.as(0))
           : Effect.gen(function*() {
             const parsed = yield* parseTokens(command, record)
-            const result = yield* invokeParsed(command, parsed, makeCtx(runtime, "cli"))
+            const result = yield* withResources(command.path, specs, (resources) =>
+              invokeParsed(command, parsed, makeCtx(runtime, "cli", resources)))
             // --json > per-command render override > default human rendering
             const text = json
               ? JSON.stringify(result, null, 2) ?? ""
@@ -300,11 +320,13 @@ export const program = <
   const RootOut = undefined,
   RootR = void,
   const Cs = {},
-  Rs = {}
+  Rs = {},
+  const Rsrc extends Readonly<globalThis.Record<string, ResourceSpec<any>>> = {}
 >(
-  def: ProgramDeclOf<Name, RootIn, RootOut, RootR, Cs, Rs>
+  def: ProgramDeclOf<Name, RootIn, RootOut, RootR, Cs, Rs, Rsrc>
 ): ProgramModule<RootIn, RootOut, RootR, Cs, Rs> => {
   const compiled = compileCommand(def.name, [def.name], def as never)
+  const specs: Resources = def.resources ?? {}
   const runtime: MeshRuntime = ManagedRuntime.make(Exec.layer)
   // the layer is sync; building it eagerly keeps the first typed call as
   // synchronous as every later one
@@ -338,10 +360,15 @@ export const program = <
     )
 
   return callableModule(
-    (input?: unknown) => runAuto(runtime, invokeValues(compiled, input ?? {}, makeCtx(runtime, "call"))),
+    (input?: unknown) =>
+      runAuto(
+        runtime,
+        withResources(compiled.path, specs, (resources) =>
+          invokeValues(compiled, input ?? {}, makeCtx(runtime, "call", resources)))
+      ),
     {
       args: argsOf(compiled),
-      ...Record.map(compiled.children, (child) => buildCommandModule(child, runtime)),
+      ...Record.map(compiled.children, (child) => buildCommandModule(child, runtime, specs)),
       // main() is the composed bin: the head token `mcp` serves the mcp
       // projection, everything else is the cli projection. the projections
       // themselves stay separate — this is the one named composition point,
@@ -358,13 +385,13 @@ export const program = <
               ).pipe(Effect.as(2))
             )
             : runtime.runPromise(
-              serveEffect(runtime, compiled, version).pipe(
+              serveEffect(runtime, compiled, version, specs).pipe(
                 Effect.as(0),
                 Effect.catch((error) => Console.error(`${error}`).pipe(Effect.as(1)))
               )
             )
           : runtime.runPromise(
-            runCli(runtime, compiled, version, tokens, argv === undefined ? invokedBinName() : undefined)
+            runCli(runtime, compiled, version, specs, tokens, argv === undefined ? invokedBinName() : undefined)
           )
         return argv === undefined ? asBin(run) : run
       },
@@ -378,6 +405,7 @@ export const program = <
               runtime,
               compiled,
               version,
+              specs,
               argv ?? Array.drop(globalThis.process.argv, 2),
               argv === undefined ? invokedBinName() : undefined
             )
@@ -401,14 +429,14 @@ export const program = <
                 (words) => ({ exec: makeCtx(runtime, "cli").exec, words, project, workspace }),
                 path ?? []
               ).pipe(
-                Effect.flatMap((argv) => runCli(runtime, compiled, version, argv)),
+                Effect.flatMap((argv) => runCli(runtime, compiled, version, specs, argv)),
                 Effect.catchTag("PromptCancelled", () => Effect.succeed(130))
               )
             )
       },
       mcp: {
         tools: deepFrozen(Array.map(collectTools(compiled), (t) => t.tool)),
-        serve: () => runtime.runPromise(Effect.asVoid(serveEffect(runtime, compiled, version)))
+        serve: () => runtime.runPromise(Effect.asVoid(serveEffect(runtime, compiled, version, specs)))
       },
       spec: deepFrozen(specOf(compiled, version)),
       [mounted]: compiled

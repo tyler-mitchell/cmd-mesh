@@ -1,11 +1,35 @@
 import { type } from "arktype"
-import { Array, Effect, Option, Predicate, String } from "effect"
+import { Array, Effect, Option, Predicate, Record, String } from "effect"
 import type { AnyType, CompiledCommand, CompiledParameter } from "./compile.js"
 import { ExternalExit, HandlerFailure, InvalidInput, InvalidOutput, NoRunnableCommand } from "./errors.js"
 import { Exec } from "./exec.js"
-import type { Ctx, ExternalCallOptions } from "./types.js"
+import type { Ctx, ExternalCallOptions, ResourceSpec } from "./types.js"
 
 export type InvokeError = InvalidInput | InvalidOutput | HandlerFailure | NoRunnableCommand | ExternalExit
+
+/** acquire the program's resources, hand them to the invocation, and
+ * release in reverse order after it settles — the handler's failure
+ * included. an acquire failure fails the invocation before the handler;
+ * a release rejection is a defect. */
+export const withResources = <A, E, R>(
+  path: ReadonlyArray<string>,
+  specs: Readonly<globalThis.Record<string, ResourceSpec<unknown>>>,
+  use: (resources: Readonly<globalThis.Record<string, unknown>>) => Effect.Effect<A, E, R>
+): Effect.Effect<A, E | HandlerFailure, R> =>
+  Record.isEmptyRecord(specs as globalThis.Record<string, ResourceSpec<unknown>>)
+    ? use({})
+    : Effect.scoped(
+      Effect.forEach(Record.toEntries(specs), ([key, spec]) =>
+        Effect.acquireRelease(
+          Effect.tryPromise({
+            try: async () => spec.acquire(),
+            catch: (cause) => new HandlerFailure({ path, cause })
+          }),
+          (value) => Effect.promise(async () => { await spec.release(value) })
+        ).pipe(Effect.map((value) => [key, value] as const))).pipe(
+          Effect.flatMap((entries) => use(Record.fromEntries(entries)))
+        )
+    )
 
 /** direct ArkType invocation lifted into the error channel */
 export const parseWith = (

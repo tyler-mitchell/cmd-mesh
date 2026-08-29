@@ -148,6 +148,7 @@ describe("unit-testing a handler that execs", () => {
     const calls: Array<ReadonlyArray<string>> = []
     const fake: Ctx = {
       surface: "call",
+      resources: {},
       exec: async (bin, args) => {
         calls.push([bin, ...args])
         return { stdout: "a.ts\nb.ts\n", stderr: "", exitCode: 0 }

@@ -37,6 +37,7 @@ export {
   UnknownFlag
 } from "./errors.js"
 export type {
+  AcquiredResources,
   CliCommandConfig,
   CliParameterConfig,
   CliProjection,
@@ -56,6 +57,7 @@ export type {
   ParameterDescriptor,
   ParameterSpec,
   ProgramModule,
+  ResourceSpec,
   SuggestContext,
   SuggestGenerator,
   SuggestSource,

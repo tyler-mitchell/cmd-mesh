@@ -14,3 +14,4 @@ dist/
 .pnpm-debug.log*
 
 docs/audit/
+.tmp/
