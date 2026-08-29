@@ -1,66 +1,58 @@
 import { Array, Option, Record, String, pipe } from "effect"
-import type { CommandSafety, ExternalCommandDecl, ExternalDecl, ParameterDescriptor } from "./types.js"
+import type {
+  CommandSafety,
+  ExternalCommandDecl,
+  ExternalDecl,
+  ParameterDescriptor,
+  SuggestSource
+} from "./types.js"
 
-// importing a foreign command description into the declaration model.
-// `format` names the source grammar and travels as data — the verb is
-// this model's, never the source tool's.
+// importing a binary's observed command surface into the declaration
+// model. the surface is what a binary accepts; a declaration is what
+// this program promises about it. curation is the boundary between
+// them, because no observed surface carries consequence or contracts.
 
-/** a Fig argument: one positional slot, or an option's value slot */
-export interface FigArg {
+/** one value slot: a positional, or an option's argument */
+export interface ImportedArgument {
   readonly name: string
-  readonly isOptional?: boolean
-  readonly isVariadic?: boolean
-  readonly template?: string
+  readonly optional?: boolean
+  readonly variadic?: boolean
+  readonly suggest?: SuggestSource
 }
 
-export interface FigOption {
-  readonly name: string | ReadonlyArray<string>
+/** one option and every token that names it (`["--message", "-m"]`) */
+export interface ImportedOption {
+  readonly names: ReadonlyArray<string>
   readonly description?: string
-  readonly args?: FigArg
+  readonly argument?: ImportedArgument
 }
 
-export interface FigSubcommand {
+export interface ImportedCommand {
   readonly name: string
   readonly description?: string
-  readonly args?: FigArg
-  readonly options?: ReadonlyArray<FigOption>
+  readonly argument?: ImportedArgument
+  readonly options?: ReadonlyArray<ImportedOption>
 }
 
-/** what the source grammar cannot express, supplied per subcommand.
- * `safety` is required: a completion spec describes how to type a
- * command, never what it does, and an agent client reads a command with
- * no hints as destructive. */
+/** what an observed surface cannot state, supplied per command.
+ * `safety` is required: a surface describes how to type a command,
+ * never what it does, and an agent client reads a command with no hints
+ * as destructive. */
 export interface CommandCuration {
   readonly safety: CommandSafety
-  /** exactly the flag tokens to keep — an uncurated program carries
-   * 100-plus options per command */
+  /** exactly the option tokens to keep — a real binary carries
+   * 100-plus per command */
   readonly flags: ReadonlyArray<string>
 }
 
-/** an import request in Fig's completion-spec grammar
- * (withfig/autocomplete) */
-export interface FigImport {
-  readonly format: "fig"
+/** a binary's surface plus the curation that turns it into a
+ * declaration. a command absent from `curation` is not imported. */
+export interface ExternalImport {
   readonly bin: string
-  readonly subcommands: ReadonlyArray<FigSubcommand>
+  readonly description?: string
+  readonly commands: ReadonlyArray<ImportedCommand>
   readonly curation: Readonly<globalThis.Record<string, CommandCuration>>
 }
-
-export type ExternalImport = FigImport
-
-/** the named suggestion sources this model resolves; any other Fig
- * template is runtime-only and carries no declarative meaning */
-const completionSources: ReadonlyArray<string> = ["filepaths", "folders"]
-
-const suggestOf = (template: string | undefined) =>
-  pipe(
-    Option.fromNullishOr(template),
-    Option.filter((source) => Array.contains(completionSources, source)),
-    Option.match({
-      onNone: () => ({}),
-      onSome: (suggest) => ({ suggest })
-    })
-  )
 
 const describedBy = (description: string | undefined) =>
   Option.match(Option.fromNullishOr(description), {
@@ -68,41 +60,45 @@ const describedBy = (description: string | undefined) =>
     onSome: (described) => ({ description: described })
   })
 
+const suggesting = (suggest: SuggestSource | undefined) =>
+  Option.match(Option.fromNullishOr(suggest), {
+    onNone: () => ({}),
+    onSome: (source) => ({ suggest: source })
+  })
+
 const isLong = String.startsWith("--")
 
 const isShort = (name: string): boolean => String.startsWith("-")(name) && !isLong(name)
 
-const namesOf = (name: string | ReadonlyArray<string>): ReadonlyArray<string> =>
-  String.isString(name) ? [name] : name
-
-const positionalUsage = (arg: FigArg): string => {
-  const token = arg.isVariadic === true ? `...${arg.name}` : arg.name
-  return arg.isOptional === true ? `[${token}]` : `<${token}>`
+const usageOf = (argument: ImportedArgument): string => {
+  const token = argument.variadic === true ? `...${argument.name}` : argument.name
+  return argument.optional === true ? `[${token}]` : `<${token}>`
 }
 
-const positionalParameter = (arg: FigArg): readonly [string, ParameterDescriptor] => [
-  String.camelCase(arg.name),
+const positionalParameter = (
+  argument: ImportedArgument
+): readonly [string, ParameterDescriptor] => [
+  String.camelCase(argument.name),
   {
     type: "string",
-    ...suggestOf(arg.template),
-    cli: { usage: positionalUsage(arg) }
+    ...suggesting(argument.suggest),
+    cli: { usage: usageOf(argument) }
   }
 ]
 
-const flagParameter = (option: FigOption): readonly [string, ParameterDescriptor] => {
-  const names = namesOf(option.name)
+const flagParameter = (option: ImportedOption): readonly [string, ParameterDescriptor] => {
   const long = pipe(
-    Array.findFirst(names, isLong),
-    Option.orElse(() => Array.head(names)),
+    Array.findFirst(option.names, isLong),
+    Option.orElse(() => Array.head(option.names)),
     Option.getOrElse(() => "")
   )
   return [
     String.camelCase(long),
     {
-      type: option.args === undefined ? "boolean" : "string",
+      type: option.argument === undefined ? "boolean" : "string",
       ...describedBy(option.description),
-      ...(option.args === undefined ? {} : suggestOf(option.args.template)),
-      cli: Option.match(Array.findFirst(names, isShort), {
+      ...(option.argument === undefined ? {} : suggesting(option.argument.suggest)),
+      cli: Option.match(Array.findFirst(option.names, isShort), {
         onNone: () => long,
         onSome: (short) => `${long}, ${short}`
       })
@@ -110,41 +106,37 @@ const flagParameter = (option: FigOption): readonly [string, ParameterDescriptor
   ]
 }
 
-const kept = (option: FigOption, allow: ReadonlyArray<string>): boolean =>
-  Array.some(namesOf(option.name), (name) => Array.contains(allow, name))
-
-const commandOf = (sub: FigSubcommand, curation: CommandCuration): ExternalCommandDecl => ({
-  ...describedBy(sub.description),
+const commandOf = (command: ImportedCommand, curation: CommandCuration): ExternalCommandDecl => ({
+  ...describedBy(command.description),
   safety: curation.safety,
   // the positional leads: argv order follows declaration order
   input: Record.fromEntries([
-    ...Option.match(Option.fromNullishOr(sub.args), {
+    ...Option.match(Option.fromNullishOr(command.argument), {
       onNone: () => [] as ReadonlyArray<readonly [string, ParameterDescriptor]>,
-      onSome: (arg) => [positionalParameter(arg)]
+      onSome: (argument) => [positionalParameter(argument)]
     }),
     ...pipe(
-      sub.options ?? [],
-      Array.filter((option) => kept(option, curation.flags)),
+      command.options ?? [],
+      Array.filter((option) =>
+        Array.some(option.names, (name) => Array.contains(curation.flags, name))),
       Array.map(flagParameter)
     )
   ]),
   output: "string"
 })
 
-/** convert a foreign command description into an `external()`
- * declaration. runtime-only fields of the source grammar (Fig's
- * generators, insertValue, icon, priority) carry no declarative meaning
- * and drop; only curated subcommands reach the result. */
+/** turn a binary's observed command surface into an `external()`
+ * declaration, keeping only the commands curation names */
 export const importExternal = (source: ExternalImport): ExternalDecl => ({
   name: source.bin,
-  description: `the ${source.bin} binary as a typed surface`,
+  ...describedBy(source.description),
   commands: Record.fromEntries(
     pipe(
-      source.subcommands,
-      Array.map((sub) =>
+      source.commands,
+      Array.map((command) =>
         pipe(
-          Record.get(source.curation, sub.name),
-          Option.map((curation) => [sub.name, commandOf(sub, curation)] as const)
+          Record.get(source.curation, command.name),
+          Option.map((curation) => [command.name, commandOf(command, curation)] as const)
         )),
       Array.getSomes
     )

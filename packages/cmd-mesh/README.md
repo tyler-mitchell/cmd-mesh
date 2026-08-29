@@ -64,34 +64,41 @@ member, exit code, and argv convention — live in
 skill at `skill-data/core/SKILL.md`; agents discover usage from the
 installed tarball.
 
-## Importing an existing spec
+## Importing a binary's surface
 
-A large binary does not need its surface written by hand when a
-completion spec already describes it. `importExternal` converts one into
-a declaration, with the source grammar named as data:
+A large binary does not need its surface written by hand. Describe what
+the binary accepts, curate it, and `importExternal` produces the
+declaration:
 
 ```ts
 import { external, importExternal } from "cmd-mesh"
 
 const git = external(
   importExternal({
-    format: "fig",
     bin: "git",
-    subcommands: figGitSpec,        // the withfig/autocomplete shape
+    commands: [
+      {
+        name: "commit",
+        description: "Record changes to the repository",
+        argument: { name: "pathspec", optional: true, variadic: true, suggest: "filepaths" },
+        options: [
+          { names: ["-m", "--message"], argument: { name: "message" } },
+          { names: ["-a", "--all"] }
+        ]
+      }
+    ],
     curation: {
-      status: { safety: "read", flags: ["--short", "--branch"] },
       commit: { safety: "action", flags: ["--message", "--all"] }
     }
   })
 )
 ```
 
-`curation` supplies what a completion spec cannot. `flags` names, per
-subcommand, exactly the options to keep — an uncurated program carries
-100-plus per command. `safety` is required: Fig describes how to type a
+`curation` supplies what an observed surface cannot state. `flags` names,
+per command, exactly the options to keep — a real binary carries
+100-plus. `safety` is required: a surface describes how to type a
 command, never what it does, and an agent client reads a command with no
-hints as destructive. A `filepaths` or `folders` template becomes the
-parameter's suggestion source; runtime-only fields drop.
+hints as destructive. A command absent from `curation` is not imported.
 [docs/reference.md](./docs/reference.md) lists the full mapping.
 
 ## Safety is a contract
@@ -303,7 +310,7 @@ mesh complete -- snapshot --d  # what the shell calls back into
 ```
 
 Candidates are computed live: ArkType unions enumerate, `suggest:
-"folders" | "filepaths"` lists the working directory, and a Fig-style
+"folders" | "filepaths"` lists the working directory, and a declared
 generator resolves real branch names on demand. Generator failures
 degrade to static candidates; completion never errors.
 

@@ -2,13 +2,12 @@
 
 Command Mesh is organized as a pnpm workspace for TypeScript applications and packages.
 
-The project is centered on a Fig-inspired, ArkType-semantic command
-specification that can be projected into CLI runtimes, shell completion, and
-MCP tools. Consumers author schema definitions directly without importing
-ArkType. Planned adapter targets include citty and
-[Tab](https://github.com/bombshell-dev/tab), with
-[tinyexec](https://github.com/tinylibs/tinyexec) as the process execution
-engine and Effect as a candidate for internal runtime architecture.
+The project is centered on a declarative, ArkType-typed command program
+model. One declaration projects into typed functions, a CLI with help and
+shell completion, an MCP server for agents, and a machine-readable spec.
+Consumers author schema definitions directly without importing ArkType.
+Completion runs on [Tab](https://github.com/bombshell-dev/tab); process
+execution and the internal runtime are Effect.
 
 ## Requirements
 
@@ -23,8 +22,9 @@ engine and Effect as a candidate for internal runtime architecture.
 
 ## Workspace packages
 
-- `@command-mesh/spec` defines the command program model and its schema inference.
-- `@command-mesh/fig-plugin-types` preserves the complete legacy `Fig.Plugin` declaration and its supporting types.
+- `cmd-mesh` defines the command program model and every projection of it.
+- `repo-ops` declares this repository's operations as mountable modules.
+- `repokit` (in `apps/`) is the installed bin that consumes them.
 
 Workspace packages should extend the root TypeScript configuration:
 

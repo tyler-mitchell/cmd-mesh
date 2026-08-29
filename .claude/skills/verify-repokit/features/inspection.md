@@ -24,7 +24,7 @@ node apps/repokit/dist/bin.js todos
 
 ## What proves it
 
-`packages` lists cmd-mesh, repo-ops, repokit, fig-plugin-types with
+`packages` lists cmd-mesh, repo-ops, repokit with
 relative dirs; `search` returns file:line rows from real tracked files;
 exit 0. Empty search results exit 0 with no rows (grep exit-1
 semantics are declared, not failures).

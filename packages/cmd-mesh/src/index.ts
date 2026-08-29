@@ -3,10 +3,9 @@ export { importExternal } from "./import-external.js"
 export type {
   CommandCuration,
   ExternalImport,
-  FigArg,
-  FigImport,
-  FigOption,
-  FigSubcommand
+  ImportedArgument,
+  ImportedCommand,
+  ImportedOption
 } from "./import-external.js"
 
 // the repository toolkit, re-exported whole from package-management —

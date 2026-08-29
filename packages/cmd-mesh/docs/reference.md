@@ -58,28 +58,33 @@ project full nested JSON Schemas to MCP.
 
 ## Importing an external declaration
 
-`importExternal(source)` converts a foreign command description into an
-`external()` declaration. The source grammar travels as data.
+`importExternal(source)` turns a binary's observed command surface into
+an `external()` declaration. The surface is what the binary accepts; the
+declaration is what a program promises about it.
 
 | field | meaning |
 | --- | --- |
-| `format` | the source grammar; `"fig"` reads the `withfig/autocomplete` shape |
 | `bin` | the binary — becomes the declaration's `name` |
-| `subcommands` | the source's subcommand list |
-| `curation` | per subcommand, what the source grammar cannot express; a subcommand absent from it is not imported |
-| `curation[name].flags` | exactly the flag tokens to keep |
+| `description` | optional, carried onto the declaration |
+| `commands` | the observed commands |
+| `curation` | per command, what an observed surface cannot state; a command absent from it is not imported |
+| `curation[name].flags` | exactly the option tokens to keep |
 | `curation[name].safety` | `read` · `action` · `destructive`; required, because a command with no hints reads as destructive |
 
-| Fig field | becomes |
+| imported field | becomes |
 | --- | --- |
-| option `name` array | `--long, -s` usage |
-| option with `args` | a `string` parameter; without `args`, `boolean` |
-| `args.isOptional` / `args.isVariadic` | `<x>` · `[x]` · `<...x>` · `[...x]` positional usage |
-| `args.template` | `suggest: "filepaths"` or `"folders"`; other templates drop |
-| `generators`, `insertValue`, `icon`, `priority` | dropped — runtime-only |
+| `command.name` | the declaration's command key |
+| `command.argument` | the leading positional parameter |
+| `command.options[]` | flag parameters, in declaration order |
+| `option.names` | `--long, -s` usage; the first long token names the key |
+| `option.argument` | a `string` parameter; without one, `boolean` |
+| `argument.optional` / `argument.variadic` | `<x>` · `[x]` · `<...x>` · `[...x]` usage |
+| `argument.suggest` | the parameter's suggestion source, unchanged |
 
-A completion spec describes how to type a command, never what it does,
-so safety cannot be derived from it — curation declares it.
+An observed surface describes how to type a command, never what it does,
+so safety cannot be derived from it — curation declares it. A converter
+that reads another tool's spec file maps that file into these fields;
+the importer itself never sees a foreign grammar.
 
 ## MCP surface
 

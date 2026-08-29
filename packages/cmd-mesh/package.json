@@ -1,7 +1,7 @@
 {
   "name": "cmd-mesh",
   "version": "0.5.0",
-  "description": "Fig-rich, ArkType-typed command mesh: one declarative program model, invocable as a CLI, as an MCP server, or as plain typed functions.",
+  "description": "ArkType-typed command mesh: one declarative program model, invocable as a CLI, as an MCP server, or as plain typed functions.",
   "license": "MIT",
   "repository": {
     "type": "git",

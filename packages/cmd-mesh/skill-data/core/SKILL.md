@@ -66,7 +66,7 @@ export const git = external({
 const out = await git.commit({ message: "fix: parser" })  // spawns `git commit -m "fix: parser"`
 ```
 
-One file per program, one command per verb — the Fig convention. A `git grep`-style exit 1 is declared with `successCodes: [0, 1]` on the command.
+One file per program, one command per verb. A `git grep`-style exit 1 is declared with `successCodes: [0, 1]` on the command.
 
 ## Run processes from handlers
 
