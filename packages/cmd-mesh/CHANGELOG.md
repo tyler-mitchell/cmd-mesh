@@ -3,6 +3,13 @@
 
 
 
+
+## 0.5.0
+<sub>2026-08-29</sub>
+
+- *(minor)*
+  Added cli.interactive: guided invocation that prompts per parameter (validated by the same token morphs the parser runs), previews the equivalent command line, and dispatches through the ordinary cli path.
+
 ## 0.4.0
 <sub>2026-08-29</sub>
 
