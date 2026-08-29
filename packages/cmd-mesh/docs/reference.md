@@ -50,6 +50,7 @@ this page lists.
 | `"--tag <tags...>"` | repeatable flag → array |
 | `cli: { usage, env, hidden }` | object form: usage plus env fallback (argv > env > default) and per-surface hiding |
 | `suggest` | `"folders"` · `"filepaths"` · a const generator `(ctx: SuggestContext) => Promise<string[]>` |
+| `mcp: { hidden }` | drop the parameter from the mcp tool schema; it still validates if supplied. The parameter must be optional or defaulted, or no agent can call the tool (CMSH1015) |
 | no `cli` | derived `--flag`; union members tab-complete |
 
 A parameter's `type` is any ArkType definition. Structured parameters

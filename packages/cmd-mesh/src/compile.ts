@@ -361,6 +361,23 @@ const isOptionalNoDefault = (p: CompiledParameter): boolean => {
   return !p.required
 }
 
+const valueRequired = (p: CompiledParameter): boolean => {
+  if (p.defaulted) return false
+  if (p.binding.variadic) return isRequiredVariadic(p)
+  if (p.isBoolean) return p.required
+  return !isOptionalNoDefault(p)
+}
+
+const hiddenRequiredIssues = (
+  at: string,
+  parameters: ReadonlyArray<CompiledParameter>,
+  commandHiddenFromMcp: boolean
+): ReadonlyArray<DeclarationIssue> =>
+  commandHiddenFromMcp ? [] : Array.flatMap(parameters, (p) =>
+    p.mcpHidden && valueRequired(p)
+      ? [{ at: `${at} · ${p.key}`, problem: issueText(diagnostics.CMSH1015()) }]
+      : [])
+
 const variadicOf = (base: AnyType, p: CompiledParameter): AnyType => {
   const array = base.array() as AnyType
   return isRequiredVariadic(p) ? (array.atLeastLength(1) as AnyType) : array
@@ -503,6 +520,7 @@ const collectCommand = (
       Array.flatMap(Record.toEntries(merged), ([key, def]) => descriptorIssues(`${at} · ${key}`, def))
     ),
     Array.appendAll(Array.flatMap(parameters, (p) => parameterIssues(`${at} · ${p.key}`, p))),
+    Array.appendAll(hiddenRequiredIssues(at, parameters, decl.mcp?.hidden === true)),
     Array.appendAll(commandIssues(at, parameters)),
     Array.appendAll(
       outputAttempt?._tag === "failed"

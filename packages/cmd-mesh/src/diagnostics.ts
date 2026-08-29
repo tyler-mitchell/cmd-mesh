@@ -68,6 +68,10 @@ export const diagnostics = defineDiagnostics({
       why: (p: { source: string; known: string }) =>
         `unknown suggestion source "${p.source}" — named sources are ${p.known}`,
       fix: "Name a real source, or give a list of values or a generator instead."
+    },
+    CMSH1015: {
+      why: () => "an mcp-hidden parameter is required, so no agent can call the tool",
+      fix: "Give the parameter a default, make it optional, or hide the whole command from mcp."
     }
   }
 })

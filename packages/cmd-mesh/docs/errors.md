@@ -147,3 +147,19 @@ paths: { type: "string", suggest: ["src", "test"] }         // ✓ a static list
 
 The named sources are `filepaths` and `folders`. For other candidates,
 use a list of values or a generator function.
+
+## CMSH1015
+
+A parameter is hidden from mcp but the value boundary requires it. The
+tool schema does not show the parameter, so an agent cannot supply it,
+and every call fails validation. The `env` fallback does not help: it
+runs on the cli path only.
+
+```ts
+token: { type: "string", required: true, mcp: { hidden: true } }   // ✗ tool is uncallable
+token: { type: "string", mcp: { hidden: true } }                   // ✓ optional
+token: { type: "string = ''", mcp: { hidden: true } }              // ✓ defaulted
+```
+
+To keep a required parameter and still hide the work from agents, hide
+the whole command with `mcp: { hidden: true }` on the command.

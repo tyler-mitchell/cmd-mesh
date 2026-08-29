@@ -319,6 +319,44 @@ describe("per-parameter surface hiding (contract: 08-final grammar rules)", () =
     expect(tool.cli.help(["push"])).toMatch(/--token/)
   })
 
+  it("rejects a required mcp-hidden parameter, which no agent could supply", () => {
+    expect(() =>
+      program({
+        name: "secretive",
+        version: "0.0.0",
+        commands: {
+          push: {
+            description: "push",
+            input: {
+              target: { type: "string", cli: "<target>" },
+              token: { type: "string", required: true, mcp: { hidden: true }, cli: "--token" }
+            },
+            output: { ok: "boolean" },
+            run: () => ({ ok: true })
+          }
+        }
+      })
+    ).toThrow(/CMSH1015/)
+  })
+
+  it("allows a required hidden parameter when the whole command is off mcp", () => {
+    expect(() =>
+      program({
+        name: "secretive2",
+        version: "0.0.0",
+        commands: {
+          push: {
+            description: "push",
+            mcp: { hidden: true },
+            input: { token: { type: "string", required: true, mcp: { hidden: true }, cli: "--token" } },
+            output: { ok: "boolean" },
+            run: () => ({ ok: true })
+          }
+        }
+      })
+    ).not.toThrow()
+  })
+
   it("drops a cli-hidden parameter from help and completion, not from parsing", async () => {
     expect(tool.cli.help(["push"])).not.toMatch(/--trace/)
     await expect(tool.cli.complete(["push", "x", "--"])).resolves.not.toContain("--trace")
