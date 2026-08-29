@@ -40,7 +40,7 @@ export const git = external({
       description: "stage paths",
       safety: "action",
       input: {
-        paths: { type: "string", cli: { usage: "<...paths>", complete: "filepaths" } }
+        paths: { type: "string", suggest: "filepaths", cli: "<...paths>" }
       },
       output: "string"
     },
