@@ -13,4 +13,6 @@ dist/
 .turbo/
 .pnpm-debug.log*
 
+docs/audit/
+
 packages/spine
