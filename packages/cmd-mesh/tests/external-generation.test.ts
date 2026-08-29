@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { external, importExternal, program } from "../src/index.js"
-import type { FigSubcommand } from "../src/index.js"
+import type { CommandSpec, FigSubcommand } from "../src/index.js"
 
 // the fixture is a verbatim structural subset of withfig/autocomplete
 // src/git.ts (master, retrieved 2026-08-29); runtime-only fields the
@@ -29,13 +29,6 @@ const figGitSubset: ReadonlyArray<FigSubcommand> = [
   }
 ]
 
-interface ParameterView {
-  readonly key: string
-  readonly usage: string
-  readonly boolean: boolean
-  readonly suggestionSource?: string
-}
-
 describe("importExternal", () => {
   const generated = external(
     importExternal({
@@ -43,15 +36,15 @@ describe("importExternal", () => {
       bin: "git",
       subcommands: figGitSubset,
       curation: {
-        status: ["--short", "--branch"],
-        commit: ["--message", "--all", "--verbose"]
+        status: { safety: "read", flags: ["--short", "--branch"] },
+        commit: { safety: "action", flags: ["--message", "--all", "--verbose"] }
       }
     })
   )
-  const kit = program({ name: "kit", commands: { git: generated as never } })
-  const commandSpec = (name: string): { readonly parameters: ReadonlyArray<ParameterView> } => {
+  const kit = program({ name: "kit", commands: { git: generated } })
+  const commandSpec = (name: string): CommandSpec => {
     const git = kit.spec.commands.find((c) => c.path.at(-1) === "git")!
-    return git.commands.find((c) => c.path.at(-1) === name)! as never
+    return git.commands.find((c) => c.path.at(-1) === name)!
   }
 
   it("compiles the generated declaration", () => {
@@ -70,6 +63,12 @@ describe("importExternal", () => {
   it("carries a filepaths template through as the parameter's suggestion source", () => {
     const pathspec = commandSpec("commit").parameters.find((p) => p.key === "pathspec")!
     expect(pathspec.suggestionSource).toBe("filepaths")
+  })
+
+  it("projects both safety hints explicitly for every generated command", () => {
+    const annotationsOf = (name: string) => kit.mcp.tools.find((t) => t.name === name)!.annotations
+    expect(annotationsOf("kit_git_status")).toEqual({ readOnlyHint: true, destructiveHint: false })
+    expect(annotationsOf("kit_git_commit")).toEqual({ readOnlyHint: false, destructiveHint: false })
   })
 
   it("curation excludes everything not allow-listed", () => {

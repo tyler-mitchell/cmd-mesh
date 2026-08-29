@@ -1,6 +1,13 @@
 export { external, program } from "./module.js"
 export { importExternal } from "./import-external.js"
-export type { ExternalImport, FigArg, FigImport, FigOption, FigSubcommand } from "./import-external.js"
+export type {
+  CommandCuration,
+  ExternalImport,
+  FigArg,
+  FigImport,
+  FigOption,
+  FigSubcommand
+} from "./import-external.js"
 
 // the repository toolkit, re-exported whole from package-management —
 // the same day-to-day affordances handlers reach through ctx, importable

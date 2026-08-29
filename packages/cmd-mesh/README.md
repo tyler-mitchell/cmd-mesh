@@ -79,19 +79,20 @@ const git = external(
     bin: "git",
     subcommands: figGitSpec,        // the withfig/autocomplete shape
     curation: {
-      status: ["--short", "--branch"],
-      commit: ["--message", "--all"]
+      status: { safety: "read", flags: ["--short", "--branch"] },
+      commit: { safety: "action", flags: ["--message", "--all"] }
     }
   })
 )
 ```
 
-`curation` names, per subcommand, exactly the flags to keep — it is
-mandatory, because an uncurated program carries 100-plus options per
-command. Fig declares no requiredness for option values and no output
-contracts, so curation supplies both. A `filepaths` or `folders`
-template becomes the parameter's suggestion source; runtime-only fields
-drop. [docs/reference.md](./docs/reference.md) lists the full mapping.
+`curation` supplies what a completion spec cannot. `flags` names, per
+subcommand, exactly the options to keep — an uncurated program carries
+100-plus per command. `safety` is required: Fig describes how to type a
+command, never what it does, and an agent client reads a command with no
+hints as destructive. A `filepaths` or `folders` template becomes the
+parameter's suggestion source; runtime-only fields drop.
+[docs/reference.md](./docs/reference.md) lists the full mapping.
 
 ## Safety is a contract
 

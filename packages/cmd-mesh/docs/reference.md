@@ -66,7 +66,9 @@ project full nested JSON Schemas to MCP.
 | `format` | the source grammar; `"fig"` reads the `withfig/autocomplete` shape |
 | `bin` | the binary — becomes the declaration's `name` |
 | `subcommands` | the source's subcommand list |
-| `curation` | per subcommand, exactly the flag tokens to keep; mandatory |
+| `curation` | per subcommand, what the source grammar cannot express; a subcommand absent from it is not imported |
+| `curation[name].flags` | exactly the flag tokens to keep |
+| `curation[name].safety` | `read` · `action` · `destructive`; required, because a command with no hints reads as destructive |
 
 | Fig field | becomes |
 | --- | --- |
@@ -76,8 +78,8 @@ project full nested JSON Schemas to MCP.
 | `args.template` | `suggest: "filepaths"` or `"folders"`; other templates drop |
 | `generators`, `insertValue`, `icon`, `priority` | dropped — runtime-only |
 
-Fig carries no requiredness for option values and no output contracts.
-Curation supplies both.
+A completion spec describes how to type a command, never what it does,
+so safety cannot be derived from it — curation declares it.
 
 ## MCP surface
 

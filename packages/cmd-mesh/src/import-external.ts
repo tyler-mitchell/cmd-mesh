@@ -1,5 +1,5 @@
 import { Array, Option, Record, String, pipe } from "effect"
-import type { ExternalCommandDecl, ExternalDecl, ParameterDescriptor } from "./types.js"
+import type { CommandSafety, ExternalCommandDecl, ExternalDecl, ParameterDescriptor } from "./types.js"
 
 // importing a foreign command description into the declaration model.
 // `format` names the source grammar and travels as data — the verb is
@@ -26,15 +26,24 @@ export interface FigSubcommand {
   readonly options?: ReadonlyArray<FigOption>
 }
 
+/** what the source grammar cannot express, supplied per subcommand.
+ * `safety` is required: a completion spec describes how to type a
+ * command, never what it does, and an agent client reads a command with
+ * no hints as destructive. */
+export interface CommandCuration {
+  readonly safety: CommandSafety
+  /** exactly the flag tokens to keep — an uncurated program carries
+   * 100-plus options per command */
+  readonly flags: ReadonlyArray<string>
+}
+
 /** an import request in Fig's completion-spec grammar
- * (withfig/autocomplete). Fig carries no requiredness for option values
- * and no output contracts, so `curation` supplies both: it names, per
- * subcommand, exactly the flag tokens to keep. */
+ * (withfig/autocomplete) */
 export interface FigImport {
   readonly format: "fig"
   readonly bin: string
   readonly subcommands: ReadonlyArray<FigSubcommand>
-  readonly curation: Readonly<globalThis.Record<string, ReadonlyArray<string>>>
+  readonly curation: Readonly<globalThis.Record<string, CommandCuration>>
 }
 
 export type ExternalImport = FigImport
@@ -104,8 +113,9 @@ const flagParameter = (option: FigOption): readonly [string, ParameterDescriptor
 const kept = (option: FigOption, allow: ReadonlyArray<string>): boolean =>
   Array.some(namesOf(option.name), (name) => Array.contains(allow, name))
 
-const commandOf = (sub: FigSubcommand, allow: ReadonlyArray<string>): ExternalCommandDecl => ({
+const commandOf = (sub: FigSubcommand, curation: CommandCuration): ExternalCommandDecl => ({
   ...describedBy(sub.description),
+  safety: curation.safety,
   // the positional leads: argv order follows declaration order
   input: Record.fromEntries([
     ...Option.match(Option.fromNullishOr(sub.args), {
@@ -114,7 +124,7 @@ const commandOf = (sub: FigSubcommand, allow: ReadonlyArray<string>): ExternalCo
     }),
     ...pipe(
       sub.options ?? [],
-      Array.filter((option) => kept(option, allow)),
+      Array.filter((option) => kept(option, curation.flags)),
       Array.map(flagParameter)
     )
   ]),
@@ -134,7 +144,7 @@ export const importExternal = (source: ExternalImport): ExternalDecl => ({
       Array.map((sub) =>
         pipe(
           Record.get(source.curation, sub.name),
-          Option.map((allow) => [sub.name, commandOf(sub, allow)] as const)
+          Option.map((curation) => [sub.name, commandOf(sub, curation)] as const)
         )),
       Array.getSomes
     )
