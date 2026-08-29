@@ -211,9 +211,9 @@ describe("parent flags before the subcommand (citty resolveSubCommand)", () => {
       commands: {
         emit: {
           description: "emit",
-          input: { json: { type: "boolean", cli: "--json" } },
+          input: { json: ["boolean", "@", { cli: "--json", default: false }] },
           output: { asJson: "boolean" },
-          run: (input: { readonly json: boolean }) => ({ asJson: input.json })
+          run: (input) => ({ asJson: input.json })
         }
       }
     })
@@ -233,12 +233,12 @@ describe("parent flags before the subcommand (citty resolveSubCommand)", () => {
       version: "0.0.0",
       description: "root flags reach children",
       input: {
-        registry: { type: "string = 'https://npm.dev'", cli: "--registry" }
+        registry: ["string", "@", { cli: "--registry", default: "https://npm.dev" }]
       },
       commands: {
         add: {
           description: "add",
-          input: { pkg: { type: "string", cli: "<pkg>" } },
+          input: { pkg: ["string", "@", { cli: "<pkg>" }] },
           output: { pkg: "string", registry: "string" },
           run: (input) => ({ pkg: input.pkg, registry: input.registry })
         }
@@ -352,8 +352,8 @@ describe("subcommand aliases (citty main)", () => {
         name: "clash",
         version: "0.0.0",
         commands: {
-          install: { description: "a", cli: { alias: "i" }, run: () => "a" },
-          i: { description: "b", run: () => "b" }
+          install: { description: "a", cli: { alias: "i" }, run: (): string => "a" },
+          i: { description: "b", run: (): string => "b" }
         }
       })
     ).toThrow(/subcommand name i is claimed by install and i/)
@@ -368,7 +368,7 @@ describe("root run beside subcommands", () => {
     version: "1.0.0",
     description: "format, with a check mode as a child",
     input: {
-      write: { type: "boolean", cli: "--write" }
+      write: ["boolean", "@", { cli: "--write", default: false }]
     },
     output: { via: "string", write: "boolean" },
     run: (input) => ({ via: "root", write: input.write }),
@@ -413,7 +413,7 @@ describe("default subcommand (citty main)", () => {
     commands: {
       dev: {
         description: "start dev mode",
-        input: { watch: { type: "boolean", cli: "--watch" } },
+        input: { watch: ["boolean", "@", { cli: "--watch", default: false }] },
         output: { via: "string", watch: "boolean" },
         run: (input) => ({ via: "dev", watch: input.watch })
       },
