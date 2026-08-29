@@ -305,6 +305,33 @@ describe("positional notations", () => {
     expect(files.pack({})).toEqual({ count: 0 })
     expect(files.pack({ entries: ["a"] })).toEqual({ count: 1 })
   })
+
+  // Declaration order IS argv order. The two programs below differ in
+  // nothing else, so if order stopped deciding the slot they would parse
+  // the same and this fails. A reader-back of parameter order from a
+  // parsed arktype type would break this: arktype sorts its keys.
+  it("fills positional slots in the order the parameters are declared", async () => {
+    const twoWay = (input: Record<string, unknown>) =>
+      program({
+        name: "order",
+        version: "0.0.0",
+        commands: {
+          go: {
+            description: "two positionals",
+            input: input as never,
+            output: { head: "string", tail: "string" },
+            run: (parsed: { readonly head: string; readonly tail: string }) => parsed
+          }
+        }
+      })
+    const head = { type: "string", cli: "<head>" }
+    const tail = { type: "string", cli: "<tail>" }
+
+    expect(await ok(twoWay({ head, tail }), ["go", "a", "b"]))
+      .toEqual({ head: "a", tail: "b" })
+    expect(await ok(twoWay({ tail, head }), ["go", "a", "b"]))
+      .toEqual({ tail: "a", head: "b" })
+  })
 })
 
 describe("required parameters", () => {
