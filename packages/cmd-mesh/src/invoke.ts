@@ -98,17 +98,13 @@ const runExternal = Effect.fn("cmd-mesh/runExternal")(function*(
   const external = Option.getOrThrow(cmd.external)
   const exec = yield* Exec
   const args = externalArgs(external.argPath, cmd.parameters, parsed)
-  const result = yield* exec.exec(external.bin, args, options).pipe(
-    Effect.mapError((cause) => new HandlerFailure({ path: cmd.path, cause }))
+  // Exec owns the exit-code rule. ExternalExit stays; a spawn failure does not.
+  const result = yield* exec.exec(external.bin, args, {
+    ...options,
+    successCodes: external.successCodes
+  }).pipe(
+    Effect.catchTag("ExecFailure", (cause) => new HandlerFailure({ path: cmd.path, cause }))
   )
-  if (!Array.contains(external.successCodes, result.exitCode)) {
-    return yield* new ExternalExit({
-      bin: external.bin,
-      args,
-      exitCode: result.exitCode,
-      stderr: result.stderr
-    })
-  }
   return yield* Option.match(cmd.outputType, {
     onNone: () => Effect.succeed<unknown>(result.stdout),
     onSome: (out) =>

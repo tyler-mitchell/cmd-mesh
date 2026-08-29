@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { external, program } from "../src/index.js"
-import { InvalidDeclaration } from "../src/errors.js"
+import { ExternalExit, InvalidDeclaration } from "../src/errors.js"
 import { captureCli } from "./fixtures/capture.js"
 
 // Wrapped binaries.
@@ -367,8 +367,11 @@ describe("expected exit codes", () => {
 
   it("still fails on codes outside the declared set", async () => {
     // a nonexistent pathspec makes git grep exit 128, outside [0, 1]
-    await expect(git.grep({ pattern: "x", path: "definitely/not/here-xyz" }))
-      .rejects.toThrow(/exited with/)
+    // The class is the contract: callers catch ExternalExit by type.
+    const failure = await git.grep({ pattern: "x", path: "definitely/not/here-xyz" })
+      .then(() => undefined, (error: unknown) => error)
+    expect(failure).toBeInstanceOf(ExternalExit)
+    expect(`${failure}`).toMatch(/exited with/)
   })
 })
 
