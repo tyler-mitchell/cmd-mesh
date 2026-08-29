@@ -124,6 +124,12 @@ mesh mcp install codex     # or name one
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` | `mcpServers` |
 | Codex | `~/.codex/config.toml` | `mcp_servers` |
 
+The entry names what the client must actually spawn. A host started
+from its own launcher carries none of a shell's `PATH`, so a bare
+program name would fail to spawn — the installed `node_modules/.bin`
+entry is written absolutely, and a program still being developed is
+written as its own interpreter plus its script.
+
 Bare `mcp install` only ever picks a client whose config lives in this
 project. Windsurf and Codex keep theirs in your home directory, so they
 are named outright rather than detected — a project command should not

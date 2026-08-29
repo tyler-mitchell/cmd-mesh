@@ -25,7 +25,7 @@ import {
 } from "./completion.js"
 import { Exec } from "./exec.js"
 import { promptArgv } from "./interactive.js"
-import { detectMcpClient, installMcpClient, isMcpClientId, mcpClientIds } from "./install.js"
+import { detectMcpClient, installMcpClient, isMcpClientId, mcpClientIds, mcpInvocation } from "./install.js"
 import { externalArgv, invokeParsed, invokeValues, withResources } from "./invoke.js"
 import { buildMcpServer, collectTools, inputSchema, serveMcp } from "./mcp.js"
 import { Predicate } from "effect"
@@ -143,7 +143,7 @@ const soleRequired = (cmd: CompiledCommand): Option.Option<string> => {
 
 const callInput = (cmd: CompiledCommand, input: unknown): unknown =>
   input === undefined ? {}
-    : typeof input === "object" && input !== null && !globalThis.Array.isArray(input) ? input
+    : Predicate.isObject(input) ? input
     : Option.match(soleRequired(cmd), {
       onNone: () => input,
       onSome: (key) => ({ [key]: input })
@@ -225,7 +225,7 @@ const installEffect = (
     }
     // the program's own name: what its package `bin` puts on PATH, and
     // the only value that resolves once the host runs it detached
-    return yield* Effect.try(() => installMcpClient(name, name, client.value)).pipe(
+    return yield* Effect.try(() => installMcpClient(name, mcpInvocation(name), client.value)).pipe(
       Effect.flatMap((file) => Console.log(`registered ${name} in ${file}`).pipe(Effect.as(0))),
       Effect.catch((error) => Console.error(`${error}`).pipe(Effect.as(1)))
     )

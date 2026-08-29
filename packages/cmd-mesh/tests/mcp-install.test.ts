@@ -1,6 +1,10 @@
 import { createFile, defineFileSystemStorage, getPath } from "package-management"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
-import { detectMcpClient, installMcpClient, mcpClientIds } from "../src/install.js"
+import { detectMcpClient, installMcpClient, mcpClientIds, mcpInvocation } from "../src/install.js"
+
+// a fixed invocation keeps these cases about the FILES; what a client
+// must spawn is its own concern, covered separately below
+const invocation = { command: "mytool", args: ["mcp"] } as const
 
 // `mcp install` edits the user's own editor settings, so every case here
 // asserts that what was already in the file is still there afterwards.
@@ -39,28 +43,28 @@ afterAll(async () => {
 
 describe("registering with each client", () => {
   it("writes claude's project file", async () => {
-    installMcpClient("mytool", "mytool", "claude")
+    installMcpClient("mytool", invocation, "claude")
     expect(JSON.parse(await read(projectFs, ".mcp.json"))).toEqual({
       mcpServers: { mytool: { command: "mytool", args: ["mcp"] } }
     })
   })
 
   it("writes cursor's project file", async () => {
-    installMcpClient("mytool", "mytool", "cursor")
+    installMcpClient("mytool", invocation, "cursor")
     expect(JSON.parse(await read(projectFs, ".cursor/mcp.json"))).toEqual({
       mcpServers: { mytool: { command: "mytool", args: ["mcp"] } }
     })
   })
 
   it("names the transport for vscode, which asks for it", async () => {
-    installMcpClient("mytool", "mytool", "vscode")
+    installMcpClient("mytool", invocation, "vscode")
     expect(JSON.parse(await read(projectFs, ".vscode/mcp.json"))).toEqual({
       servers: { mytool: { type: "stdio", command: "mytool", args: ["mcp"] } }
     })
   })
 
   it("writes windsurf's home file", async () => {
-    const file = installMcpClient("mytool", "mytool", "windsurf")
+    const file = installMcpClient("mytool", invocation, "windsurf")
     expect(file.startsWith(home)).toBe(true)
     expect(JSON.parse(await read(homeFs, ".codeium/windsurf/mcp_config.json"))).toMatchObject({
       mcpServers: { mytool: { command: "mytool", args: ["mcp"] } }
@@ -75,7 +79,7 @@ describe("registering with each client", () => {
 describe("keeping what the file already holds", () => {
   it("leaves another server's json entry alone", async () => {
     createFile(`${project}/.mcp.json`, `{"mcpServers":{"other":{"command":"other-bin"}}}`)
-    installMcpClient("mytool", "mytool", "claude")
+    installMcpClient("mytool", invocation, "claude")
     expect(JSON.parse(await read(projectFs, ".mcp.json")).mcpServers).toEqual({
       other: { command: "other-bin" },
       mytool: { command: "mytool", args: ["mcp"] }
@@ -87,7 +91,7 @@ describe("keeping what the file already holds", () => {
       `${home}/.codex/config.toml`,
       `# my own note\nmodel = "gpt-5"\n\n[mcp_servers.existing]\ncommand = "existing-bin"\n`
     )
-    installMcpClient("mytool", "mytool", "codex")
+    installMcpClient("mytool", invocation, "codex")
     const after = await read(homeFs, ".codex/config.toml")
     expect(after).toContain("# my own note")
     expect(after).toContain("[mcp_servers.existing]")
@@ -95,8 +99,8 @@ describe("keeping what the file already holds", () => {
   })
 
   it("does not register a toml entry twice", async () => {
-    installMcpClient("mytool", "mytool", "codex")
-    installMcpClient("mytool", "mytool", "codex")
+    installMcpClient("mytool", invocation, "codex")
+    installMcpClient("mytool", invocation, "codex")
     const after = await read(homeFs, ".codex/config.toml")
     expect(after.match(/\[mcp_servers\.mytool\]/g)).toHaveLength(1)
   })
@@ -104,6 +108,24 @@ describe("keeping what the file already holds", () => {
 
 // a directory of its own: the cases above leave .cursor and .vscode behind,
 // and detection would rightly find them
+// A host launched from its own launcher carries none of a shell's PATH,
+// so a bare program name is only spawnable when it is globally
+// installed. Naming it absolutely is what makes a restart work.
+describe("what a client is told to spawn", () => {
+  it("never leaves a bare name that a fresh host could not resolve", () => {
+    const { command, args } = mcpInvocation("mytool")
+    expect(command).not.toBe("mytool")
+    expect(command.startsWith("/")).toBe(true)
+    expect(args[args.length - 1]).toBe("mcp")
+  })
+
+  it("spawns the running script through its own interpreter when there is no installed bin", () => {
+    const { command, args } = mcpInvocation("mytool")
+    expect(command).toBe(process.execPath)
+    expect(args[0]).toBe(process.argv[1])
+  })
+})
+
 describe("detection", () => {
   const bare = `${root}/bare`
 
