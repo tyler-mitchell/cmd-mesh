@@ -119,6 +119,38 @@ describe("mcp tool identity", () => {
     ])
   })
 
+  it("routes both commands when two flatten to one tool name", async () => {
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js")
+    const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js")
+    const app = program({
+      name: "coll",
+      version: "0.0.0",
+      commands: {
+        cache: {
+          description: "cache group",
+          commands: {
+            clear: { description: "nested", output: "string", run: () => "from nested" }
+          }
+        },
+        cache_clear: { description: "flat", output: "string", run: () => "from flat" }
+      }
+    })
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    await app.mcp.server().connect(serverTransport)
+    const client = new Client({ name: "witness", version: "0.0.0" })
+    await client.connect(clientTransport)
+
+    const names = (await client.listTools()).tools.map((t) => t.name).filter((n) => n.includes("cache"))
+    expect(new Set(names).size).toBe(names.length)
+    const answers = await Promise.all(
+      names.map(async (name) => {
+        const called = await client.callTool({ name, arguments: {} })
+        return (called.content as Array<{ text: string }>)[0]?.text
+      })
+    )
+    expect(new Set(answers)).toEqual(new Set(["from nested", "from flat"]))
+  })
+
   it("serves the spec as a resource and a paired read tool over a live client", async () => {
     const { Client } = await import("@modelcontextprotocol/sdk/client/index.js")
     const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js")

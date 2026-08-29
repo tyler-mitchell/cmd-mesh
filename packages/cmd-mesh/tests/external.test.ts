@@ -427,6 +427,17 @@ describe("external declaration validation", () => {
     ).toThrow(/CMSH1013.*saftey/s)
   })
 
+  it("takes a bare type string as a whole parameter and derives its flag", async () => {
+    const probe = external({
+      name: "probe-bare",
+      bin: "echo",
+      commands: {
+        mark: { input: { short: "boolean", tag: "string" }, output: "string" }
+      }
+    })
+    await expect(probe.mark({ short: true, tag: "x" })).resolves.toBe("mark --short --tag x\n")
+  })
+
   it("rejects a suggestion source that lists nothing", () => {
     expect(() =>
       external({

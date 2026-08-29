@@ -37,6 +37,8 @@ app.spec                                            // the whole surface as one 
 
 `input` keys are ArkType definitions; the `cli` binding decides positional (`<text>`) versus flag (`--tag, -t`). `run` receives parsed, canonical values — never raw strings.
 
+A bare definition is a complete parameter — `input: { force: "boolean", tag: "string" }` derives the flags `--force` and `--tag`. Reach for the `{ type, cli }` descriptor only for what the key cannot express: a short alias, a positional slot, an env fallback, a suggestion source.
+
 ## Wrap a binary as a typed surface
 
 ```ts

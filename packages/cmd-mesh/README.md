@@ -58,6 +58,11 @@ mesh.spec  // the whole surface as one JSON descriptor — doc generators
            //   and UIs consume this, never help text
 ```
 
+A parameter is an ArkType definition. `verbose: "boolean"` is complete on
+its own — the flag `--verbose` comes from the key. The `{ type, cli }`
+form above adds what a key cannot express: a short alias, a positional
+slot, an env fallback, a suggestion source.
+
 The complete lookup tables — every command field, parameter form, ctx
 member, exit code, and argv convention — live in
 [docs/reference.md](./docs/reference.md). The package ships an agent

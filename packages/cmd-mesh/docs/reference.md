@@ -41,8 +41,15 @@ this page lists.
 
 ## Parameter descriptors
 
+A parameter is an ArkType definition, or a descriptor that adds
+surface configuration to one. `short: "boolean"` is a complete
+parameter: the flag `--short` is derived from the key. Use the
+descriptor form only for what the key cannot express — a short alias, a
+positional slot, an env fallback, a suggestion source.
+
 | form | meaning |
 | --- | --- |
+| `"boolean"` · `"string.integer.parse = '2'"` | the whole parameter; the flag is derived `--kebab-case` from the key |
 | `"<name>"` | required positional |
 | `"[name]"` | optional positional |
 | `"[...name]"` / `"<...name>"` | variadic (zero ok / at least one) |

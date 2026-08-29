@@ -322,7 +322,9 @@ export const buildMcpServer = (
                     result === undefined
                       ? { content: [] }
                       : {
-                        ...textResult(JSON.stringify(result, null, 2)),
+                        ...textResult(
+                          Predicate.isString(result) ? result : JSON.stringify(result, null, 2)
+                        ),
                         ...Option.match(tool.command.outputType, {
                           onNone: () => ({}),
                           onSome: () => ({
