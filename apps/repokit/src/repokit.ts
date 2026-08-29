@@ -18,11 +18,9 @@ interface GrepLine {
 // operations anchor at the workspace root; ctx.workspace owns that.
 const gitGrep = async (ctx: Ctx, args: ReadonlyArray<string>): Promise<ReadonlyArray<GrepLine>> => {
   const result = await ctx.exec("git", ["grep", "-n", "-I", "--untracked", ...args], {
-    cwd: ctx.workspace.workspaceRootDir()
+    cwd: ctx.workspace.workspaceRootDir(),
+    successCodes: [0, 1]
   })
-  if (result.exitCode > 1) {
-    throw new Error(`git grep failed (${result.exitCode}): ${result.stderr.trim()}`)
-  }
   return result.stdout
     .split("\n")
     .filter((line) => line.length > 0)
@@ -131,14 +129,12 @@ export const repokit = program({
       },
       output: { filter: "string", script: "string" },
       run: async (input, ctx) => {
-        const result = await ctx.exec("pnpm", ["--filter", input.filter, "run", input.script], {
+        await ctx.exec("pnpm", ["--filter", input.filter, "run", input.script], {
           cwd: ctx.workspace.workspaceRootDir(),
           stdio: "inherit",
-          timeoutMs: input.timeout
+          timeoutMs: input.timeout,
+          successCodes: [0]
         })
-        if (result.exitCode !== 0) {
-          throw new Error(`${input.script} failed with exit code ${result.exitCode}`)
-        }
         return { filter: input.filter, script: input.script }
       }
     },
