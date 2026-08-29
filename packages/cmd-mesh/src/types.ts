@@ -241,10 +241,18 @@ export type OutputOf<C, R> = C extends { readonly output: infer O }
 // message and the declaration stops assigning.
 export type CommandsData<M> = {
   readonly [N in keyof M]: M[N] extends Mounted ? M[N] : {
-    readonly [K in keyof M[N]]: K extends "input" ? ValidateInput<M[N][K]>
-      : K extends "output" ? ValidateOutput<M[N][K]>
-      : M[N][K]
+    readonly [K in keyof M[N]]: M[N][K]
   }
+}
+
+/** ArkType's validators, applied OUTSIDE the inference path. Naming them
+ * inside `CommandsData` forces TypeScript to invert `type.validate` to
+ * recover the commands record, which it cannot do — a `Type` instance
+ * then infers as nothing. Under `NoInfer` this only constrains. */
+export type CommandsContracts<M> = {
+  readonly [N in keyof M]?:
+    & (M[N] extends { readonly input: infer I } ? { readonly input?: ValidateInput<I> } : unknown)
+    & (M[N] extends { readonly output: infer O } ? { readonly output?: ValidateOutput<O> } : unknown)
 }
 
 /** program-level options (root input) join every command's handler and
@@ -277,7 +285,10 @@ export interface ProgramDeclOf<Name extends string, RootIn, RootOut, RootR, Cs, 
   readonly output?: ValidateOutput<RootOut>
   readonly narrow?: (input: HandlerInput<NoInfer<RootIn>>, ctx: NarrowContext) => boolean
   readonly run?: (input: HandlerInput<NoInfer<RootIn>>, ctx: Ctx & WithResources<NoInfer<Rsrc>>) => RootR
-  readonly commands?: CommandsData<Cs> & CommandsOverlay<NoInfer<Cs>, Rs, NoInfer<RootIn>, NoInfer<Rsrc>>
+  readonly commands?:
+    & CommandsData<Cs>
+    & CommandsOverlay<NoInfer<Cs>, Rs, NoInfer<RootIn>, NoInfer<Rsrc>>
+    & CommandsContracts<NoInfer<Cs>>
   // render typed from the declared root output, like command-level
   // render (contract-less roots render `unknown`)
   readonly cli?: CliCommandConfig<

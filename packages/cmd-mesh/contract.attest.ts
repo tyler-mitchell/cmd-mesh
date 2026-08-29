@@ -11,6 +11,9 @@ setup({
   tsconfig: "./tsconfig.attest.json"
 })
 
+const levelType = type("'low' | 'high'")
+const levels = type.module({ Level: "'low' | 'high'" })
+
 try {
   // ─── a deployer: the shape almost every internal cli grows ──────────────
   const deploy = program({
@@ -70,15 +73,13 @@ try {
           return input.conf.retries
         }
       },
-      // GAP: a Type instance inside a "@" tuple does NOT carry its
-      // inference — `level` is absent from the handler's input type.
+      // a Type instance reaches a command's input through `type.module`,
+      // which keeps the declaration a plain ArkType definition
       tuned: {
-        input: {
-          level: [type("'low' | 'high'").describe("verbosity"), "@", { cli: "--level" }]
-        },
+        input: { level: [levels.Level, "@", { cli: "--level" }] },
         run: (input) => {
-          attest(input).type.toString.snap()
-          return "ok"
+          attest(input.level).type.toString.snap("\"low\" | \"high\"")
+          return input.level
         }
       }
     }
@@ -93,6 +94,15 @@ try {
 
   // a program-level option is callable on every command
   attest(deploy.push({ service: "api", profile: "eu" })).type.toString.snap("{ at: string; count: number }")
+
+  // a Type instance carries its inference through the declaration
+  attest(deploy.tuned({ level: "high" })).type.toString.snap("\"low\" | \"high\"")
+
+  // ArkType itself infers a Type instance in an object definition …
+  attest({} as type.infer.Out<{ a: typeof levelType }>).type.toString.snap("{ a: \"low\" | \"high\" }")
+  // … and inside a "@" tuple
+  attest({} as type.infer.Out<{ a: readonly [typeof levelType, "@", { cli: "--x" }] }>)
+    .type.toString.snap("{ a: \"low\" | \"high\" }")
 
   // the args surface exposes the compiled value boundary. type-only: a
   // real assert({}) would throw, and this asserts the SHAPE it yields.

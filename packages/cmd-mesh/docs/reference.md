@@ -55,6 +55,14 @@ input: {
 }
 ```
 
+A definition shared between commands comes from `type.module`, so the
+parameter stays a plain ArkType definition:
+
+```ts
+const app = type.module({ Level: "'low' | 'high'" })
+input: { level: [app.Level, "@", { cli: "--level" }] }
+```
+
 ArkType owns the domain, optionality, defaults and morphs. A key is
 required unless it ends in `?` or carries a default. A variadic states
 its own array (`"string[]"`), so the notation says only how it is
