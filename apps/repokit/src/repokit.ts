@@ -1,7 +1,9 @@
-// repokit: the @cmd-mesh/core dogfood. handlers are written the way a
-// CONSUMER writes them — plain async functions over the promise surface,
-// no Effect — because exercising the real consumer contract is the point.
-import { readFile, writeFile } from "node:fs/promises"
+// repokit: the @cmd-mesh/core dogfood AND the repository's operational
+// command surface — the closed-distribution script contract declared
+// once, so the same operations are root scripts, a typed library, and
+// mcp tools. handlers are written the way a CONSUMER writes them —
+// plain async functions over the promise surface, no Effect.
+import { relative } from "node:path"
 import { program } from "cmd-mesh"
 import type { Ctx, SuggestContext } from "cmd-mesh"
 
@@ -40,23 +42,211 @@ const gitGrep = async (ctx: Ctx, args: ReadonlyArray<string>): Promise<ReadonlyA
     })
 }
 
-const bumpSegment = { major: 0, minor: 1, patch: 2 } as const
-
-// completion generators must be hoisted (or have annotated parameters):
-// an inline arrow is context-sensitive and would collapse the command's
-// type inference
-const packageManifests = async ({ exec }: SuggestContext): Promise<ReadonlyArray<string>> => {
-  const top = await exec("git", ["rev-parse", "--show-toplevel"])
-  const found = await exec("git", [
-    "ls-files",
-    "--cached",
-    "--others",
-    "--exclude-standard",
-    "*package.json",
-    "**/package.json"
-  ], { cwd: top.stdout.trim() })
-  return found.stdout.split("\n").filter((line) => line.length > 0)
+// the two operational shapes. `streamed` hands the child the terminal
+// (watchers, interactive tools) and succeeds only on the declared
+// codes; `captured` returns stdout as `{ text }` for cli rendering and
+// mcp structured content alike. both anchor at the repository root.
+const streamed = async (ctx: Ctx, bin: string, args: ReadonlyArray<string>): Promise<{ done: true }> => {
+  await ctx.exec(bin, args, { cwd: await repoRoot(ctx), stdio: "inherit", successCodes: [0] })
+  return { done: true }
 }
+
+const captured = async (ctx: Ctx, bin: string, args: ReadonlyArray<string>): Promise<{ text: string }> => {
+  const result = await ctx.exec(bin, args, { cwd: await repoRoot(ctx), successCodes: [0] })
+  return { text: result.stdout.trimEnd() }
+}
+
+const text = { text: "string" } as const
+const printText = (output: { text: string }) => output.text
+
+// the operational groups are mounted subprograms — the contract's
+// nesting mechanism, and the one shape that keeps bare (input, ctx)
+// handler inference intact below the first level
+
+const ci = program({
+  name: "ci",
+  description: "CI runs on GitHub",
+  commands: {
+    list: {
+      description: "recent workflow runs",
+      output: text,
+      cli: { render: printText },
+      run: (_input, ctx) => captured(ctx, "gh", ["run", "list", "--limit", "10"])
+    },
+    watch: {
+      description: "watch one run to completion",
+      mcp: { hidden: true },
+      input: { run: { type: "string", description: "run id", cli: "<run>" } },
+      run: (input, ctx) => streamed(ctx, "gh", ["run", "watch", "--exit-status", input.run])
+    },
+    logs: {
+      description: "failed-job logs",
+      mcp: { hidden: true },
+      input: { run: { type: "string", description: "run id", cli: "[run]" } },
+      run: (input, ctx) =>
+        streamed(ctx, "gh", ["run", "view", "--log-failed", ...(input.run === undefined ? [] : [input.run])])
+    },
+    rerun: {
+      description: "re-run a failed run",
+      input: { run: { type: "string", description: "run id", cli: "[run]" } },
+      output: text,
+      cli: { render: printText },
+      run: (input, ctx) =>
+        captured(ctx, "gh", ["run", "rerun", ...(input.run === undefined ? [] : [input.run])])
+    },
+    cancel: {
+      description: "cancel a run",
+      input: { run: { type: "string", description: "run id", cli: "[run]" } },
+      output: text,
+      cli: { render: printText },
+      run: (input, ctx) =>
+        captured(ctx, "gh", ["run", "cancel", ...(input.run === undefined ? [] : [input.run])])
+    },
+    dispatch: {
+      description: "dispatch the ci workflow",
+      output: text,
+      cli: { render: printText },
+      run: (_input, ctx) => captured(ctx, "gh", ["workflow", "run", "ci.yml"])
+    }
+  }
+})
+
+const promote = program({
+  name: "promote",
+  description: "the main → release promotion PR",
+  commands: {
+    pr: {
+      description: "show the open promotion PR",
+      output: text,
+      cli: { render: printText },
+      run: (_input, ctx) =>
+        captured(ctx, "gh", ["pr", "list", "--head", "main", "--base", "release", "--state", "open", "--limit", "1"])
+    },
+    create: {
+      description: "open the promotion PR",
+      output: text,
+      cli: { render: printText },
+      run: (_input, ctx) =>
+        captured(ctx, "gh", ["pr", "create", "--head", "main", "--base", "release", "--fill"])
+    },
+    merge: {
+      description: "queue the promotion merge",
+      output: text,
+      cli: { render: printText },
+      run: (_input, ctx) => captured(ctx, "gh", ["pr", "merge", "main", "--merge", "--auto"])
+    }
+  }
+})
+
+const release = program({
+  name: "release",
+  description: "the Bumpy release procedure",
+  commands: {
+    add: {
+      description: "author a bump file (interactive)",
+      mcp: { hidden: true },
+      input: { args: { type: "string", description: "bumpy add arguments", cli: "[...args]" } },
+      run: (input, ctx) => streamed(ctx, "bumpy", ["add", ...input.args])
+    },
+    check: {
+      description: "every changed package has a bump",
+      output: text,
+      cli: { render: printText },
+      run: (_input, ctx) => captured(ctx, "bumpy", ["check", "--strict"])
+    },
+    status: {
+      description: "pending bumps and planned versions",
+      output: text,
+      cli: { render: printText },
+      run: (_input, ctx) => captured(ctx, "bumpy", ["status", "--json"])
+    },
+    push: {
+      description: "push the daily branch",
+      output: text,
+      cli: { render: printText },
+      run: (_input, ctx) => captured(ctx, "git", ["push", "origin", "main"])
+    },
+    pr: {
+      description: "show the open version PR",
+      output: text,
+      cli: { render: printText },
+      run: (_input, ctx) =>
+        captured(ctx, "gh", [
+          "pr", "list", "--head", "bumpy/version-packages", "--base", "release", "--state", "open", "--limit", "1"
+        ])
+    },
+    merge: {
+      description: "queue the version PR squash merge",
+      output: text,
+      cli: { render: printText },
+      run: (_input, ctx) =>
+        captured(ctx, "gh", ["pr", "merge", "bumpy/version-packages", "--auto", "--squash"])
+    },
+    update: {
+      description: "update the version PR branch",
+      output: text,
+      cli: { render: printText },
+      run: (_input, ctx) => captured(ctx, "gh", ["pr", "update-branch", "bumpy/version-packages"])
+    },
+    "registry-version": {
+      description: "published version on npm",
+      output: text,
+      cli: { render: printText },
+      run: (_input, ctx) => captured(ctx, "npm", ["view", "cmd-mesh", "version"])
+    },
+    sync: {
+      description: "synchronize main forward from release",
+      input: {
+        merge: { type: "boolean", description: "merge-pull when histories diverged", cli: "--merge" }
+      },
+      output: text,
+      cli: { render: printText },
+      run: (input, ctx) =>
+        captured(
+          ctx,
+          "git",
+          input.merge
+            ? ["pull", "--no-rebase", "--no-edit", "origin", "release"]
+            : ["pull", "--ff-only", "origin", "release"]
+        )
+    },
+    promote
+  }
+})
+
+const deps = program({
+  name: "deps",
+  description: "dependabot PRs",
+  commands: {
+    list: {
+      description: "open dependabot PRs",
+      output: text,
+      cli: { render: printText },
+      run: (_input, ctx) =>
+        captured(ctx, "gh", ["pr", "list", "--state", "open", "--search", "author:app/dependabot", "--limit", "100"])
+    },
+    merge: {
+      description: "squash-merge one PR",
+      input: { pr: { type: "string", description: "PR number", cli: "<pr>" } },
+      output: text,
+      cli: { render: printText },
+      run: (input, ctx) => captured(ctx, "gh", ["pr", "merge", input.pr, "--squash"])
+    },
+    close: {
+      description: "close one PR",
+      input: { pr: { type: "string", description: "PR number", cli: "<pr>" } },
+      output: text,
+      cli: { render: printText },
+      run: (input, ctx) => captured(ctx, "gh", ["pr", "close", input.pr])
+    },
+    sync: {
+      description: "fast-forward main from origin",
+      output: text,
+      cli: { render: printText },
+      run: (_input, ctx) => captured(ctx, "git", ["pull", "--ff-only", "origin", "main"])
+    }
+  }
+})
 
 export const repokit = program({
   name: "repokit",
@@ -117,10 +307,27 @@ export const repokit = program({
         }
       }
     },
+    packages: {
+      description: "workspace packages, structured",
+      output: [{ name: "string", "version?": "string", dir: "string" }, "[]"],
+      run: (_input, ctx) => {
+        const root = ctx.workspace.workspaceRootDir() ?? process.cwd()
+        return ctx.workspace.packageList().map((pkg) => ({
+          name: pkg.name,
+          version: pkg.packageJson.version,
+          dir: relative(root, pkg.dirpath)
+        }))
+      }
+    },
     check: {
       description: "run a package script with live output",
       input: {
-        filter: { type: "string", description: "pnpm --filter selector", cli: "<filter>" },
+        filter: {
+          type: "string",
+          description: "pnpm --filter selector",
+          suggest: (ctx: SuggestContext) => ctx.workspace.packageNames(),
+          cli: "<filter>"
+        },
         script: { type: "string = 'typecheck'", description: "script to run" },
         timeout: { type: "string.integer.parse = '600000'", description: "timeout in ms" }
       },
@@ -137,41 +344,8 @@ export const repokit = program({
         return { filter: input.filter, script: input.script }
       }
     },
-    release: {
-      description: "bump a package version",
-      mcp: { hidden: true },
-      input: {
-        bump: {
-          type: "'patch' | 'minor' | 'major'",
-          description: "semver increment",
-          cli: "<bump>"
-        },
-        pkg: {
-          type: "string = './package.json'",
-          description: "manifest to bump",
-          // Fig-style generator: real manifests from the repo, on demand
-          suggest: packageManifests,
-          cli: "--pkg"
-        },
-        dryRun: { type: "boolean", description: "plan without writing", cli: "--dry-run, -n" }
-      },
-      output: { pkg: "string", from: "string", to: "string", written: "boolean" },
-      run: async (input) => {
-        const source = await readFile(input.pkg, "utf8")
-        const manifest = JSON.parse(source) as { version?: string }
-        const from = manifest.version
-        if (from === undefined) throw new Error(`${input.pkg} has no version field`)
-        const parts = from.split(".").map(Number)
-        if (parts.length !== 3 || parts.some(Number.isNaN)) {
-          throw new Error(`${input.pkg} version "${from}" is not plain semver`)
-        }
-        const index = bumpSegment[input.bump]
-        const next = parts.map((n, i) => (i < index ? n : i === index ? n + 1 : 0)).join(".")
-        if (!input.dryRun) {
-          await writeFile(input.pkg, source.replace(`"version": "${from}"`, `"version": "${next}"`))
-        }
-        return { pkg: input.pkg, from, to: next, written: !input.dryRun }
-      }
-    }
+    ci,
+    release,
+    deps
   }
 })

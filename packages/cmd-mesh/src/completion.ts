@@ -32,8 +32,9 @@ export const unitCandidates = (t: AnyType): ReadonlyArray<string> =>
 /** named sources resolve against the working directory at completion
  * time — the sync filesystem read is the tab-handler seam. the current
  * word's directory part steers the listing (`src/co<TAB>` lists src/),
- * and entries carry that prefix so the shell's own filter matches */
-const sourceCandidates = (source: string, current: string): ReadonlyArray<string> =>
+ * and entries carry that prefix so the shell's own filter matches.
+ * exported: the interactive projection offers the same listing. */
+export const sourceCandidates = (source: string, current: string): ReadonlyArray<string> =>
   Effect.runSync(
     Effect.try(() => {
       const dir = current.slice(0, current.lastIndexOf("/") + 1)

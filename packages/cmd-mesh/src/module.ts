@@ -24,6 +24,7 @@ import {
   generatorFor
 } from "./completion.js"
 import { Exec } from "./exec.js"
+import { promptArgv } from "./interactive.js"
 import { invokeParsed, invokeValues } from "./invoke.js"
 import { collectTools, inputSchema, serveMcp } from "./mcp.js"
 import { Predicate } from "effect"
@@ -384,7 +385,26 @@ export const program = <
           return argv === undefined ? asBin(run) : run
         },
         help: helpFor,
-        complete
+        complete,
+        // guided invocation assembles argv; runCli stays the one owner
+        // of parsing, dispatch, rendering, and exit codes
+        interactive: (path?: ReadonlyArray<string>) =>
+          globalThis.process.stdin.isTTY !== true
+            ? runtime.runPromise(
+              Console.error(
+                "interactive mode needs a terminal — pass arguments instead"
+              ).pipe(Effect.as(1))
+            )
+            : runtime.runPromise(
+              promptArgv(
+                compiled,
+                (words) => ({ exec: makeCtx(runtime, "cli").exec, words, project, workspace }),
+                path ?? []
+              ).pipe(
+                Effect.flatMap((argv) => runCli(runtime, compiled, version, argv)),
+                Effect.catchTag("PromptCancelled", () => Effect.succeed(130))
+              )
+            )
       },
       mcp: {
         tools: deepFrozen(Array.map(collectTools(compiled), (t) => t.tool)),

@@ -377,6 +377,12 @@ export interface CliProjection {
   help(path?: ReadonlyArray<string>): string
   /** async because parameter completion may run a generator */
   complete(words: ReadonlyArray<string>): Promise<ReadonlyArray<string>>
+  /** guided invocation: select a command, answer one typed prompt per
+   * parameter (validated by the same token morphs the parser runs),
+   * preview the equivalent command line, and dispatch it through the
+   * ordinary cli path. `path` pre-selects a starting command. needs a
+   * terminal — exits 1 without one, 130 when the user cancels. */
+  interactive(path?: ReadonlyArray<string>): Promise<number>
 }
 
 export type ProgramModule<RootIn, RootOut, RootR, Cs, Rs> =

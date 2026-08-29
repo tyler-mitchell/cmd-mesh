@@ -1,6 +1,3 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import { repokit } from "../src/repokit.js"
 
@@ -32,30 +29,47 @@ describe("context", () => {
   })
 })
 
-describe("release", () => {
-  it("plans a bump without writing on --dry-run", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "repokit-"))
-    const pkg = join(dir, "package.json")
-    await writeFile(pkg, JSON.stringify({ name: "x", version: "1.2.3" }, null, 2))
-    const plan = await repokit.release({ bump: "minor", pkg, dryRun: true })
-    expect(plan).toEqual({ pkg, from: "1.2.3", to: "1.3.0", written: false })
-    expect(JSON.parse(await readFile(pkg, "utf8")).version).toBe("1.2.3")
+describe("packages", () => {
+  it("lists this workspace's packages with relative dirs", async () => {
+    const packages = await repokit.packages()
+    const names = packages.map((pkg) => pkg.name)
+    expect(names).toContain("cmd-mesh")
+    expect(names).toContain("repokit")
+    const self = packages.find((pkg) => pkg.name === "repokit")
+    expect(self).toMatchObject({ dir: "apps/repokit", version: "0.1.0" })
+  })
+})
+
+describe("the operational surface (the closed-distribution contract)", () => {
+  it("declares every contract operation as a command", () => {
+    const paths = new Set<string>()
+    const walk = (node: { path: ReadonlyArray<string>; commands: ReadonlyArray<never> }) => {
+      paths.add(node.path.slice(1).join(" "))
+      for (const child of node.commands as ReadonlyArray<typeof node>) walk(child)
+    }
+    walk(repokit.spec as never)
+    for (
+      const operation of [
+        "ci list", "ci watch", "ci logs", "ci rerun", "ci cancel", "ci dispatch",
+        "release add", "release check", "release status", "release push",
+        "release promote pr", "release promote create", "release promote merge",
+        "release pr", "release merge", "release update", "release registry-version", "release sync",
+        "deps list", "deps merge", "deps close", "deps sync"
+      ]
+    ) {
+      expect(paths, operation).toContain(operation)
+    }
   })
 
-  it("writes the bumped version for real", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "repokit-"))
-    const pkg = join(dir, "package.json")
-    await writeFile(pkg, JSON.stringify({ name: "x", version: "1.2.3" }, null, 2))
-    const done = await repokit.release({ bump: "major", pkg })
-    expect(done).toMatchObject({ from: "1.2.3", to: "2.0.0", written: true })
-    expect(JSON.parse(await readFile(pkg, "utf8")).version).toBe("2.0.0")
+  it("runs the real bumpy status through the typed surface", async () => {
+    const status = await repokit.release.status()
+    const parsed = JSON.parse(status.text) as { packageNames: ReadonlyArray<string> }
+    expect(parsed.packageNames).toContain("cmd-mesh")
   })
 
-  it("throws eagerly on an unknown bump kind with the enum message", () => {
-    // input validation is synchronous assert semantics, even though the
-    // handler itself is async
-    expect(() => repokit.release({ bump: "huge" as never, pkg: "./package.json" }))
-      .toThrow(/"major", "minor" or "patch"/)
+  it("runs the real strict bump check", async () => {
+    const checked = await repokit.release.check()
+    expect(checked.text).toContain("bump")
   })
 })
 
@@ -66,12 +80,13 @@ describe("cli surface", () => {
     expect(await repokit.main(["search"])).toBe(2)
   })
 
-  it("answers the completion callback", async () => {
-    await expect(repokit.cli.complete(["release", "m"])).resolves.toEqual(["major", "minor"])
+  it("completes the release procedure's subcommands", async () => {
+    const words = await repokit.cli.complete(["release", ""])
+    expect(words).toContain("status")
+    expect(words).toContain("promote")
   })
 
-  it("runs completion generators against the real repo", async () => {
-    const candidates = await repokit.cli.complete(["release", "--pkg", "apps/"])
-    expect(candidates).toContain("apps/repokit/package.json")
+  it("completes check's filter with workspace package names", async () => {
+    await expect(repokit.cli.complete(["check", "cmd"])).resolves.toContain("cmd-mesh")
   })
 })
