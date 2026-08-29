@@ -12,6 +12,16 @@ const next = () => {
   return Promise.resolve(answers.shift())
 }
 
+interface TextOptions {
+  readonly message: string
+  readonly validate?: (value: string | undefined) => string | undefined
+}
+const textPrompts: Array<TextOptions> = []
+const recordText = (options: TextOptions) => {
+  textPrompts.push(options)
+  return next()
+}
+
 vi.mock("@clack/prompts", () => ({
   intro: () => undefined,
   outro: () => undefined,
@@ -19,7 +29,7 @@ vi.mock("@clack/prompts", () => ({
   isCancel: (value: unknown) => value === CANCEL,
   select: next,
   confirm: next,
-  text: next,
+  text: recordText,
   autocomplete: next
 }))
 
@@ -67,7 +77,22 @@ describe("cli.interactive", () => {
   beforeEach(() => {
     answers.length = 0
     seen.length = 0
+    textPrompts.length = 0
     asTTY(true)
+  })
+
+  it("refuses an empty submission for a required positional", async () => {
+    answers.push("entry.ts", "", "info", false)
+    await tool.cli.interactive(["build"])
+    const entry = textPrompts.find((options) => options.message.includes("entry"))!
+    expect(entry.validate?.("")).toBe("required")
+  })
+
+  it("accepts an empty submission for a defaulted flag", async () => {
+    answers.push("entry.ts", "", "info", false)
+    await tool.cli.interactive(["build"])
+    const port = textPrompts.find((options) => options.message.includes("--port"))!
+    expect(port.validate?.("")).toBeUndefined()
   })
   afterEach(() => {
     asTTY(true)

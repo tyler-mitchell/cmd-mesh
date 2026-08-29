@@ -31,7 +31,7 @@ describe("a group with a default child and its own flags", () => {
           dev: {
             input: { port: { type: "string", cli: "--port" } },
             output: { ran: "string", port: "string" },
-            run: (input) => ({ ran: "dev", port: input.port ?? "none" })
+            run: (input: { readonly port?: string }) => ({ ran: "dev", port: input.port ?? "none" })
           }
         }
       }
