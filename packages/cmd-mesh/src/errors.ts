@@ -112,7 +112,12 @@ export class ExternalExit extends Data.TaggedError("ExternalExit")<{
   readonly stderr: string
 }> {
   override get message(): string {
-    return `${this.bin} exited with ${this.exitCode}: ${this.stderr}`
+    // a streamed child already wrote its stderr to the terminal, so the
+    // captured text is empty and there is nothing to append
+    const trimmed = this.stderr.trim()
+    return trimmed === ""
+      ? `${this.bin} exited with ${this.exitCode}`
+      : `${this.bin} exited with ${this.exitCode}: ${trimmed}`
   }
 }
 

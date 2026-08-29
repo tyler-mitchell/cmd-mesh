@@ -438,6 +438,14 @@ describe("external declaration validation", () => {
     await expect(probe.mark({ short: true, tag: "x" })).resolves.toBe("mark --short --tag x\n")
   })
 
+  it("names the exit code without a dangling colon when stderr was streamed", async () => {
+    const { ExternalExit } = await import("../src/errors.js")
+    const streamed = new ExternalExit({ bin: "pnpm", args: [], exitCode: 1, stderr: "" })
+    expect(streamed.message).toBe("pnpm exited with 1")
+    const captured = new ExternalExit({ bin: "git", args: [], exitCode: 128, stderr: "fatal: bad\n" })
+    expect(captured.message).toBe("git exited with 128: fatal: bad")
+  })
+
   it("rejects a suggestion source that lists nothing", () => {
     expect(() =>
       external({
