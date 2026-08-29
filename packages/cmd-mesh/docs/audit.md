@@ -562,6 +562,29 @@ hostile suite's classes; and unknown unknowns, which no census closes.
 
 Final gates: 354/354, tsc, attest, check:pack, repokit 9/9.
 
+### Identification campaign — CLOSED (exhaustion adjudication)
+
+Declarative claim, scoped: across the campaign, TWELVE enumerations
+were swept to their end — declaration-field × projection matrix, argv
+grammar × value shapes, projection mutual-agreement (routing/help/
+completion/spec/mcp/suggestions), typed-surface robustness, external
+argv reconstruction, MCP protocol conformance, spec-consumer question
+lists, shared-state across a long-lived module, morph failure
+contracts, deep external trees, projection-object mutability, and
+scoped-vocabulary/concurrency/suggestion-interplay (final round).
+Marginal yield: round 3 → 8 findings, round 4 → 9, final round →
+**0 of 3 probes** (scoped type.module params, concurrent completion,
+static-suggestions-beside-enum dedupe: all clean, pinned). Diminishing
+returns observed; every witnessed defect in findings 1–86 is fixed,
+reclassified with rationale, or recorded as a bound.
+
+Named bounds — NOT covered, deliberately: Windows and fish/powershell
+environments (no runner here; CI-matrix adjudication pending), MCP
+wire-level request cancellation (unit-covered via runAbortable only),
+serve() re-entry on one stdio transport, randomized fuzzing beyond the
+current hostile corpus, and unknown unknowns. Within the enumerated
+envelope, the actionable-defect list is exhausted as of 357/357.
+
 ### Identification round 4 (shared-state & contract enumeration) — findings 77–86
 
 New enumerations: state bleed across a long-lived module, throwing vs
