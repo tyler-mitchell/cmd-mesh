@@ -107,27 +107,29 @@ token must resolve to exactly one child.
 
 ## CMSH1013
 
-A parameter or a command has a field that the model does not have.
+A parameter's metadata, or a command, has a field that the model does
+not have.
 
-TypeScript does not find all of these fields. It reports an unknown
-field when the type is one object. It does not report an unknown field
-when the type is a union with a primitive. Parameters have this union
-type: `ParameterDef` is `string | ParameterDescriptor`, and `cli` is
-`string | CliParameterConfig`. A JavaScript caller has no check. Thus
-the interpreter rejects the declaration.
+A parameter IS an ArkType definition, and its surface bindings ride in
+ArkType metadata. TypeScript rejects an unknown metadata key through the
+`ArkEnv` declaration. A JavaScript caller has no such check, and a
+misspelled key silently does nothing — so the interpreter rejects the
+declaration too.
 
 ```ts
-paths: { type: "string", cli: { usage: "<...paths>", complete: "filepaths" } }  // ✗ no cli.complete
-paths: { type: "string", suggest: "filepaths", cli: "<...paths>" }              // ✓
+paths: ["string", "@", { complete: "filepaths" }]  // ✗ no such key
+paths: ["string", "@", { suggest: "filepaths" }]   // ✓
 ```
 
-The check also applies to command fields. An incorrect name in `mcp` is
-more dangerous. `mcp: { hiden: true }` does not set `mcp.hidden`. The
-command stays visible to agents.
+An incorrect name in `mcp` is the dangerous case. `mcp: { hiden: true }`
+does not set `mcp.hidden`, so the parameter stays advertised to agents.
 
-Parameter fields are `type`, `description`, `suggest`, `required`,
-`cli`, `mcp`; the parameter `cli` object takes `usage`, `env`, `hidden`,
-and the parameter `mcp` object takes `hidden`.
+Parameter metadata takes `cli`, `mcp` and `suggest` from this package,
+plus ArkType's own `description`, `examples`, `default`, `deprecated`,
+`title`, `format`, `alias` and `onFail`. The `cli` value is either the
+argv notation or an object of `usage`, `env`, `hidden`; `mcp` takes
+`hidden`.
+
 Command fields are `description`, `input`, `output`, `narrow`, `run`,
 `safety`, `commands`, `cli`, `mcp`, `successCodes`, plus `name`,
 `version`, `resources` and `bin` at a declaration root; the command

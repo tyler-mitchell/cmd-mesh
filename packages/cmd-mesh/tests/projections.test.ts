@@ -95,7 +95,7 @@ describe("mcp tool identity", () => {
       name: "ex",
       commands: {
         greet: {
-          input: { who: { type: "string", cli: "<who>" } },
+          input: { who: ["string", "@", { cli: "<who>" }] },
           mcp: {
             examples: [
               { args: { who: "world" }, description: "the canonical greeting" },
@@ -161,7 +161,7 @@ describe("mcp tool identity", () => {
       commands: {
         greet: {
           safety: "read",
-          input: { who: { type: "string", cli: "<who>" } },
+          input: { who: ["string", "@", { cli: "<who>" }] },
           run: (input) => {
             seen.push(input)
             return input.who
@@ -184,7 +184,7 @@ describe("mcp tool identity", () => {
       name: "live",
       version: "9.9.9",
       commands: {
-        greet: { safety: "read", input: { who: { type: "string", cli: "<who>" } }, run: (input) => input.who }
+        greet: { safety: "read", input: { who: ["string", "@", { cli: "<who>" }] }, run: (input) => input.who }
       }
     })
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
@@ -216,7 +216,7 @@ describe("mcp tool identity", () => {
         name: "bad",
         commands: {
           greet: {
-            input: { who: { type: "string", cli: "<who>" } },
+            input: { who: ["string", "@", { cli: "<who>" }] },
             mcp: { examples: [{ args: { who: 7 } }] },
             run: (input) => input.who
           }
@@ -352,9 +352,13 @@ describe("per-parameter surface hiding (contract: 08-final grammar rules)", () =
       push: {
         description: "push",
         input: {
-          target: { type: "string", cli: "<target>" },
-          token: { type: "string", description: "registry token", mcp: { hidden: true }, cli: "--token" },
-          trace: { type: "boolean", description: "internal tracing", cli: { usage: "--trace", hidden: true } }
+          target: ["string", "@", { cli: "<target>" }],
+          "token?": ["string", "@", { description: "registry token", mcp: { hidden: true }, cli: "--token" }],
+          trace: [
+            "boolean",
+            "@",
+            { description: "internal tracing", cli: { usage: "--trace", hidden: true }, default: false }
+          ]
         },
         output: { target: "string", authed: "boolean", traced: "boolean" },
         run: (input) => ({
@@ -386,8 +390,9 @@ describe("per-parameter surface hiding (contract: 08-final grammar rules)", () =
           push: {
             description: "push",
             input: {
-              target: { type: "string", cli: "<target>" },
-              token: { type: "string", required: true, mcp: { hidden: true }, cli: "--token" }
+              target: ["string", "@", { cli: "<target>" }],
+              // no `?` and no default: required, and hidden from mcp
+              token: ["string", "@", { mcp: { hidden: true }, cli: "--token" }]
             },
             output: { ok: "boolean" },
             run: () => ({ ok: true })
@@ -645,9 +650,9 @@ const root = compileCommand("tool", ["tool"], {
     release: {
       description: "bump",
       input: {
-        bump: { type: "'patch' | 'minor' | 'major'", cli: "<bump>" },
-        pkg: { type: "string = './package.json'", suggest: "filepaths", cli: "--pkg" },
-        dryRun: { type: "boolean", cli: "--dry-run, -n" }
+        bump: ["'patch' | 'minor' | 'major'", "@", { cli: "<bump>" }],
+        pkg: ["string", "@", { suggest: "filepaths", cli: "--pkg", default: "./package.json" }],
+        dryRun: ["boolean", "@", { cli: "--dry-run, -n", default: false }]
       },
       output: { from: "string", to: "string" },
       run: () => ({ from: "0.0.0", to: "0.0.1" })
@@ -715,16 +720,17 @@ describe("arktype meta descriptions", () => {
       serve: {
         description: "serve",
         input: {
-          port: { type: type("string.integer.parse").describe("a port to listen on"), cli: "--port" },
-          host: {
-            type: type("string").describe("falls behind the descriptor"),
-            description: "the descriptor wins",
-            cli: "--host"
-          },
-          plain: { type: "string", cli: "--plain" }
+          "port?": [type("string.integer.parse").describe("a port to listen on"), "@", { cli: "--port" }],
+          // an outer annotation overrides one carried by the inner type
+          "host?": [
+            type("string").describe("falls behind the outer annotation"),
+            "@",
+            { description: "the outer annotation wins", cli: "--host" }
+          ],
+          "plain?": ["string", "@", { cli: "--plain" }]
         },
         output: { "port?": "number" },
-        run: (input: { port?: number }) => (input.port === undefined ? {} : { port: input.port })
+        run: (input) => (input.port === undefined ? {} : { port: input.port })
       }
     }
   })
