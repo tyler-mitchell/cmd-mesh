@@ -372,7 +372,10 @@ export const buildMcpServer = (
   }
 }
 
-/** serve the tools over stdio; the effect stays alive until the process ends */
+/** serve the tools over stdio, until the client disconnects and the
+ * transport closes. resolving there is what lets a bin exit 0 — a
+ * server that waited forever would leave `main()` unsettled, and the
+ * host reads that non-zero exit as a crash. */
 export const serveMcp = (
   root: CompiledCommand,
   meta: { readonly name: string; readonly version: string },
@@ -380,12 +383,22 @@ export const serveMcp = (
   runPromise: <A>(effect: Effect.Effect<A, never, any>, signal?: AbortSignal) => Promise<A>,
   ctx: Ctx,
   spec: CommandSpec
-): Effect.Effect<never, Error> =>
+): Effect.Effect<void, Error> =>
   Effect.gen(function*() {
     const server = buildMcpServer(root, meta, invoke, runPromise, ctx, spec)
     yield* Effect.tryPromise({
       try: () => server.connect(new StdioServerTransport()),
       catch: (cause) => new Error(`mcp transport failed: ${cause}`)
     })
-    return yield* Effect.never
+    return yield* Effect.callback<void>((resume) => {
+      const closed = server.onclose
+      server.onclose = () => {
+        closed?.()
+        resume(Effect.void)
+      }
+      // the sdk's stdio transport registers only "data" and "error" on
+      // stdin, so a client that goes away leaves EOF unnoticed and the
+      // transport never closes itself
+      globalThis.process.stdin.once("end", () => void server.close())
+    })
   })

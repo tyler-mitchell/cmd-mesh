@@ -106,6 +106,22 @@ mcp: {
 }
 ```
 
+## Installing the server in a client
+
+A cmd-mesh program is a stdio server: the bin plus the argument `mcp`.
+Clients differ only in the file and the key:
+
+| client | file | entry |
+| --- | --- | --- |
+| Claude Code | `.mcp.json` | `{ "mcpServers": { "mesh": { "command": "mesh", "args": ["mcp"] } } }` |
+| Cursor | `.cursor/mcp.json` | same as Claude Code |
+| VSCode | `.vscode/mcp.json` | `{ "servers": { "mesh": { "type": "stdio", "command": "mesh", "args": ["mcp"] } } }` |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` | same as Claude Code |
+
+Before wiring a client, run the server by hand — `mesh mcp` reads
+JSON-RPC on stdin, and closing stdin exits `0`. A client that starts
+the bin and later closes it leaves no orphan process.
+
 Serve stdio in production, or hand the same server to your own
 transport:
 

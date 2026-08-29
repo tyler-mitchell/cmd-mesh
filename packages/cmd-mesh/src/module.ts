@@ -204,7 +204,7 @@ const serveEffect = (
   compiled: CompiledCommand,
   version: string,
   specs: Resources
-): Effect.Effect<never, Error> =>
+): Effect.Effect<void, Error> =>
   serveMcp(
     compiled,
     { name: compiled.name, version },
