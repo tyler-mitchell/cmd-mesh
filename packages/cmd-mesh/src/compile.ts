@@ -174,10 +174,10 @@ const attempt = <A>(f: () => A): Attempt<A> =>
 const parameterIssues = (at: string, p: CompiledParameter): ReadonlyArray<DeclarationIssue> =>
   Array.flatMap(
     [
-      p.binding._tag === "positional" && p.isBoolean ? [diagnostics.CM1002()] : [],
-      p.binding._tag === "positional" && Option.isSome(p.env) ? [diagnostics.CM1003()] : [],
-      p.binding._tag === "positional" && p.cliHidden ? [diagnostics.CM1004()] : [],
-      p.binding._tag === "flag" && p.binding.variadic && p.isBoolean ? [diagnostics.CM1005()] : []
+      p.binding._tag === "positional" && p.isBoolean ? [diagnostics.CMSH1002()] : [],
+      p.binding._tag === "positional" && Option.isSome(p.env) ? [diagnostics.CMSH1003()] : [],
+      p.binding._tag === "positional" && p.cliHidden ? [diagnostics.CMSH1004()] : [],
+      p.binding._tag === "flag" && p.binding.variadic && p.isBoolean ? [diagnostics.CMSH1005()] : []
     ],
     (found) => Array.map(found, (diagnostic) => ({ at, problem: issueText(diagnostic) }))
   )
@@ -199,7 +199,7 @@ const commandIssues = (
       owners.length > 1
         ? [{
           at,
-          problem: issueText(diagnostics.CM1006({
+          problem: issueText(diagnostics.CMSH1006({
             token,
             owners: Array.join(Array.map(owners, ([, key]) => key), " and ")
           }))
@@ -212,7 +212,7 @@ const commandIssues = (
     Array.findFirstIndex((p) => p.binding._tag === "positional" && p.binding.variadic),
     Option.flatMap((index) =>
       index < positionals.length - 1
-        ? Option.some({ at, problem: issueText(diagnostics.CM1007()) })
+        ? Option.some({ at, problem: issueText(diagnostics.CMSH1007()) })
         : Option.none()
     ),
     Option.match({ onNone: () => [] as ReadonlyArray<DeclarationIssue>, onSome: (issue) => [issue] })
@@ -427,7 +427,7 @@ const collectCommand = (
   const ownIssuesBase = pipe(
     Array.flatMap(attempts, ({ key, result }) =>
       result._tag === "failed"
-        ? [{ at: `${at} · ${key}`, problem: issueText(diagnostics.CM1001({ error: result.problem })) }]
+        ? [{ at: `${at} · ${key}`, problem: issueText(diagnostics.CMSH1001({ error: result.problem })) }]
         : []),
     Array.appendAll(Array.flatMap(parameters, (p) => parameterIssues(`${at} · ${p.key}`, p))),
     Array.appendAll(commandIssues(at, parameters)),
@@ -435,7 +435,7 @@ const collectCommand = (
       outputAttempt?._tag === "failed"
         ? [{
           at: `${at} · output`,
-          problem: issueText(diagnostics.CM1001({ error: outputAttempt.problem }))
+          problem: issueText(diagnostics.CMSH1001({ error: outputAttempt.problem }))
         }]
         : []
     )
@@ -451,7 +451,7 @@ const collectCommand = (
       schemaType: assemble(parameters, valueEntry)
     }))
   const assemblyIssues: ReadonlyArray<DeclarationIssue> = assemblyAttempt?._tag === "failed"
-    ? [{ at, problem: issueText(diagnostics.CM1001({ error: assemblyAttempt.problem })) }]
+    ? [{ at, problem: issueText(diagnostics.CMSH1001({ error: assemblyAttempt.problem })) }]
     : []
   const assembly = assemblyAttempt?._tag === "ok"
     ? assemblyAttempt.value
@@ -492,7 +492,7 @@ const collectCommand = (
       owners.length > 1
         ? [{
           at,
-          problem: issueText(diagnostics.CM1012({
+          problem: issueText(diagnostics.CMSH1012({
             token,
             owners: Array.join(Array.map(owners, ([, owner]) => owner), " and ")
           }))
@@ -518,8 +518,8 @@ const collectCommand = (
       onSome: (name) =>
         Array.flatMap(
           [
-            decl.run === undefined ? [] : [diagnostics.CM1008()],
-            Option.isSome(Option.flatten(resolvedDefault)) ? [] : [diagnostics.CM1009({ name })]
+            decl.run === undefined ? [] : [diagnostics.CMSH1008()],
+            Option.isSome(Option.flatten(resolvedDefault)) ? [] : [diagnostics.CMSH1009({ name })]
           ],
           (found) => Array.map(found, (diagnostic) => ({ at, problem: issueText(diagnostic) }))
         )
@@ -527,7 +527,7 @@ const collectCommand = (
   )
   const safetyIssues: ReadonlyArray<DeclarationIssue> =
     decl.safety !== undefined && !Array.contains(["read", "action", "destructive"], decl.safety)
-      ? [{ at, problem: issueText(diagnostics.CM1010({ got: `${decl.safety}` })) }]
+      ? [{ at, problem: issueText(diagnostics.CMSH1010({ got: `${decl.safety}` })) }]
       : []
   const exampleIssues: ReadonlyArray<DeclarationIssue> = pipe(
     (decl.mcp?.examples ?? []) as ReadonlyArray<McpExample>,
@@ -536,7 +536,7 @@ const collectCommand = (
         ? []
         : [{
           at,
-          problem: issueText(diagnostics.CM1011({ index, args: JSON.stringify(example.args) }))
+          problem: issueText(diagnostics.CMSH1011({ index, args: JSON.stringify(example.args) }))
         }]
     )
   )
