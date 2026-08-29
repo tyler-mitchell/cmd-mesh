@@ -210,6 +210,16 @@ const uniquelyNamed = (tools: ReadonlyArray<NamedTool>): ReadonlyArray<NamedTool
     ({ out }) => out
   )
 
+// A handler receives the parameters its command declares. An agent may
+// send any key it invents. See docs/reference.md.
+const declaredArguments = (cmd: CompiledCommand, args: unknown): unknown =>
+  Predicate.isObject(args)
+    ? Record.filter(
+      args as globalThis.Record<string, unknown>,
+      (_, key) => Array.some(cmd.parameters, (p) => p.key === key)
+    )
+    : {}
+
 interface ToolResult {
   readonly content: ReadonlyArray<{ readonly type: "text"; readonly text: string }>
   readonly isError?: boolean
@@ -312,7 +322,7 @@ export const buildMcpServer = (
           Option.match({
             onNone: () => Effect.succeed(textResult(`unknown tool: ${request.params.name}`, true)),
             onSome: (tool) =>
-              invoke(tool.command, request.params.arguments ?? {}, ctx).pipe(
+              invoke(tool.command, declaredArguments(tool.command, request.params.arguments), ctx).pipe(
                 Effect.match({
                   // agents get json text plus, when an output contract
                   // exists, schema-conformant structuredContent. a void

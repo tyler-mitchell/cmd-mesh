@@ -392,6 +392,14 @@ describe("environment fallback reaches the handler", () => {
     expect(result).toMatchObject({ depth: 5 })
   })
 
+  it("does not reach a direct call — the fallback is cli machinery", async () => {
+    // docs/errors.md CMSH1015 rests on this: env cannot supply a value
+    // to an agent or a typed caller, only to the argv path
+    process.env["MESH_DEPTH"] = "5"
+    const result = await Promise.resolve(mesh.snapshot({ directory: "./public" }))
+    expect(result).toMatchObject({ depth: 2 })
+  })
+
   it("prefers an explicit flag over the variable", async () => {
     process.env["MESH_DEPTH"] = "5"
     const result = await throughCli(mesh, ["snapshot", "./public", "-d", "9"])

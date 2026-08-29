@@ -46,12 +46,22 @@ binary.
 | [07-contract.ts](./07-contract.ts) | tree, module return, unified input | per-parameter `cli` usage-notation strings | the merit-decided synthesis, fully justified in-file |
 | [08-final.ts](./08-final.ts) | **adopted** — 07 revised | `cli:` / `mcp:` surface blocks | tools as the model, CLI and MCP as peer projections; nesting by reference; `ctx.exec` |
 | [09-practical.ts](./09-practical.ts) | worked example of 08 | — | `repokit`: one bin shipping as CLI and MCP server (`repokit mcp`), surfaces diverging by one key |
+| [10-hkt-contracts.ts](./10-hkt-contracts.ts) | commands as named contracts in a registry | contract names, referenced as strings | a command is a name rather than a position, so it can be reused, derived, and nested by reference |
 
 04 and 05 are orthogonal to 01–03: 04 settles the external-command leg, 05
 settles the return shape, and both compose with whichever authoring style
 wins. 05 also removes the double naming in 01–04 (`const mesh = program({
 name: "mesh" })` states the name twice; destructuring derives the binding
 from the declaration).
+
+10 is exploratory, not a candidate to adopt. It records what higher-kinded
+contracts would offer at the authoring level, with two results measured
+against arktype 2.2.3: a contract containing other contracts infers exactly
+two levels deep, which the adopted shape cannot do without mounting, and a
+bare handler written against such a contract typechecks with no annotation.
+The cost measured against the adopted shape was unfavourable — about 15%
+more type instantiations for an artifact carrying no callable surface and no
+argv handling.
 
 ## Adopted contract
 
