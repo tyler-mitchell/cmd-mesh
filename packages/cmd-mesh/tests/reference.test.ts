@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs"
 import { afterEach, describe, expect, it } from "vitest"
 import { program, project, workspace } from "../src/index.js"
 import type { Ctx } from "../src/index.js"
@@ -128,6 +129,33 @@ describe("the README reference program", () => {
     // `suggest: "filepaths"` lists the working directory
     const words = await tool.cli.complete(["dev", "--profile", ""])
     expect(words.length).toBeGreaterThan(0)
+  })
+
+  // The header above claims every documented metadata row has a case
+  // here. That claim was written twice by hand and was wrong twice, so
+  // it is checked instead of trusted: the reference is the input.
+  it("has a case for every metadata row the reference documents", () => {
+    // package-management's readFile is not in the released 0.1.0 yet
+    const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf-8")
+    const reference = read("../docs/reference.md")
+    const table = reference.slice(
+      reference.indexOf("| metadata | meaning |"),
+      reference.indexOf("| notation | meaning |")
+    )
+    // only the table's FIRST column: prose and code fences between the
+    // two tables also carry backticks, which is what this originally
+    // tripped over. `mcp: { hidden }` names the `mcp` key, so just the
+    // leading identifier is compared.
+    const documented = table
+      .split("\n")
+      .filter((line) => line.startsWith("| `"))
+      .flatMap((line) => [...line.split("|")[1]!.matchAll(/`([a-z][\w]*)/g)])
+      .map((match) => match[1]!)
+    expect(documented.length).toBeGreaterThan(4)
+
+    const source = read("./reference.test.ts")
+    const missing = documented.filter((key) => !source.includes(`${key}:`))
+    expect(missing, "documented in reference.md, never declared here").toEqual([])
   })
 
   it("rejects a numeric parameter that is neither", () => {
