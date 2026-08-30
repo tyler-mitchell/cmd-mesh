@@ -104,10 +104,12 @@ export const repokit = program({
         // in "commits must be ...", so it says what to send rather than
         // what the parameter is for. An agent that passes 10 instead of
         // "10" can only self-correct if the message names the type.
+        // a union over both boundaries: argv only ever carries strings,
+        // while an agent sending JSON naturally sends a number
         commits: [
-          "string.integer.parse",
+          "string.integer.parse | number.integer",
           "@",
-          { description: "a count of recent commits, written as a string", default: "10" }
+          { description: "a count of recent commits", default: "10" }
         ]
       },
       output: { branch: "string", recent: "string[]", dirty: "string[]" },
@@ -151,9 +153,9 @@ export const repokit = program({
         ],
         script: ["string", "@", { description: "script to run", default: "typecheck" }],
         timeout: [
-          "string.integer.parse",
+          "string.integer.parse | number.integer",
           "@",
-          { description: "a timeout in milliseconds, written as a string", default: "600000" }
+          { description: "a timeout in milliseconds", default: "600000" }
         ]
       },
       output: { filter: "string", script: "string" },

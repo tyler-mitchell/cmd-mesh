@@ -80,9 +80,22 @@ its input domain accepts.
 
 A `description` is ArkType's EXPECTED-value phrase, not a docstring: it
 renders as `<key> must be <description> (was …)`. Write what a caller
-should send — `"a commit count, written as a string"` — so a failed
-call tells an agent how to fix itself. `"limit to n commits"` becomes
-`count must be limit to n commits`, which teaches nothing.
+should send — `"a commit count"` — so a failed call tells an agent how
+to fix itself. `"limit to n commits"` becomes `count must be limit to n
+commits`, which teaches nothing.
+
+A numeric parameter takes a union, because its two boundaries carry
+different types: argv only ever holds strings, while an agent sending
+JSON sends a number.
+
+```ts
+depth: ["string.integer.parse | number.integer", "@", { cli: "--depth" }]
+```
+
+`--depth 2` parses through the morph, `{ "depth": 2 }` matches the
+number branch, and both reach the handler as `2`. Declaring only the
+morph rejects an agent's number; declaring only `number.integer`
+rejects argv.
 
 | notation | meaning |
 | --- | --- |

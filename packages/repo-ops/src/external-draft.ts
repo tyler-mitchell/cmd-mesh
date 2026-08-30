@@ -34,10 +34,10 @@ export const external = program({
           }
         ],
         depth: [
-          "string.integer.parse",
+          "string.integer.parse | number.integer",
           "@",
           {
-            description: "a depth of subcommands to follow, written as a string",
+            description: "a depth of subcommands to follow",
             cli: "--depth, -d",
             default: "1"
           }
@@ -67,7 +67,7 @@ export const external = program({
             description: "draft only the commands named"
           },
           {
-            args: { bin: "git", commands: ["remote"], depth: "1", out: "src/git-remote.ts" },
+            args: { bin: "git", commands: ["remote"], depth: 1, out: "src/git-remote.ts" },
             description: "follow a group's own subcommands one level down"
           }
         ]
