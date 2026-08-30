@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { declareFlag, flagKey, parseHelpFlags } from "./help-parse.js"
+import { declareExternal, declareFlag, flagKey, parseHelpFlags } from "./help-parse.js"
 
 // Verbatim from the binaries themselves, not hand-written to suit the
 // parser: `git status -h` and `pnpm add --help` on this machine.
@@ -77,6 +77,37 @@ describe("reading a binary's own help", () => {
       "save-exact",
       "save-workspace-protocol"
     ])
+  })
+})
+
+describe("emitting a nested group", () => {
+  const source = declareExternal("git", [{
+    name: "remote",
+    description: "manage remotes",
+    flags: [],
+    commands: [{
+      name: "get-url",
+      description: "git remote get-url",
+      flags: [],
+      positionals: [{ name: "name", optional: false, variadic: false }]
+    }]
+  }])
+
+  it("nests the child under its parent's commands", () => {
+    expect(source).toContain(`"remote": {`)
+    expect(source).toContain(`commands: {`)
+    expect(source).toContain(`"get-url": {`)
+  })
+
+  it("gives the leaf an output but not the group that only routes", () => {
+    // a parent that just dispatches has no stdout contract of its own
+    const parent = source.slice(source.indexOf(`"remote"`), source.indexOf(`commands: {`))
+    expect(parent).not.toContain(`output:`)
+    expect(source.slice(source.indexOf(`"get-url"`))).toContain(`output: "string"`)
+  })
+
+  it("keeps the child's operand", () => {
+    expect(source).toContain(`"name?"`)
   })
 })
 

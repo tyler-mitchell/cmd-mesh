@@ -91,6 +91,36 @@ export const parseHelpPositionals = (help: string): ReadonlyArray<HelpPositional
   })
 }
 
+/** the subcommands a group documents in its own usage block:
+ *
+ *     usage: git remote [-v | --verbose]
+ *        or: git remote add [-t <branch>] ... <name> <url>
+ *        or: git remote [-v | --verbose] show [-n] <name>
+ *
+ * A group names its children only here — there is no command table like
+ * the one at the top level. The child is the first bare word after the
+ * path, which is NOT always the next token: `show` follows a flag
+ * group. A line with no bare word is the group's own usage. */
+export const parseHelpSubcommands = (
+  help: string,
+  path: ReadonlyArray<string>
+): ReadonlyArray<string> => {
+  const prefix = path.join(" ")
+  const seen = new Set<string>()
+  return help.split("\n").flatMap((line) => {
+    const usage = /^\s*(?:usage:|or:)\s+(?<rest>.*)$/.exec(line)?.groups?.["rest"]
+    if (usage === undefined || !usage.startsWith(prefix)) return []
+    const child = usage
+      .slice(prefix.length)
+      .trim()
+      .split(/\s+/)
+      .find((token) => /^[a-z][\w-]*$/.test(token))
+    if (child === undefined || seen.has(child)) return []
+    seen.add(child)
+    return [child]
+  })
+}
+
 /** a positional as declaration source. Always optional: a usage line
  * marks what the binary accepts, and a drafted surface that forces an
  * argument is one a caller cannot use. */
@@ -140,6 +170,7 @@ export interface DraftCommand {
   readonly description: string
   readonly flags: ReadonlyArray<HelpFlag>
   readonly positionals?: ReadonlyArray<HelpPositional>
+  readonly commands?: ReadonlyArray<DraftCommand>
 }
 
 /** a whole `external({...})` declaration, as source a person then edits.
@@ -150,23 +181,33 @@ export const declareExternal = (
   bin: string,
   commands: ReadonlyArray<DraftCommand>
 ): string => {
-  const body = commands.map((command) => {
+  const declareCommand = (command: DraftCommand, pad: string): string => {
     // positionals first: a reader looks for them before the flags, and
     // cmd-mesh takes their order from the declaration
     const parameters = [
-      ...(command.positionals ?? []).map((p) => `    ${declarePositional(p)}`),
-      ...command.flags.map((f) => `    ${declareFlag(f)}`)
+      ...(command.positionals ?? []).map((p) => `${pad}  ${declarePositional(p)}`),
+      ...command.flags.map((f) => `${pad}  ${declareFlag(f)}`)
     ]
     const input = parameters.length === 0
       ? ""
-      : `      input: {\n${parameters.join(",\n")}\n      },\n`
-    return `    ${JSON.stringify(command.name)}: {\n`
-      + `      description: ${JSON.stringify(command.description)},\n`
-      + `      // TODO set safety: "read" | "action" | "destructive"\n`
+      : `${pad}  input: {\n${parameters.join(",\n")}\n${pad}  },\n`
+    const children = command.commands ?? []
+    const nested = children.length === 0
+      ? ""
+      : `${pad}  commands: {\n${
+        children.map((child) => declareCommand(child, `${pad}    `)).join(",\n")
+      }\n${pad}  },\n`
+    // a group that only routes has no output of its own
+    const output = children.length === 0 ? `${pad}  output: "string"\n` : ""
+    return `${pad}${JSON.stringify(command.name)}: {\n`
+      + `${pad}  description: ${JSON.stringify(command.description)},\n`
+      + `${pad}  // TODO set safety: "read" | "action" | "destructive"\n`
       + input
-      + `      output: "string"\n`
-      + `    }`
-  }).join(",\n")
+      + nested
+      + output
+      + `${pad}}`
+  }
+  const body = commands.map((command) => declareCommand(command, "    ")).join(",\n")
   return `// Drafted from \`${bin} -h\`. Curate before use: set each\n`
     + `// command's safety, narrow the string types the binary really\n`
     + `// accepts, and delete what you do not want to expose.\n`

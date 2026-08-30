@@ -1,6 +1,11 @@
 import { execFileSync } from "node:child_process"
 import { describe, expect, it } from "vitest"
-import { parseHelpCommands, parseHelpFlags, parseHelpPositionals } from "./help-parse.js"
+import {
+  parseHelpCommands,
+  parseHelpFlags,
+  parseHelpPositionals,
+  parseHelpSubcommands
+} from "./help-parse.js"
 
 // The fixtures in help-parse.test.ts were transcribed BY the same
 // understanding that wrote the parser, so they can agree with a bug.
@@ -47,6 +52,32 @@ describe("against the binary actually installed", () => {
 
   it("never invents an empty flag name", () => {
     expect(parseHelpFlags(help).every((f) => f.long.length > 0)).toBe(true)
+  })
+})
+
+describe("finding a group's own subcommands", () => {
+  const remote = helpOf("git", ["remote", "-h"])
+  const subs = parseHelpSubcommands(remote, ["git", "remote"])
+
+  it("reads the children git documents only in its usage block", () => {
+    for (const child of ["add", "rename", "remove", "prune", "set-url", "get-url"]) {
+      expect(subs).toContain(child)
+    }
+  })
+
+  it("finds a child that follows a flag group rather than the path", () => {
+    // "or: git remote [-v | --verbose] show [-n] <name>"
+    expect(subs).toContain("show")
+  })
+
+  it("does not treat the group's own usage line as a child", () => {
+    // "usage: git remote [-v | --verbose]" names no child
+    expect(subs).not.toContain("remote")
+    expect(subs).not.toContain("v")
+  })
+
+  it("answers nothing for a command that has no children", () => {
+    expect(parseHelpSubcommands(helpOf("git", ["status", "-h"]), ["git", "status"])).toEqual([])
   })
 })
 
