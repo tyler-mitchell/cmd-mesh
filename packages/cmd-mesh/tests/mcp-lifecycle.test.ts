@@ -55,6 +55,26 @@ describe("advertising the mcp surface", () => {
     expect(out).toMatch(/^ {2}mcp uninstall {15}remove this program from an editor$/m)
   })
 
+  // asking for help is not a usage error: these once reached the
+  // argument check, printing to stderr and exiting 2, so a script that
+  // asked was told it had failed
+  it("answers --help on stdout and exits 0, like every other command", async () => {
+    for (const verb of ["install", "uninstall"]) {
+      const { out, err, code } = await captureCli(() => tool.main(["mcp", verb, "--help"]))
+      expect(code, verb).toBe(0)
+      expect(err, verb).toBe("")
+      expect(out, verb).toContain(`Usage: mcp ${verb}`)
+    }
+  })
+
+  it("names --dev where someone would look for it", async () => {
+    // the flag exists but appears in no command's help, so install's own
+    // help is the only place it can be found
+    const { out } = await captureCli(() => tool.main(["mcp", "install", "--help"]))
+    expect(out).toContain("--dev")
+    expect(out).toContain("reload")
+  })
+
   it("stays silent about mcp in a cli-only bin's help", async () => {
     // `cli.run()` serves no agents, so naming mcp there would be a lie
     const { out } = await captureCli(() => tool.cli.run(["--help"]))

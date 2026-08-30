@@ -210,6 +210,17 @@ const completeEffect = (
     return completionLines(compiled, words, dynamic)
   })
 
+/** these verbs answer `--help` like every other command does — on
+ * stdout, exit 0. Reaching them through the usage error would print to
+ * stderr and exit 2, telling a script that asking was a mistake. */
+const askedForHelp = (rest: ReadonlyArray<string>): boolean =>
+  Array.some(rest, (token) => token === "--help" || token === "-h")
+
+const mcpVerbUsage = (verb: string, extra = ""): string =>
+  `Usage: mcp ${verb} ${extra}[client]\n\n`
+  + `  client                      one of: ${Array.join(mcpClientIds, ", ")}\n`
+  + `                              omitted, the client this project uses is detected`
+
 /** `mcp uninstall [client]`: remove this bin from an editor's config.
  * Named clients only when detection finds nothing, same as install. */
 const uninstallEffect = (
@@ -217,6 +228,10 @@ const uninstallEffect = (
   rest: ReadonlyArray<string>
 ): Effect.Effect<number> =>
   Effect.gen(function*() {
+    if (askedForHelp(rest)) {
+      yield* Console.log(mcpVerbUsage("uninstall"))
+      return 0
+    }
     const named = Array.head(rest)
     if (rest.length > 1 || (Option.isSome(named) && !isMcpClientId(named.value))) {
       yield* Console.error(`mcp uninstall takes one of: ${Array.join(mcpClientIds, ", ")}`)
@@ -247,6 +262,14 @@ const installEffect = (
   server?: McpServerConfig
 ): Effect.Effect<number> =>
   Effect.gen(function*() {
+    if (askedForHelp(rest)) {
+      yield* Console.log(
+        `${mcpVerbUsage("install", "[--dev] ")}\n`
+          + `  --dev                       supervise the server so an edit is one reload,\n`
+          + `                              instead of restarting the client`
+      )
+      return 0
+    }
     // `--dev` supervises the server so an edit is one `reload` call
     const dev = Array.contains(rest, "--dev")
     const positional = Array.filter(rest, (token) => token !== "--dev")
