@@ -41,6 +41,14 @@ const tool = program({
         retries: ["string.integer.parse | number.integer", "@", {
           cli: "--retries",
           default: "0"
+        }],
+        // the reference lists these as ArkType's own metadata, "read
+        // directly" — so they must reach the projected schema
+        "profile?": ["string", "@", {
+          cli: "--profile",
+          suggest: "filepaths",
+          examples: ["prod", "staging"],
+          deprecated: true
         }]
       },
       narrow: (input, ctx) =>
@@ -103,6 +111,23 @@ describe("the README reference program", () => {
     expect(tool.dev({ entry: "x", retries: 3 })).toMatchObject({ retries: 3 })
     // and the morph's own input side still works there
     expect(tool.dev({ entry: "x", retries: "3" })).toMatchObject({ retries: 3 })
+  })
+
+  it("projects arktype's own metadata into the agent's schema", () => {
+    const serve = tool.mcp.tools.find((t) => t.name === "tool_serve")!
+    const profile = (serve.inputSchema as {
+      properties: Record<string, Record<string, unknown>>
+    }).properties["profile"]!
+    // the reference calls these "read directly", which is only true if
+    // they survive the projection
+    expect(profile["examples"]).toEqual(["prod", "staging"])
+    expect(profile["deprecated"]).toBe(true)
+  })
+
+  it("completes a parameter from its declared suggestion source", async () => {
+    // `suggest: "filepaths"` lists the working directory
+    const words = await tool.cli.complete(["dev", "--profile", ""])
+    expect(words.length).toBeGreaterThan(0)
   })
 
   it("rejects a numeric parameter that is neither", () => {
