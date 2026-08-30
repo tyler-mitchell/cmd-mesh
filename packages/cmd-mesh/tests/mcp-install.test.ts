@@ -166,7 +166,9 @@ describe("projecting the program's server config", () => {
   const server = {
     env: { API_TOKEN: "${TOKEN}" },
     toolTimeoutMs: 30_000,
-    startupTimeoutMs: 45_000
+    startupTimeoutMs: 45_000,
+    eager: true,
+    sandbox: true
   } as const
 
   it("gives claude its millisecond `timeout`", async () => {
@@ -195,6 +197,25 @@ describe("projecting the program's server config", () => {
     const entry = JSON.parse(await read(projectFs, ".cursor/mcp.json")).mcpServers.mytool
     expect(entry.env).toEqual({ API_TOKEN: "${TOKEN}" })
     expect(entry.timeout).toBeUndefined()
+    // cursor has neither of these; inventing them would write keys it ignores
+    expect(entry.alwaysLoad).toBeUndefined()
+    expect(entry.sandboxEnabled).toBeUndefined()
+  })
+
+  it("spells eager as claude's alwaysLoad, and only for claude", async () => {
+    installMcpClient("mytool", invocation, "claude", server)
+    const claude = JSON.parse(await read(projectFs, ".mcp.json")).mcpServers.mytool
+    expect(claude.alwaysLoad).toBe(true)
+    // claude has no sandbox setting
+    expect(claude.sandboxEnabled).toBeUndefined()
+  })
+
+  it("spells sandbox as vscode's sandboxEnabled, and only for vscode", async () => {
+    installMcpClient("mytool", invocation, "vscode", server)
+    const code = JSON.parse(await read(projectFs, ".vscode/mcp.json")).servers.mytool
+    expect(code.sandboxEnabled).toBe(true)
+    // vscode has no startup-connect setting
+    expect(code.alwaysLoad).toBeUndefined()
   })
 
   it("writes no settings at all when the program declares none", async () => {

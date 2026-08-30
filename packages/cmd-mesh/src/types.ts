@@ -125,6 +125,12 @@ export interface McpServerConfig {
   /** how long the server may take to start — codex alone today
    * (`startup_timeout_sec`) */
   readonly startupTimeoutMs?: number
+  /** connect the server when the client starts, rather than on first
+   * use. Claude Code alone spells this (`alwaysLoad`) */
+  readonly eager?: boolean
+  /** restrict the server's filesystem and network access. VS Code
+   * alone offers it (`sandboxEnabled`), macOS and Linux only */
+  readonly sandbox?: boolean
 }
 
 /** a program's `mcp` describes the SERVER as well as its own tool */

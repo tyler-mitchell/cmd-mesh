@@ -29,10 +29,14 @@ const projectRoot = (): string => {
 const clientSettings = {
   claude: (s: McpServerConfig) => ({
     ...(s.env === undefined ? {} : { env: s.env }),
-    ...(s.toolTimeoutMs === undefined ? {} : { timeout: s.toolTimeoutMs })
+    ...(s.toolTimeoutMs === undefined ? {} : { timeout: s.toolTimeoutMs }),
+    ...(s.eager === undefined ? {} : { alwaysLoad: s.eager })
   }),
   cursor: (s: McpServerConfig) => (s.env === undefined ? {} : { env: s.env }),
-  vscode: (s: McpServerConfig) => (s.env === undefined ? {} : { env: s.env }),
+  vscode: (s: McpServerConfig) => ({
+    ...(s.env === undefined ? {} : { env: s.env }),
+    ...(s.sandbox === undefined ? {} : { sandboxEnabled: s.sandbox })
+  }),
   windsurf: (s: McpServerConfig) => (s.env === undefined ? {} : { env: s.env }),
   // codex counts in seconds, so the declaration's milliseconds convert
   codex: (s: McpServerConfig) => ({
