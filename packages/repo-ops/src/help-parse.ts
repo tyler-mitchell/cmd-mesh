@@ -29,6 +29,17 @@ const head =
 
 const isContinuation = (line: string): boolean => /^\s{10,}\S/.test(line)
 
+/** A wrapped description usually breaks between words, but it can break
+ * INSIDE one: pnpm splits a path as `command-` / `mesh`, and joining
+ * those with a space yields `command- mesh`. A part ending in `-`
+ * before a lowercase continuation is one word, not two. */
+const joinWrapped = (parts: ReadonlyArray<string>): string =>
+  parts.reduce(
+    (text, part) =>
+      text === "" ? part : /-$/.test(text) && /^[a-z0-9]/.test(part) ? `${text}${part}` : `${text} ${part}`,
+    ""
+  )
+
 export const parseHelpFlags = (help: string): ReadonlyArray<HelpFlag> => {
   const lines = help.split("\n")
   const seen = new Set<string>()
@@ -59,7 +70,7 @@ export const parseHelpFlags = (help: string): ReadonlyArray<HelpFlag> => {
       negatable: g["negatable"] !== undefined,
       ...(value === undefined ? {} : { value }),
       optionalValue: g["value"]?.startsWith("[") === true,
-      description: [g["description"]!.trim(), ...wrapped].filter((p) => p !== "").join(" ")
+      description: joinWrapped([g["description"]!.trim(), ...wrapped].filter((p) => p !== ""))
     }]
   })
 }

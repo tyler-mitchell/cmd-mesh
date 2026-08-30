@@ -64,6 +64,18 @@ describe("reading a binary's own help", () => {
       .toBe("machine-readable output")
   })
 
+  it("rejoins a word the help broke across lines", () => {
+    // pnpm wraps a path as `command-` / `mesh`; joining with a space
+    // put `command- mesh` into the drafted description
+    const split = `    --dir <dir>    Change to directory (default: /a/command-\n                   mesh/apps/x)\n`
+    expect(parseHelpFlags(split)[0]?.description).toContain("command-mesh")
+  })
+
+  it("still separates parts that wrap between words", () => {
+    const between = `    --x <v>    first part\n               second part\n`
+    expect(parseHelpFlags(between)[0]?.description).toBe("first part second part")
+  })
+
   it("joins a description that wraps over several lines", () => {
     const wrapped = parseHelpFlags(pnpmAdd).find((f) => f.long === "color")
     expect(wrapped?.description).toBe(
