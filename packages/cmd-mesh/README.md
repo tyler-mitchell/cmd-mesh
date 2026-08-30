@@ -31,8 +31,9 @@ const mesh = program({
         // a parameter IS an ArkType definition; surface bindings ride in
         // its metadata, so ArkType owns the domain, optionality and defaults
         directory: ["string", "@", { suggest: "folders", cli: "<directory>" }],
+        // a union over both boundaries: argv carries "4", an agent sends 4
         depth: [
-          "string.integer.parse",
+          "string.integer.parse | number.integer",
           "@",
           { cli: { usage: "--depth, -d", env: "MESH_DEPTH" }, default: "2" }
         ],
