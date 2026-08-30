@@ -245,6 +245,47 @@ const withTomlTable = (source: string, table: ReadonlyArray<string>): string => 
   return [...lines.slice(0, start), ...table, ...lines.slice(boundary - spacing)].join("\n")
 }
 
+/** drop one table from a toml file, keeping every other line. The
+ * inverse of `withTomlTable`, and line-wise for the same reason: the
+ * file is hand-kept and full of comments that are not ours to lose. */
+const withoutTomlTable = (source: string, header: string): string => {
+  const lines = source.split("\n")
+  const start = lines.findIndex((line) => line.trim() === header)
+  if (start === -1) return source
+  const following = lines.slice(start + 1).findIndex((line) => line.trimStart().startsWith("["))
+  const boundary = following === -1 ? lines.length : start + 1 + following
+  // take the blank lines that followed it too, or removing entries
+  // slowly fills the file with gaps
+  const spacing = Array.takeWhile(
+    Array.reverse(lines.slice(start, boundary)),
+    (line) => line.trim() === ""
+  ).length
+  return [...lines.slice(0, start), ...lines.slice(boundary - spacing)].join("\n")
+}
+
+/** remove `<name>` from a client's config, leaving every other server,
+ * every prompted value, and every comment where they were. Answers
+ * whether an entry was actually there. */
+export const uninstallMcpClient = (name: string, client: McpClientId): boolean => {
+  const spec: McpClientSpec = clients[client]
+  const file = pathOf(spec, spec.file)
+  if (!exists(file)) return false
+  if (spec.format === "toml") {
+    const source = readFileSync(file, "utf-8")
+    const without = withoutTomlTable(source, `[${spec.key}.${name}]`)
+    if (without === source) return false
+    createFile(file, without)
+    return true
+  }
+  const current = modifyJSONFile(file, {}, { autoCommit: false })
+  const servers = (current.data?.json.data as
+    { readonly [k: string]: Readonly<globalThis.Record<string, unknown>> | undefined })?.[spec.key]
+  if (servers === undefined || !(name in servers)) return false
+  const result = modifyJSONFile(file, { [`${spec.key}.${name}`]: { value: undefined } })
+  if (result.error !== undefined) throw result.error
+  return true
+}
+
 /** register `<name> mcp` with a client, keeping the rest of its file */
 export const installMcpClient = (
   name: string,

@@ -109,13 +109,23 @@ mcp: {
 ## Installing the server in a client
 
 A cmd-mesh program is a stdio server: the bin plus the argument `mcp`.
-`mcp install` registers it, keeping everything the config already holds:
+`mcp install` registers it, keeping everything the config already holds.
+
+`mesh` below is the example program's own name — cmd-mesh ships no
+binary of its own. The command is whatever your `package.json` `bin`
+calls it; in this repository the same program is `repokit`.
 
 ```sh
 mesh mcp install           # the client this project already uses
 mesh mcp install codex     # or name one
 mesh mcp install --dev     # while developing the program itself
+mesh mcp uninstall         # take it back out
 ```
+
+`mcp uninstall` removes only this program's entry. Every other server,
+every prompted value, and every comment in the file stays where it was,
+and a program that was never registered is reported as such rather than
+treated as an error.
 
 `--dev` registers the server under
 [`mcp-reloader`](https://npmjs.com/package/mcp-reloader), which

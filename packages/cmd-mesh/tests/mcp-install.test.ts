@@ -5,7 +5,8 @@ import {
   installMcpClient,
   mcpClientIds,
   mcpDevInvocation,
-  mcpInvocation
+  mcpInvocation,
+  uninstallMcpClient
 } from "../src/install.js"
 
 // a fixed invocation keeps these cases about the FILES; what a client
@@ -275,6 +276,45 @@ describe("the development wiring", () => {
     expect(separator).toBeGreaterThan(0)
     // the backend must survive verbatim: mcp-reloader spawns it directly
     expect(dev.args.slice(separator + 1)).toEqual([base.command, ...base.args])
+  })
+})
+
+// The inverse of install: a renamed or abandoned program has to be
+// removable without hand-editing a file full of other people's servers.
+describe("removing a program from a client", () => {
+  it("takes out only the named server", async () => {
+    createFile(
+      `${project}/.mcp.json`,
+      `{"mcpServers":{"other":{"command":"other-bin"},"mytool":{"command":"mytool"}}}`
+    )
+    expect(uninstallMcpClient("mytool", "claude")).toBe(true)
+    const after = JSON.parse(await read(projectFs, ".mcp.json")).mcpServers
+    expect(after.mytool).toBeUndefined()
+    expect(after.other).toEqual({ command: "other-bin" })
+  })
+
+  it("keeps a toml file's comments and its other tables", async () => {
+    const file = `${home}/.codex/config.toml`
+    createFile(
+      file,
+      `# my own note\nmodel = "gpt-5"\n\n[mcp_servers.keepme]\ncommand = "keep"\n\n[mcp_servers.mytool]\ncommand = "mytool"\n`
+    )
+    expect(uninstallMcpClient("mytool", "codex")).toBe(true)
+    const after = await read(homeFs, ".codex/config.toml")
+    expect(after).toContain("# my own note")
+    expect(after).toContain("[mcp_servers.keepme]")
+    expect(after).not.toContain("[mcp_servers.mytool]")
+  })
+
+  it("reports honestly when there was nothing to remove", () => {
+    createFile(`${project}/.mcp.json`, `{"mcpServers":{"other":{"command":"other-bin"}}}`)
+    expect(uninstallMcpClient("absent", "claude")).toBe(false)
+  })
+
+  it("reports false rather than throwing when the file does not exist", async () => {
+    // earlier cases in this suite wrote cursor's file, so clear it
+    await projectFs.storage.removeItem(".cursor/mcp.json")
+    expect(uninstallMcpClient("mytool", "cursor")).toBe(false)
   })
 })
 

@@ -31,8 +31,10 @@ import {
   isMcpClientId,
   mcpClientIds,
   mcpDevInvocation,
-  mcpInvocation
+  mcpInvocation,
+  uninstallMcpClient
 } from "./install.js"
+import type { McpClientId } from "./install.js"
 import { externalArgv, invokeParsed, invokeValues, withResources } from "./invoke.js"
 import type { ExternalContracts, McpServerConfig } from "./types.js"
 import { buildMcpServer, collectTools, inputSchema, serveMcp } from "./mcp.js"
@@ -206,6 +208,35 @@ const completeEffect = (
         )
     })
     return completionLines(compiled, words, dynamic)
+  })
+
+/** `mcp uninstall [client]`: remove this bin from an editor's config.
+ * Named clients only when detection finds nothing, same as install. */
+const uninstallEffect = (
+  name: string,
+  rest: ReadonlyArray<string>
+): Effect.Effect<number> =>
+  Effect.gen(function*() {
+    const named = Array.head(rest)
+    if (rest.length > 1 || (Option.isSome(named) && !isMcpClientId(named.value))) {
+      yield* Console.error(`mcp uninstall takes one of: ${Array.join(mcpClientIds, ", ")}`)
+      return 2
+    }
+    const client = Option.orElse(named as Option.Option<McpClientId>, detectMcpClient)
+    if (Option.isNone(client)) {
+      yield* Console.error(
+        `no mcp client found here — name one of: ${Array.join(mcpClientIds, ", ")}`
+      )
+      return 1
+    }
+    return yield* Effect.try(() => uninstallMcpClient(name, client.value)).pipe(
+      Effect.flatMap((removed) =>
+        Console.log(
+          removed ? `removed ${name} from ${client.value}` : `${name} was not registered with ${client.value}`
+        ).pipe(Effect.as(0))
+      ),
+      Effect.catch((error) => Console.error(`${error}`).pipe(Effect.as(1)))
+    )
   })
 
 /** `mcp install [client]`: register this bin with an editor. The client
@@ -459,6 +490,8 @@ export const program = <
               ? runtime.runPromise(
                 installEffect(compiled.name, Array.drop(tokens, 2), def.mcp?.server)
               )
+              : tokens[1] === "uninstall"
+              ? runtime.runPromise(uninstallEffect(compiled.name, Array.drop(tokens, 2)))
               : runtime.runPromise(
                 Console.error(
                   `mcp takes no further arguments (got: ${Array.join(Array.drop(tokens, 1), " ")})`
