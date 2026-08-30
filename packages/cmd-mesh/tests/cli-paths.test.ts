@@ -85,7 +85,9 @@ describe("cli token path", () => {
     expect(Object.keys(props.depth!)).not.toContain("env")
     expect(Object.keys(props.directory!)).not.toContain("suggest")
     // the facts an agent DOES need survive
-    expect(props.depth!.description).toBe("traversal depth")
+    // a description reads as the expected VALUE, since arktype renders
+    // it as "depth must be <description>"
+    expect(props.depth!.description).toBe("a traversal depth")
     expect(props.depth!.default).toBe(2)
   })
 

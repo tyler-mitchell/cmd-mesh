@@ -1,5 +1,7 @@
 // the shared example program: a small dev tool exercising every contract
-// surface — used by demo.ts, bin.ts, and the test suite.
+// surface — used by demo.ts, bin.ts, and the test suite. It is also what
+// a reader copies, so it declares `safety` on every command and keeps a
+// default in the parameter's own metadata.
 import { external, program } from "../src/index.js";
 
 export const git = external({
@@ -7,9 +9,10 @@ export const git = external({
   commands: {
     status: {
       description: "working tree status",
+      safety: "read",
       input: {
-        short: [["boolean", "@", { cli: "--short, -s" }], "=", false],
-        branch: [["boolean", "@", { cli: "--branch, -b" }], "=", false],
+        short: ["boolean", "@", { cli: "--short, -s", default: false }],
+        branch: ["boolean", "@", { cli: "--branch, -b", default: false }],
       },
       output: "string",
     },
@@ -23,6 +26,7 @@ export const mesh = program({
   commands: {
     snapshot: {
       description: "record a directory snapshot",
+      safety: "action",
       input: {
         directory: [
           "string",
@@ -34,18 +38,15 @@ export const mesh = program({
           },
         ],
         depth: [
-          [
-            "string.integer.parse",
-            "@",
-            {
-              description: "traversal depth",
-              cli: { usage: "--depth, -d", env: "MESH_DEPTH" },
-            },
-          ],
-          "=",
-          "2",
+          "string.integer.parse | number.integer",
+          "@",
+          {
+            description: "a traversal depth",
+            cli: { usage: "--depth, -d", env: "MESH_DEPTH" },
+            default: "2",
+          },
         ],
-        verbose: [["boolean", "@", { cli: "--verbose, -v" }], "=", false],
+        verbose: ["boolean", "@", { cli: "--verbose, -v", default: false }],
         "signCert?": "string",
         // object ArkType defs are first-class: real object on the
         // call/mcp surface, JSON token on the cli
@@ -63,12 +64,13 @@ export const mesh = program({
     },
     build: {
       description: "bundle entry files",
+      safety: "action",
       input: {
         entries: ["string[] >= 1", "@", { cli: "<...entries>" }],
         outDir: [
-          ["string", "@", { description: "output directory" }],
-          "=",
-          "dist",
+          "string",
+          "@",
+          { description: "an output directory", default: "dist" },
         ],
       },
       output: { bundled: "string[]", into: "string" },
@@ -79,11 +81,14 @@ export const mesh = program({
       commands: {
         stat: {
           description: "cache statistics",
+          safety: "read",
           output: { entries: "number" },
           run: () => ({ entries: 0 }),
         },
         clear: {
           description: "drop the cache",
+          // dropping a cache is not recoverable from the tool
+          safety: "destructive",
           // a void command: side effect only, nothing to report
           run: () => undefined,
         },
@@ -91,6 +96,7 @@ export const mesh = program({
     },
     disk: {
       description: "disk usage of cwd via ctx.exec",
+      safety: "read",
       run: async (_input, ctx) => {
         const result = await ctx.exec("du", ["-sh", "."]);
         return { surface: ctx.surface, usage: result.stdout.trim() };
