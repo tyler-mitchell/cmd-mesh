@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process"
 import { describe, expect, it } from "vitest"
-import { parseHelpFlags } from "./help-parse.js"
+import { parseHelpCommands, parseHelpFlags, parseHelpPositionals } from "./help-parse.js"
 
 // The fixtures in help-parse.test.ts were transcribed BY the same
 // understanding that wrote the parser, so they can agree with a bug.
@@ -47,5 +47,49 @@ describe("against the binary actually installed", () => {
 
   it("never invents an empty flag name", () => {
     expect(parseHelpFlags(help).every((f) => f.long.length > 0)).toBe(true)
+  })
+})
+
+describe("reading a usage line's operands", () => {
+  it("finds git status's variadic pathspec", () => {
+    // usage: git status [<options>] [--] [<pathspec>...]
+    const positionals = parseHelpPositionals(helpOf("git", ["status", "-h"]))
+    expect(positionals).toEqual([{ name: "pathspec", optional: true, variadic: true }])
+  })
+
+  it("never mistakes the options placeholder for an operand", () => {
+    const names = parseHelpPositionals(helpOf("git", ["log", "-h"])).map((p) => p.name)
+    expect(names).not.toContain("options")
+  })
+
+  it("answers nothing when there is no usage line", () => {
+    expect(parseHelpPositionals("no usage here\n  -v, --verbose  be verbose")).toEqual([])
+  })
+})
+
+describe("discovering a binary's subcommands", () => {
+  const topHelp = helpOf("git", ["--help"])
+  const commands = parseHelpCommands(topHelp)
+
+  it("gets the command list in its help at all", () => {
+    expect(topHelp).toContain("clone")
+  })
+
+  it("finds the commands git documents, with their descriptions", () => {
+    const names = commands.map((c) => c.name)
+    for (const expected of ["clone", "init", "add", "commit", "status", "log", "push"]) {
+      expect(names).toContain(expected)
+    }
+    expect(commands.find((c) => c.name === "add")?.description)
+      .toBe("Add file contents to the index")
+  })
+
+  it("never returns an option as if it were a command", () => {
+    expect(commands.every((c) => !c.name.startsWith("-"))).toBe(true)
+  })
+
+  it("lists each command once, though git prints some twice", () => {
+    const names = commands.map((c) => c.name)
+    expect(names.length).toBe(new Set(names).size)
   })
 })

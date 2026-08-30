@@ -58,6 +58,79 @@ export const parseHelpFlags = (help: string): ReadonlyArray<HelpFlag> => {
   })
 }
 
+export interface HelpPositional {
+  readonly name: string
+  readonly optional: boolean
+  readonly variadic: boolean
+}
+
+/** the operands in a usage line:
+ *
+ *     usage: git status [<options>] [--] [<pathspec>...]
+ *     usage: git show [<options>] <object>...
+ *
+ * `[<options>]` and `[--]` are notation, not operands, so they are
+ * skipped. A name is taken only from the FIRST usage line: git prints
+ * an alternate line for `git show`, whose operands are not status's. */
+const operand = /(?<open>\[?)<(?<name>[a-z][\w-]*)>(?<inner>\.\.\.)?\]?(?<outer>\.\.\.)?/g
+
+export const parseHelpPositionals = (help: string): ReadonlyArray<HelpPositional> => {
+  const usage = help.split("\n").find((line) => line.startsWith("usage:"))
+  if (usage === undefined) return []
+  const seen = new Set<string>()
+  return [...usage.matchAll(operand)].flatMap((match) => {
+    const g = match.groups!
+    const name = g["name"]!
+    if (name === "options" || seen.has(name)) return []
+    seen.add(name)
+    return [{
+      name,
+      optional: g["open"] === "[",
+      variadic: g["inner"] !== undefined || g["outer"] !== undefined
+    }]
+  })
+}
+
+/** a positional as declaration source. Always optional: a usage line
+ * marks what the binary accepts, and a drafted surface that forces an
+ * argument is one a caller cannot use. */
+export const declarePositional = (positional: HelpPositional): string => {
+  const key = flagKey(positional.name)
+  const notation = positional.variadic ? `[...${key}]` : `[${key}]`
+  const type = positional.variadic ? `"string[]"` : `"string"`
+  const meta = positional.variadic
+    ? `cli: ${JSON.stringify(notation)}, default: () => []`
+    : `cli: ${JSON.stringify(notation)}`
+  const optional = positional.variadic ? "" : "?"
+  return `  ${JSON.stringify(`${key}${optional}`)}: [${type}, "@", { ${meta} }]`
+}
+
+/** a subcommand line in a binary's top-level help:
+ *
+ *     clone      Clone a repository into a new directory
+ *
+ * A name never starts with `-`, which is what separates these from the
+ * option lines the same help also prints. */
+const commandLine = /^\s{2,}(?<name>[a-z][\w-]*)\s{2,}(?<description>\S.*)$/
+
+export interface HelpCommand {
+  readonly name: string
+  readonly description: string
+}
+
+export const parseHelpCommands = (help: string): ReadonlyArray<HelpCommand> => {
+  const seen = new Set<string>()
+  return help.split("\n").flatMap((line) => {
+    const match = commandLine.exec(line)
+    if (match?.groups === undefined) return []
+    const name = match.groups["name"]!
+    // git lists some commands under more than one heading
+    if (seen.has(name)) return []
+    seen.add(name)
+    return [{ name, description: match.groups["description"]!.trim() }]
+  })
+}
+
 /** `--max-count` → `maxCount`, the key a declaration would use */
 export const flagKey = (long: string): string =>
   long.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase())
@@ -66,6 +139,7 @@ export interface DraftCommand {
   readonly name: string
   readonly description: string
   readonly flags: ReadonlyArray<HelpFlag>
+  readonly positionals?: ReadonlyArray<HelpPositional>
 }
 
 /** a whole `external({...})` declaration, as source a person then edits.
@@ -77,11 +151,15 @@ export const declareExternal = (
   commands: ReadonlyArray<DraftCommand>
 ): string => {
   const body = commands.map((command) => {
-    const input = command.flags.length === 0
+    // positionals first: a reader looks for them before the flags, and
+    // cmd-mesh takes their order from the declaration
+    const parameters = [
+      ...(command.positionals ?? []).map((p) => `    ${declarePositional(p)}`),
+      ...command.flags.map((f) => `    ${declareFlag(f)}`)
+    ]
+    const input = parameters.length === 0
       ? ""
-      : `      input: {\n${
-        command.flags.map((f) => `    ${declareFlag(f)}`).join(",\n")
-      }\n      },\n`
+      : `      input: {\n${parameters.join(",\n")}\n      },\n`
     return `    ${JSON.stringify(command.name)}: {\n`
       + `      description: ${JSON.stringify(command.description)},\n`
       + `      // TODO set safety: "read" | "action" | "destructive"\n`
@@ -92,6 +170,10 @@ export const declareExternal = (
   return `// Drafted from \`${bin} -h\`. Curate before use: set each\n`
     + `// command's safety, narrow the string types the binary really\n`
     + `// accepts, and delete what you do not want to expose.\n`
+    + `//\n`
+    + `// A binary's short help is not always its whole surface: \`git log\`\n`
+    + `// documents neither --oneline nor --max-count there, though both\n`
+    + `// work. Add what you need; nothing here is a complete mirror.\n`
     + `import { external } from "cmd-mesh"\n\n`
     + `export const ${flagKey(bin)} = external({\n`
     + `  name: ${JSON.stringify(bin)},\n`

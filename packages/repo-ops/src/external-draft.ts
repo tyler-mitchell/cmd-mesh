@@ -1,7 +1,12 @@
 // cmd-mesh re-exports package-management's file and path utilities, so a
 // consumer needs one dependency, not two
 import { createFile, getPath, program } from "cmd-mesh"
-import { declareExternal, parseHelpFlags } from "./help-parse.js"
+import {
+  declareExternal,
+  parseHelpCommands,
+  parseHelpFlags,
+  parseHelpPositionals
+} from "./help-parse.js"
 
 // Wrapping a binary by hand means reading its help and transcribing every
 // flag. This reads the help instead and writes the declaration, leaving a
@@ -18,9 +23,13 @@ export const external = program({
       input: {
         bin: ["string", "@", { description: "the binary to read", cli: "<bin>" }],
         commands: [
-          "string[] >= 1",
+          "string[]",
           "@",
-          { description: "subcommands to draft", cli: "<...commands>" }
+          {
+            description: "subcommands to draft; omitted, the binary's own help is asked",
+            cli: "[...commands]",
+            default: () => []
+          }
         ],
         out: [
           "string",
@@ -34,15 +43,23 @@ export const external = program({
       },
       output: { file: "string", commands: "number", flags: "number" },
       run: async (input, ctx) => {
+        // named commands win; otherwise ask the binary what it has
+        const top = input.commands.length > 0
+          ? input.commands.map((name) => ({ name, description: `${input.bin} ${name}` }))
+          : parseHelpCommands(
+            await ctx.exec(input.bin, ["--help"]).then((r) => `${r.stdout}${r.stderr}`)
+          )
         const drafted = await Promise.all(
-          input.commands.map(async (name) => {
+          top.map(async ({ name, description }) => {
             // a binary that prints help to stderr and exits non-zero is
             // ordinary, so the exit code is data here, not a failure
             const result = await ctx.exec(input.bin, [name, "-h"])
+            const help = `${result.stdout}${result.stderr}`
             return {
               name,
-              description: `${input.bin} ${name}`,
-              flags: parseHelpFlags(`${result.stdout}${result.stderr}`)
+              description,
+              flags: parseHelpFlags(help),
+              positionals: parseHelpPositionals(help)
             }
           })
         )

@@ -44,6 +44,9 @@ describe("the emitted declaration", () => {
     // safety cannot be read from help text, so it is marked, not guessed:
     // the only mention is the TODO, never an actual declared value
     expect(draft).toContain(`TODO set safety`)
+    // a curator must know the draft can be partial: `git log -h` omits
+    // --oneline and --max-count, though both work
+    expect(draft).toContain(`not always its whole surface`)
     expect(draft.split("\n").filter((l) => /^\s*safety:/.test(l))).toEqual([])
   })
 
