@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs"
 import { afterEach, describe, expect, it } from "vitest"
 import { program, project, workspace } from "../src/index.js"
-import type { Ctx } from "../src/index.js"
+import type { Ctx, ParameterSpec } from "../src/index.js"
 import { captureCli, captureJson } from "./fixtures/capture.js"
 
 // One program exercising every claim docs/reference.md makes about a
@@ -156,6 +156,32 @@ describe("the README reference program", () => {
     const source = read("./reference.test.ts")
     const missing = documented.filter((key) => !source.includes(`${key}:`))
     expect(missing, "documented in reference.md, never declared here").toEqual([])
+  })
+
+  // The notation table's sibling check. Asserted against the COMPILED
+  // spec rather than the source text: a form is covered when a real
+  // parameter has that shape, not when a string appears in this file.
+  it("declares a parameter for every notation form the reference documents", () => {
+    // a spec node is identified by its `path`, not a name
+    const dev = tool.spec.commands.find((c) => c.path.at(-1) === "dev")!
+    const has = (predicate: (p: ParameterSpec) => boolean) => dev.parameters.some(predicate)
+
+    const forms = {
+      "<name> required positional": (p: ParameterSpec) =>
+        p.kind === "positional" && p.required,
+      "[name] optional positional": (p: ParameterSpec) =>
+        p.kind === "positional" && !p.required && !p.variadic,
+      "[...name] variadic positional": (p: ParameterSpec) =>
+        p.kind === "positional" && p.variadic,
+      "--flag, -f short alias": (p: ParameterSpec) =>
+        p.kind === "flag" && p.usage.includes(", -"),
+      "--tag <tags...> repeatable": (p: ParameterSpec) =>
+        p.kind === "flag" && p.variadic,
+      "omitted, derived kebab-case flag": (p: ParameterSpec) =>
+        p.kind === "flag" && p.usage === `--${p.key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`
+    }
+    const uncovered = Object.entries(forms).filter(([, predicate]) => !has(predicate)).map(([n]) => n)
+    expect(uncovered, "notation documented in reference.md, no parameter here").toEqual([])
   })
 
   it("rejects a numeric parameter that is neither", () => {
