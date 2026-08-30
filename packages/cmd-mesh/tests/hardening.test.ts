@@ -114,7 +114,9 @@ describe("exec options", () => {
     })
     const { getWorkspaceFolder } = await import("package-management")
     expect(getWorkspaceFolder({ cwd: dir, throwIfNotFound: false })).toBe(dir)
-    await expect(tool.miss()).rejects.toThrow(/failed to execute probe-local/)
+    // without preferLocal the local bin is not on PATH, which ExecFailure
+    // now reports as the missing binary it is
+    await expect(tool.miss()).rejects.toThrow(/probe-local is not installed, or not on PATH/)
     await expect(tool.hit()).resolves.toBe("local-hit")
   })
 

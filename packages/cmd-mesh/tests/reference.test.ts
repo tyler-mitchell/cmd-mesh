@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 import { afterEach, describe, expect, it } from "vitest"
-import { program, project, workspace } from "../src/index.js"
+import { ExecFailure, program, project, workspace } from "../src/index.js"
 import type { Ctx, ParameterSpec } from "../src/index.js"
 import { captureCli, captureJson } from "./fixtures/capture.js"
 
@@ -243,6 +243,35 @@ describe("the README reference program", () => {
     expect(human.out).toBe("→ https://example.com")
     const json = await captureJson(() => tool.cli.run(["render", "--json"]))
     expect(json).toEqual({ url: "https://example.com" })
+  })
+})
+
+// The commonest thing that goes wrong when a handler shells out: the
+// binary is not there. What a user reads must name the binary, not the
+// spawner's internals.
+describe("a binary that is not installed", () => {
+  const runner = program({
+    name: "runner",
+    commands: {
+      go: {
+        description: "run a binary that does not exist",
+        run: (_input, ctx) => ctx.exec("definitely-not-a-real-binary", [])
+      }
+    }
+  })
+
+  it("says what is missing rather than naming the spawner", async () => {
+    const { err, code } = await captureCli(() => runner.cli.run(["go"]))
+    expect(code).toBe(1)
+    expect(err).toContain("definitely-not-a-real-binary is not installed, or not on PATH")
+    // the platform's own wrapper helps nobody decide what to do
+    expect(err).not.toContain("PlatformError")
+    expect(err).not.toContain("ChildProcess.spawn")
+  })
+
+  it("still reports the cause when the failure is not a missing binary", () => {
+    const other = new ExecFailure({ bin: "git", args: [], cause: "broken pipe" })
+    expect(other.message).toBe("failed to execute git: broken pipe")
   })
 })
 
