@@ -17,7 +17,9 @@ export const deps = program({
     merge: {
       description: "squash-merge one PR",
       safety: "action",
-      input: { pr: ["string", "@", { description: "PR number", cli: "<pr>" }] },
+      input: {
+        pr: ["string", "@", { description: "a PR number, written as a string", cli: "<pr>" }]
+      },
       output: text,
       cli: { render: printText },
       // the number travels as a string, which an agent reading "PR
@@ -28,7 +30,9 @@ export const deps = program({
     close: {
       description: "close one PR",
       safety: "action",
-      input: { pr: ["string", "@", { description: "PR number", cli: "<pr>" }] },
+      input: {
+        pr: ["string", "@", { description: "a PR number, written as a string", cli: "<pr>" }]
+      },
       output: text,
       cli: { render: printText },
       mcp: { examples: [{ args: { pr: "142" }, description: "close PR 142" }] },

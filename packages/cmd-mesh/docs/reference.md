@@ -78,6 +78,12 @@ its input domain accepts.
 | `suggest` | `"folders"` · `"filepaths"` · a const generator `(ctx: SuggestContext) => Promise<string[]>` |
 | `description` · `examples` · `default` · `deprecated` | ArkType's own metadata, read directly |
 
+A `description` is ArkType's EXPECTED-value phrase, not a docstring: it
+renders as `<key> must be <description> (was …)`. Write what a caller
+should send — `"a commit count, written as a string"` — so a failed
+call tells an agent how to fix itself. `"limit to n commits"` becomes
+`count must be limit to n commits`, which teaches nothing.
+
 | notation | meaning |
 | --- | --- |
 | `"<name>"` | required positional |

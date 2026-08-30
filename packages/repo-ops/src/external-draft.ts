@@ -37,7 +37,7 @@ export const external = program({
           "string.integer.parse",
           "@",
           {
-            description: "how many levels of subcommands to follow",
+            description: "a depth of subcommands to follow, written as a string",
             cli: "--depth, -d",
             default: "1"
           }

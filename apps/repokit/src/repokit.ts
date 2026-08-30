@@ -100,7 +100,15 @@ export const repokit = program({
       safety: "read",
       cli: { hidden: true },
       input: {
-        commits: ["string.integer.parse", "@", { description: "recent commits to include", default: "10" }]
+        // ArkType renders a description as the EXPECTED value: it lands
+        // in "commits must be ...", so it says what to send rather than
+        // what the parameter is for. An agent that passes 10 instead of
+        // "10" can only self-correct if the message names the type.
+        commits: [
+          "string.integer.parse",
+          "@",
+          { description: "a count of recent commits, written as a string", default: "10" }
+        ]
       },
       output: { branch: "string", recent: "string[]", dirty: "string[]" },
       run: async (input, ctx) => {
@@ -142,7 +150,11 @@ export const repokit = program({
           }
         ],
         script: ["string", "@", { description: "script to run", default: "typecheck" }],
-        timeout: ["string.integer.parse", "@", { description: "timeout in ms", default: "600000" }]
+        timeout: [
+          "string.integer.parse",
+          "@",
+          { description: "a timeout in milliseconds, written as a string", default: "600000" }
+        ]
       },
       output: { filter: "string", script: "string" },
       // `filter` is a pnpm selector, not a path, and the timeout is a

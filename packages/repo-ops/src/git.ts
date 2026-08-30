@@ -22,7 +22,13 @@ export const git = external({
       safety: "read",
       input: {
         oneline: ["boolean", "@", { cli: "--oneline", default: false }],
-        "count?": ["string", "@", { description: "limit to n commits", cli: "--max-count, -n" }]
+        // a description lands in "count must be ...", so it names the
+        // value to send rather than the parameter's purpose
+        "count?": [
+          "string",
+          "@",
+          { description: "a commit count, written as a string", cli: "--max-count, -n" }
+        ]
       },
       output: "string"
     },
