@@ -51,6 +51,8 @@ describe("advertising the mcp surface", () => {
     const { out } = await captureCli(() => tool.main(["--help"]))
     expect(out).toMatch(/^ {2}mcp {25}serve this program to agents over stdio$/m)
     expect(out).toMatch(/^ {2}mcp install {17}register this program with an editor$/m)
+    // a shipped verb absent from help is a verb nobody finds
+    expect(out).toMatch(/^ {2}mcp uninstall {15}remove this program from an editor$/m)
   })
 
   it("stays silent about mcp in a cli-only bin's help", async () => {

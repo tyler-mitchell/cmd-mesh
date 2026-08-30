@@ -71,7 +71,8 @@ const builtinLines = (cmd: CompiledCommand, mcp: boolean): ReadonlyArray<string>
       ...(mcp
         ? ([
           ["mcp", "serve this program to agents over stdio"],
-          ["mcp install", "register this program with an editor"]
+          ["mcp install", "register this program with an editor"],
+          ["mcp uninstall", "remove this program from an editor"]
         ] as const)
         : [])
     ] as const,
