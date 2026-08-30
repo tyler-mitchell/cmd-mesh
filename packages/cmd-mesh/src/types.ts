@@ -131,6 +131,17 @@ export interface McpServerConfig {
   /** restrict the server's filesystem and network access. VS Code
    * alone offers it (`sandboxEnabled`), macOS and Linux only */
   readonly sandbox?: boolean
+  /** values the client should PROMPT for rather than read from the
+   * environment, referenced from `env` as `${input:<id>}`. VS Code
+   * alone has the concept, and it keeps them out of the config file.
+   * Declared here because a reference without its declaration is
+   * unresolvable — the pair only works written together. */
+  readonly prompts?: ReadonlyArray<{
+    readonly id: string
+    readonly description: string
+    /** mask what the user types */
+    readonly secret?: boolean
+  }>
 }
 
 /** a program's `mcp` describes the SERVER as well as its own tool */

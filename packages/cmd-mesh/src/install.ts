@@ -266,5 +266,22 @@ export const installMcpClient = (
     : { ...invocation, ...settings }
   const result = modifyJSONFile(file, { [`${spec.key}.${name}`]: { value: entry } })
   if (result.error !== undefined) throw result.error
+  // vscode's prompts are a TOP-LEVEL array beside the servers, not a
+  // field of one, so they are written as a second edit — merged by id,
+  // because the file may already prompt for another server's values
+  if (client === "vscode" && server?.prompts !== undefined) {
+    const current = (result.data?.data as { readonly inputs?: ReadonlyArray<{ id: string }> })
+      ?.inputs ?? []
+    const declared = server.prompts.map((prompt) => ({
+      id: prompt.id,
+      type: "promptString",
+      description: prompt.description,
+      ...(prompt.secret === undefined ? {} : { password: prompt.secret })
+    }))
+    const ids = new Set(declared.map((prompt) => prompt.id))
+    const merged = [...Array.filter(current, (prompt) => !ids.has(prompt.id)), ...declared]
+    const withPrompts = modifyJSONFile(file, { inputs: { value: merged } })
+    if (withPrompts.error !== undefined) throw withPrompts.error
+  }
   return file
 }

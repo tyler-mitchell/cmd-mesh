@@ -35,7 +35,7 @@ this page lists.
 | `cli.default` | child that runs when the group is invoked bare |
 | `cli.hidden` / `mcp.hidden` | per-surface omission; parsing and validation still apply |
 | `cli.render` | human-only presentation; `--json` and MCP unaffected |
-| `mcp.server` | program level only: how a client should RUN the server — `env`, `toolTimeoutMs`, `startupTimeoutMs`, `eager` (connect at startup), `sandbox` (restrict filesystem and network). Declared once in these units and projected into each client's own spelling by `mcp install`; a client with no equivalent receives nothing for it |
+| `mcp.server` | program level only: how a client should RUN the server — `env`, `toolTimeoutMs`, `startupTimeoutMs`, `eager` (connect at startup), `sandbox` (restrict filesystem and network), `prompts` (values the client asks for instead of reading from the environment, referenced from `env` as `${input:<id>}`). Declared once in these units and projected into each client's own spelling by `mcp install`; a client with no equivalent receives nothing for it |
 | `mcp.name` | overrides the derived flattened tool name |
 | `mcp.annotations` | verbatim MCP tool annotations; win over safety-derived hints |
 | `mcp.examples` | `{ args, description? }[]` — schema-validated at compile time; projected into the tool description, JSON-Schema `examples`, and the spec |

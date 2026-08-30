@@ -210,6 +210,32 @@ describe("projecting the program's server config", () => {
     expect(claude.sandboxEnabled).toBeUndefined()
   })
 
+  it("declares a prompted value beside the servers, where vscode reads it", async () => {
+    installMcpClient("mytool", invocation, "vscode", {
+      env: { API_KEY: "${input:api-key}" },
+      prompts: [{ id: "api-key", description: "Enter your API key", secret: true }]
+    })
+    const file = JSON.parse(await read(projectFs, ".vscode/mcp.json"))
+    // a reference without its declaration is unresolvable, so both land
+    expect(file.servers.mytool.env).toEqual({ API_KEY: "${input:api-key}" })
+    expect(file.inputs).toEqual([
+      { id: "api-key", type: "promptString", description: "Enter your API key", password: true }
+    ])
+  })
+
+  it("keeps a prompt another server already declared", async () => {
+    installMcpClient("other", invocation, "vscode", {
+      prompts: [{ id: "other-token", description: "Other token" }]
+    })
+    installMcpClient("mytool", invocation, "vscode", {
+      prompts: [{ id: "api-key", description: "Enter your API key" }]
+    })
+    const ids = JSON.parse(await read(projectFs, ".vscode/mcp.json"))
+      .inputs.map((input: { id: string }) => input.id)
+    expect(ids).toContain("other-token")
+    expect(ids).toContain("api-key")
+  })
+
   it("spells sandbox as vscode's sandboxEnabled, and only for vscode", async () => {
     installMcpClient("mytool", invocation, "vscode", server)
     const code = JSON.parse(await read(projectFs, ".vscode/mcp.json")).servers.mytool
