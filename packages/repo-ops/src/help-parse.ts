@@ -112,6 +112,10 @@ export const declareFlag = (flag: HelpFlag): string => {
     ...(flag.value === undefined ? [`default: false`] : [])
   ].join(", ")
   const type = flag.value === undefined ? `"boolean"` : `"string"`
-  const optional = flag.value !== undefined && !flag.optionalValue ? "?" : ""
+  // every drafted flag is optional: a boolean gets `default: false`, and
+  // a valued one gets `?`. Help text never says a flag is mandatory, so
+  // emitting a required parameter makes the command uncallable — which
+  // is exactly what the first real run of this generator did.
+  const optional = flag.value === undefined ? "" : "?"
   return `  ${JSON.stringify(`${key}${optional}`)}: [${type}, "@", { ${meta} }]`
 }

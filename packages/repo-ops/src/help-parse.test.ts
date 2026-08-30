@@ -93,6 +93,16 @@ describe("emitting declaration source", () => {
     )
   })
 
+  // The first real run of the generator emitted `porcelain` as required,
+  // so calling any drafted command failed with InvalidInput. Help text
+  // never says a flag is mandatory, so no drafted flag may be required.
+  it("never drafts a flag the caller would be forced to pass", () => {
+    const required = parseHelpFlags(gitStatus)
+      .map(declareFlag)
+      .filter((source) => !source.includes("?") && !source.includes("default"))
+    expect(required).toEqual([])
+  })
+
   it("declares a valued flag as a string, with no invented default", () => {
     const porcelain = parseHelpFlags(gitStatus).find((f) => f.long === "porcelain")!
     const source = declareFlag(porcelain)
