@@ -60,6 +60,17 @@ export const repokit = program({
         ]
       },
       output: [{ file: "string", line: "number", text: "string" }, "[]"],
+      // the pattern is a regex and the glob a git pathspec, neither of
+      // which the schema's "string" conveys
+      mcp: {
+        examples: [
+          { args: { pattern: "createRelease" }, description: "find a symbol across the repository" },
+          {
+            args: { pattern: "TODO", glob: "packages/**/*.ts" },
+            description: "scope the search to a pathspec"
+          }
+        ]
+      },
       run: (input, ctx) =>
         gitGrep(ctx, [
           "-e",
@@ -134,6 +145,17 @@ export const repokit = program({
         timeout: ["string.integer.parse", "@", { description: "timeout in ms", default: "600000" }]
       },
       output: { filter: "string", script: "string" },
+      // `filter` is a pnpm selector, not a path, and the timeout is a
+      // string because it parses through a morph
+      mcp: {
+        examples: [
+          { args: { filter: "cmd-mesh" }, description: "typecheck one package" },
+          {
+            args: { filter: "cmd-mesh", script: "test" },
+            description: "run a different script in that package"
+          }
+        ]
+      },
       run: async (input, ctx) => {
         await ctx.exec("pnpm", ["--filter", input.filter, "run", input.script], {
           cwd: ctx.workspace.workspaceRootDir(),

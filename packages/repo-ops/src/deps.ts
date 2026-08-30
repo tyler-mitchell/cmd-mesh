@@ -20,6 +20,9 @@ export const deps = program({
       input: { pr: ["string", "@", { description: "PR number", cli: "<pr>" }] },
       output: text,
       cli: { render: printText },
+      // the number travels as a string, which an agent reading "PR
+      // number" would not assume
+      mcp: { examples: [{ args: { pr: "142" }, description: "squash-merge PR 142" }] },
       run: (input, ctx) => captured(ctx, "gh", ["pr", "merge", input.pr, "--squash"])
     },
     close: {
@@ -28,6 +31,7 @@ export const deps = program({
       input: { pr: ["string", "@", { description: "PR number", cli: "<pr>" }] },
       output: text,
       cli: { render: printText },
+      mcp: { examples: [{ args: { pr: "142" }, description: "close PR 142" }] },
       run: (input, ctx) => captured(ctx, "gh", ["pr", "close", input.pr])
     },
     sync: {
