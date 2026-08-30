@@ -53,6 +53,25 @@ export const external = program({
         ]
       },
       output: { file: "string", commands: "number", flags: "number" },
+      // an agent otherwise has to guess whether `commands` is required
+      // and what `depth` does; these are schema-checked at compile time,
+      // so a wrong one is a declaration error rather than bad advice
+      mcp: {
+        examples: [
+          {
+            args: { bin: "git", out: "src/git.ts" },
+            description: "draft every command the binary documents"
+          },
+          {
+            args: { bin: "git", commands: ["status", "log"], out: "src/git.ts" },
+            description: "draft only the commands named"
+          },
+          {
+            args: { bin: "git", commands: ["remote"], depth: "1", out: "src/git-remote.ts" },
+            description: "follow a group's own subcommands one level down"
+          }
+        ]
+      },
       run: async (input, ctx) => {
         // named commands win; otherwise ask the binary what it has
         const top: ReadonlyArray<HelpCommand> = input.commands.length > 0
