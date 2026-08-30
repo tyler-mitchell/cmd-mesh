@@ -377,6 +377,9 @@ describe("external declaration validation", () => {
       external({
         name: "tool",
         commands: {
+          // now rejected at the declaration site too; the runtime
+          // diagnostic below is what this case is really asserting
+          // @ts-expect-error — 'not.a.keyword' is unresolvable
           first: { input: { bad: "not.a.keyword" } },
           second: {
             input: {
@@ -396,11 +399,14 @@ describe("external declaration validation", () => {
   })
 
   // This error was in repo-ops. It stopped the completion for git add.
-  it("rejects a misspelled parameter field the compiler cannot see", () => {
+  // The compiler now catches it at the declaration site as well, so the
+  // runtime diagnostic is the second line of defence rather than the only one.
+  it("rejects a misspelled parameter field", () => {
     expect(() =>
       external({
         name: "tool",
         commands: {
+          // @ts-expect-error — `complete` is not a cli config field
           add: { input: { paths: ["string[]", "@", { cli: { usage: "<...paths>", complete: "filepaths" } }] } }
         }
       })
@@ -477,6 +483,7 @@ describe("external declaration validation", () => {
     expect(() =>
       external({
         name: "tool",
+        // @ts-expect-error — `sugest` is not a declared metadata key
         commands: { go: { input: { where: ["string", "@", { sugest: "folders", cli: "<where>" }] } } }
       })
     ).toThrow(/CMSH1013.*sugest/s)

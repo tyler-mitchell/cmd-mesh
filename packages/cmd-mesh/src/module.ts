@@ -34,7 +34,7 @@ import {
   mcpInvocation
 } from "./install.js"
 import { externalArgv, invokeParsed, invokeValues, withResources } from "./invoke.js"
-import type { McpServerConfig } from "./types.js"
+import type { ExternalContracts, McpServerConfig } from "./types.js"
 import { buildMcpServer, collectTools, inputSchema, serveMcp } from "./mcp.js"
 import { Predicate } from "effect"
 import { renderHelp, renderResult, usageLine } from "./render.js"
@@ -540,7 +540,7 @@ export const program = <
 
 /** interpret an external-binary declaration into its callable module */
 export const external = <const D extends ExternalDecl, r = ExternalModule<D>>(
-  def: D
+  def: D & { readonly commands?: ExternalContracts<NoInfer<D>["commands"]> }
 ): r extends infer _ ? _ : never => {
   const compiled = compileExternal(def)
   const runtime: MeshRuntime = ManagedRuntime.make(Exec.layer)

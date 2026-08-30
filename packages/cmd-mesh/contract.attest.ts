@@ -175,6 +175,25 @@ try {
       name: "bad4",
       commands: { c: { input: { n: ["string.integer.parse", "@", { default: 1 }] } } }
     })
+    // an external's declaration is validated the same way a program's is
+    external({
+      name: "badExternal",
+      // @ts-expect-error — 'not.a.keyword' is unresolvable
+      commands: { c: { input: { x: "not.a.keyword" } } }
+    })
+    external({
+      name: "badExternal2",
+      // @ts-expect-error — `nonsense` is not a declared metadata key
+      commands: { c: { input: { x: ["string", "@", { nonsense: 1 }] } } }
+    })
+    external({
+      name: "badExternal3",
+      commands: {
+        // @ts-expect-error — a nested subcommand is checked too
+        c: { commands: { d: { input: { x: "also.not.real" } } } }
+      }
+    })
+
     program({
       name: "bad5",
       // @ts-expect-error — mcp takes `hidden`, not a misspelling of it

@@ -92,7 +92,9 @@ token on the CLI, and project full nested JSON Schemas to MCP.
 
 Because the declaration is ArkType's own, an unresolvable keyword, an
 unknown metadata key, a misspelled `mcp.hidden`, or a value outside a
-declared union is a TypeScript error at the declaration site.
+declared union is a TypeScript error at the declaration site. This holds
+for `external()` as well as `program()`, including a nested subcommand's
+own `input` and `output`.
 
 ## MCP surface
 

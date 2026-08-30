@@ -341,6 +341,18 @@ export interface ExternalCommandDecl {
   readonly mcp?: McpCommandConfig
 }
 
+/** ArkType's validators over an external's commands, applied OUTSIDE the
+ * inference path for the same reason `CommandsContracts` is: naming a
+ * validator where the declaration is inferred forces TypeScript to
+ * invert it. Recurses, so a nested subcommand is checked too. */
+export type ExternalContracts<M> = {
+  readonly [N in keyof M]?:
+    & (M[N] extends { readonly input: infer I } ? { readonly input?: ValidateInput<I> } : unknown)
+    & (M[N] extends { readonly output: infer O } ? { readonly output?: ValidateOutput<O> } : unknown)
+    & (M[N] extends { readonly commands: infer C } ? { readonly commands?: ExternalContracts<C> }
+      : unknown)
+}
+
 export interface ExternalDecl {
   readonly name: string
   readonly description?: string
