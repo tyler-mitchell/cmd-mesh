@@ -71,7 +71,14 @@ describe("the operational surface (the closed-distribution contract)", () => {
 
   it("runs the real strict bump check", async () => {
     const checked = await repokit.release.check()
-    expect(checked.text).toMatch(/bump files|No managed packages have changed/)
+    // every outcome bumpy reports, including the one a SHALLOW checkout
+    // produces: with a single commit it can detect no changes at all, so
+    // asserting only the first two made this test fail in CI and never
+    // there otherwise. The contract is that the command runs and returns
+    // bumpy's report, not which report today's history happens to give.
+    expect(checked.text).toMatch(
+      /bump files|No managed packages have changed|No changed files detected/
+    )
   })
 
   it("exposes git as a typed external surface", async () => {
