@@ -55,6 +55,41 @@ describe("against the binary actually installed", () => {
   })
 })
 
+// Everything else here drives git. This drives a binary with a
+// different help style, so the parser's generality is measured rather
+// than assumed.
+describe("against a non-git binary", () => {
+  const help = helpOf("pnpm", ["--help"])
+  const commands = parseHelpCommands(help)
+
+  it("gets pnpm's help at all", () => {
+    expect(help).toContain("install")
+  })
+
+  it("reads a command that prints an alias column", () => {
+    // "  i, install              Install all dependencies for a project"
+    const install = commands.find((c) => c.name === "install")
+    expect(install).toBeDefined()
+    expect(install?.alias).toBe("i")
+  })
+
+  it("reads a command with no alias the same way", () => {
+    expect(commands.find((c) => c.name === "add")?.alias).toBeUndefined()
+    expect(commands.find((c) => c.name === "add")?.description).toContain("Installs a package")
+  })
+
+  it("never mistakes the alias for the command", () => {
+    const names = commands.map((c) => c.name)
+    expect(names).not.toContain("i")
+    expect(names).not.toContain("ln")
+  })
+
+  it("reads its flags too", () => {
+    const flags = parseHelpFlags(helpOf("pnpm", ["add", "--help"]))
+    expect(flags.map((f) => f.long)).toContain("save-exact")
+  })
+})
+
 describe("finding a group's own subcommands", () => {
   const remote = helpOf("git", ["remote", "-h"])
   const subs = parseHelpSubcommands(remote, ["git", "remote"])

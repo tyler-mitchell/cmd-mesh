@@ -137,15 +137,20 @@ export const declarePositional = (positional: HelpPositional): string => {
 
 /** a subcommand line in a binary's top-level help:
  *
- *     clone      Clone a repository into a new directory
+ *     clone      Clone a repository into a new directory     (git)
+ *  i, install    Install all dependencies for a project      (pnpm)
  *
- * A name never starts with `-`, which is what separates these from the
- * option lines the same help also prints. */
-const commandLine = /^\s{2,}(?<name>[a-z][\w-]*)\s{2,}(?<description>\S.*)$/
+ * The alias column is optional and reads like the one on an option
+ * line. A name never starts with `-`, which is what separates these
+ * from the options the same help also prints. */
+const commandLine =
+  /^\s{2,}(?:(?<alias>[a-z][\w-]*),\s+)?(?<name>[a-z][\w-]*)\s{2,}(?<description>\S.*)$/
 
 export interface HelpCommand {
   readonly name: string
   readonly description: string
+  /** the short spelling the binary also accepts, when it prints one */
+  readonly alias?: string
 }
 
 export const parseHelpCommands = (help: string): ReadonlyArray<HelpCommand> => {
@@ -154,10 +159,15 @@ export const parseHelpCommands = (help: string): ReadonlyArray<HelpCommand> => {
     const match = commandLine.exec(line)
     if (match?.groups === undefined) return []
     const name = match.groups["name"]!
+    const alias = match.groups["alias"]
     // git lists some commands under more than one heading
     if (seen.has(name)) return []
     seen.add(name)
-    return [{ name, description: match.groups["description"]!.trim() }]
+    return [{
+      name,
+      description: match.groups["description"]!.trim(),
+      ...(alias === undefined ? {} : { alias })
+    }]
   })
 }
 
