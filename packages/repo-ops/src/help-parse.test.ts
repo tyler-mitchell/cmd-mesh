@@ -127,6 +127,20 @@ describe("emitting declaration source", () => {
   // The first real run of the generator emitted `porcelain` as required,
   // so calling any drafted command failed with InvalidInput. Help text
   // never says a flag is mandatory, so no drafted flag may be required.
+  // pnpm documents --filter once per selector form, and wraps some
+  // examples so a line ends mid-word. Neither is a second flag, and
+  // emitting both produced a file TypeScript refused: "an object
+  // literal cannot have multiple properties with the same name".
+  it("drafts a repeated flag once", () => {
+    const repeated = `    --filter <sel>    select packages\n    --filter !x       exclude x\n`
+    expect(parseHelpFlags(repeated).map((f) => f.long)).toEqual(["filter"])
+  })
+
+  it("ignores a wrapped line that ends mid-word", () => {
+    const wrapped = `    --changed-files-ignore-\n    pattern="**/*.md" build\n`
+    expect(parseHelpFlags(wrapped)).toEqual([])
+  })
+
   it("never drafts a flag the caller would be forced to pass", () => {
     const required = parseHelpFlags(gitStatus)
       .map(declareFlag)

@@ -31,10 +31,16 @@ const isContinuation = (line: string): boolean => /^\s{10,}\S/.test(line)
 
 export const parseHelpFlags = (help: string): ReadonlyArray<HelpFlag> => {
   const lines = help.split("\n")
+  const seen = new Set<string>()
   return lines.flatMap((line, index) => {
     const match = head.exec(line)
     if (match?.groups === undefined) return []
     const g = match.groups
+    const long = g["long"]!
+    // pnpm documents --filter once per selector form, and a wrapped
+    // example line can end mid-word: neither is a second flag
+    if (seen.has(long) || long.endsWith("-")) return []
+    seen.add(long)
     // a description that did not fit continues on the following indented
     // lines, which is how both git and pnpm wrap
     const wrapped = lines
@@ -48,7 +54,7 @@ export const parseHelpFlags = (help: string): ReadonlyArray<HelpFlag> => {
       ).parts
     const value = g["named"] ?? g["spaced"]
     return [{
-      long: g["long"]!,
+      long,
       ...(g["short"] === undefined ? {} : { short: g["short"] }),
       negatable: g["negatable"] !== undefined,
       ...(value === undefined ? {} : { value }),
@@ -181,6 +187,8 @@ export interface DraftCommand {
   readonly flags: ReadonlyArray<HelpFlag>
   readonly positionals?: ReadonlyArray<HelpPositional>
   readonly commands?: ReadonlyArray<DraftCommand>
+  /** the short spelling the binary accepts, when its help prints one */
+  readonly alias?: string
 }
 
 /** a whole `external({...})` declaration, as source a person then edits.
@@ -209,9 +217,15 @@ export const declareExternal = (
       }\n${pad}  },\n`
     // a group that only routes has no output of its own
     const output = children.length === 0 ? `${pad}  output: "string"\n` : ""
+    // the binary already answers to the short spelling, so the drafted
+    // surface should too
+    const alias = command.alias === undefined
+      ? ""
+      : `${pad}  cli: { alias: [${JSON.stringify(command.alias)}] },\n`
     return `${pad}${JSON.stringify(command.name)}: {\n`
       + `${pad}  description: ${JSON.stringify(command.description)},\n`
       + `${pad}  // TODO set safety: "read" | "action" | "destructive"\n`
+      + alias
       + input
       + nested
       + output
@@ -225,6 +239,10 @@ export const declareExternal = (
     + `// A binary's short help is not always its whole surface: \`git log\`\n`
     + `// documents neither --oneline nor --max-count there, though both\n`
     + `// work. Add what you need; nothing here is a complete mirror.\n`
+    + `//\n`
+    + `// A flag is drafted as a boolean unless its help marks a value —\n`
+    + `// \`<mode>\` or \`[=<mode>]\`. pnpm's \`--depth -1\` shows the value in\n`
+    + `// prose only, so it arrives here as a boolean and needs changing.\n`
     + `import { external } from "cmd-mesh"\n\n`
     + `export const ${flagKey(bin)} = external({\n`
     + `  name: ${JSON.stringify(bin)},\n`

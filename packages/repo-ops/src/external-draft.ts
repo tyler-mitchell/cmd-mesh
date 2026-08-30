@@ -8,7 +8,7 @@ import {
   parseHelpPositionals,
   parseHelpSubcommands
 } from "./help-parse.js"
-import type { DraftCommand } from "./help-parse.js"
+import type { DraftCommand, HelpCommand } from "./help-parse.js"
 
 // Wrapping a binary by hand means reading its help and transcribing every
 // flag. This reads the help instead and writes the declaration, leaving a
@@ -55,7 +55,7 @@ export const external = program({
       output: { file: "string", commands: "number", flags: "number" },
       run: async (input, ctx) => {
         // named commands win; otherwise ask the binary what it has
-        const top = input.commands.length > 0
+        const top: ReadonlyArray<HelpCommand> = input.commands.length > 0
           ? input.commands.map((name) => ({ name, description: `${input.bin} ${name}` }))
           : parseHelpCommands(
             await ctx.exec(input.bin, ["--help"]).then((r) => `${r.stdout}${r.stderr}`)
@@ -65,7 +65,8 @@ export const external = program({
         const draftOne = async (
           path: ReadonlyArray<string>,
           description: string,
-          depth: number
+          depth: number,
+          alias?: string
         ): Promise<DraftCommand> => {
           // a binary that prints help to stderr and exits non-zero is
           // ordinary, so the exit code is data here, not a failure
@@ -75,6 +76,7 @@ export const external = program({
           return {
             name: path[path.length - 1]!,
             description,
+            ...(alias === undefined ? {} : { alias }),
             flags: parseHelpFlags(help),
             positionals: parseHelpPositionals(help),
             ...(children.length === 0 ? {} : {
@@ -87,7 +89,9 @@ export const external = program({
           }
         }
         const drafted = await Promise.all(
-          top.map(({ name, description }) => draftOne([name], description, input.depth))
+          top.map(({ name, description, alias }) =>
+            draftOne([name], description, input.depth, alias)
+          )
         )
         const file = getPath({ to: `${getPath({ to: "<cwd>" })}/${input.out}` })
         createFile(file, declareExternal(input.bin, drafted))
