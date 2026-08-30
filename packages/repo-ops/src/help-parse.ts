@@ -62,6 +62,42 @@ export const parseHelpFlags = (help: string): ReadonlyArray<HelpFlag> => {
 export const flagKey = (long: string): string =>
   long.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase())
 
+export interface DraftCommand {
+  readonly name: string
+  readonly description: string
+  readonly flags: ReadonlyArray<HelpFlag>
+}
+
+/** a whole `external({...})` declaration, as source a person then edits.
+ * `safety` is deliberately absent: help text does not say whether a
+ * command mutates, and guessing it would put a wrong hint in front of
+ * an agent. The emitted comment says so at the one place it matters. */
+export const declareExternal = (
+  bin: string,
+  commands: ReadonlyArray<DraftCommand>
+): string => {
+  const body = commands.map((command) => {
+    const input = command.flags.length === 0
+      ? ""
+      : `      input: {\n${
+        command.flags.map((f) => `    ${declareFlag(f)}`).join(",\n")
+      }\n      },\n`
+    return `    ${JSON.stringify(command.name)}: {\n`
+      + `      description: ${JSON.stringify(command.description)},\n`
+      + `      // TODO set safety: "read" | "action" | "destructive"\n`
+      + input
+      + `      output: "string"\n`
+      + `    }`
+  }).join(",\n")
+  return `// Drafted from \`${bin} -h\`. Curate before use: set each\n`
+    + `// command's safety, narrow the string types the binary really\n`
+    + `// accepts, and delete what you do not want to expose.\n`
+    + `import { external } from "cmd-mesh"\n\n`
+    + `export const ${flagKey(bin)} = external({\n`
+    + `  name: ${JSON.stringify(bin)},\n`
+    + `  commands: {\n${body}\n  }\n})\n`
+}
+
 /** one parameter of a cmd-mesh external declaration, as source text. A
  * valued flag is a string because argv carries strings; a person
  * curating the draft narrows it to what the binary really accepts. */
