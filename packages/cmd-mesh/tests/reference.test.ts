@@ -3,9 +3,15 @@ import { program, project, workspace } from "../src/index.js"
 import type { Ctx } from "../src/index.js"
 import { captureCli, captureJson } from "./fixtures/capture.js"
 
-// The README's "Declaration reference" program, verbatim, with every
-// claim the README makes about it asserted. Editing one side means
-// editing the other.
+// One program exercising every claim docs/reference.md makes about a
+// declaration: notation forms, env fallback, defaults, aliases, the
+// default child, hidden parameters, render hooks, completion, and the
+// numeric-parameter union. A row in that document without a case here
+// is a promise nothing keeps.
+//
+// It once mirrored a "Declaration reference" program in the README
+// verbatim; that program is gone, so this pins the DOCUMENTED CONTRACT
+// rather than a copy of a code block.
 
 const tool = program({
   name: "tool",
@@ -28,15 +34,23 @@ const tool = program({
         }],
         tag: ["string[]", "@", { cli: "--tag <tags...>", default: () => [] }],
         "token?": ["string", "@", { cli: { usage: "--token", hidden: true }, mcp: { hidden: true } }],
-        "level?": "'debug' | 'info' | 'warn'"
+        "level?": "'debug' | 'info' | 'warn'",
+        // the reference's numeric-parameter idiom: argv carries a
+        // string, an agent's JSON carries a number, both reach the
+        // handler as a number
+        retries: ["string.integer.parse | number.integer", "@", {
+          cli: "--retries",
+          default: "0"
+        }]
       },
       narrow: (input, ctx) =>
         input.out === input.entry ? ctx.mustBe("a distinct output path") : true,
-      output: { url: "string", tags: "string[]", logLevel: "string" },
+      output: { url: "string", tags: "string[]", logLevel: "string", retries: "number" },
       run: (input) => ({
         url: `http://localhost:${input.port}`,
         tags: [...input.tag],
-        logLevel: input.logLevel
+        logLevel: input.logLevel,
+        retries: input.retries
       }),
       mcp: {
         name: "tool_serve",
@@ -59,7 +73,8 @@ describe("the README reference program", () => {
 
   it("is a typed function with parsed defaults", () => {
     expect(tool.dev({ entry: "src/main.ts" }))
-      .toEqual({ url: "http://localhost:3000", tags: [], logLevel: "info" })
+      // retries: 0 — the union's default is a string and still parses
+      .toEqual({ url: "http://localhost:3000", tags: [], logLevel: "info", retries: 0 })
   })
 
   it("delivers the program-level option from either argv position", async () => {
@@ -73,6 +88,26 @@ describe("the README reference program", () => {
     expect(after).toMatchObject({ logLevel: "debug" })
     // and on the typed surface
     expect(tool.dev({ entry: "x", logLevel: "debug" })).toMatchObject({ logLevel: "debug" })
+  })
+
+  // the reference documents this idiom for every numeric parameter, so
+  // a regression here is a regression in what the docs promise
+  it("takes a numeric parameter from argv and from a typed call alike", async () => {
+    // argv only ever carries strings: the morph branch parses it
+    const fromArgv = await captureJson(() =>
+      tool.cli.run(["dev", "src/main.ts", "--retries", "3", "--json"])
+    )
+    expect(fromArgv).toMatchObject({ retries: 3 })
+
+    // a caller with values in hand passes the number itself
+    expect(tool.dev({ entry: "x", retries: 3 })).toMatchObject({ retries: 3 })
+    // and the morph's own input side still works there
+    expect(tool.dev({ entry: "x", retries: "3" })).toMatchObject({ retries: 3 })
+  })
+
+  it("rejects a numeric parameter that is neither", () => {
+    // @ts-expect-error — a boolean matches neither branch of the union
+    expect(() => tool.dev({ entry: "x", retries: true })).toThrow(/retries/)
   })
 
   it("enforces the narrow invariant on the value boundary", () => {
