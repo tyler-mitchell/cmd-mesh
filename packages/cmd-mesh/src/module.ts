@@ -58,6 +58,13 @@ type MeshRuntime = ManagedRuntime.ManagedRuntime<Exec, never>
 
 type Resources = Readonly<globalThis.Record<string, ResourceSpec<unknown>>>
 
+const resourceSpecs: unique symbol = Symbol("cmd-mesh/resource-specs")
+
+const mountedResources = (value: unknown, fallback: Resources): Resources =>
+  (Predicate.isObject(value) || Predicate.isFunction(value)) && resourceSpecs in value
+    ? (value as { readonly [resourceSpecs]: Resources })[resourceSpecs]
+    : fallback
+
 // the one sanctioned Object.assign seam in this package: a module IS a
 // function carrying its subtree, and Effect has no callable-with-properties
 // constructor. everything else uses Effect data modules.
@@ -496,7 +503,15 @@ export const program = <
       ),
     {
       args: argsOf(compiled),
-      ...Record.map(compiled.children, (child) => buildCommandModule(child, runtime, specs)),
+      ...Record.map(compiled.children, (child, name) =>
+        buildCommandModule(
+          child,
+          runtime,
+          mountedResources(
+            (def.commands as Readonly<globalThis.Record<string, unknown>> | undefined)?.[name],
+            specs
+          )
+        )),
       // main() is the composed bin: the head token `mcp` serves the mcp
       // projection, everything else is the cli projection. the projections
       // themselves stay separate — this is the one named composition point,
@@ -587,7 +602,8 @@ export const program = <
           )
       },
       spec: deepFrozen(specOf(compiled, version)),
-      [mounted]: compiled
+      [mounted]: compiled,
+      [resourceSpecs]: specs
     }
   )
 }

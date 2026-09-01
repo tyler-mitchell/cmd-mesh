@@ -193,6 +193,13 @@ export const parseHelpCommands = (help: string): ReadonlyArray<HelpCommand> => {
 export const flagKey = (long: string): string =>
   long.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase())
 
+/** Derive a valid exported identifier from a binary name or path. */
+const declarationName = (bin: string): string => {
+  const basename = bin.replace(/^.*[\\/]/, "")
+  const normalized = flagKey(basename).replace(/[^A-Za-z0-9_$]/g, "_")
+  return /^[A-Za-z_$]/.test(normalized) ? normalized : `_${normalized}`
+}
+
 export interface DraftCommand {
   readonly name: string
   readonly description: string
@@ -256,7 +263,7 @@ export const declareExternal = (
     + `// \`<mode>\` or \`[=<mode>]\`. pnpm's \`--depth -1\` shows the value in\n`
     + `// prose only, so it arrives here as a boolean and needs changing.\n`
     + `import { external } from "cmd-mesh"\n\n`
-    + `export const ${flagKey(bin)} = external({\n`
+    + `export const ${declarationName(bin)} = external({\n`
     + `  name: ${JSON.stringify(bin)},\n`
     + `  commands: {\n${body}\n  }\n})\n`
 }

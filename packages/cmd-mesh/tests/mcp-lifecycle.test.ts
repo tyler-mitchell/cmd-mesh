@@ -44,6 +44,14 @@ describe("keeping stdout to the transport", () => {
       globalThis.console = original
     }
   })
+
+  it("restores the console after routing ends", () => {
+    const original = globalThis.console
+    const restore = routeConsoleToStderr()
+    expect(globalThis.console).not.toBe(original)
+    restore()
+    expect(globalThis.console).toBe(original)
+  })
 })
 
 describe("advertising the mcp surface", () => {

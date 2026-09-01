@@ -31,6 +31,8 @@
     "release:publish-and-trust-new-package": "npm whoami || npm login && fledgling add cmd-mesh --new",
     "release:push": "node apps/repokit/dist/bin.js release push",
     "release:registry-version": "node apps/repokit/dist/bin.js release registry-version",
+    "release:review": "node apps/repokit/dist/bin.js release review list",
+    "release:review:resolve": "node apps/repokit/dist/bin.js release review resolve",
     "release:sync": "node apps/repokit/dist/bin.js release sync",
     "release:sync:merge": "node apps/repokit/dist/bin.js release sync --merge",
     "release:sync:push": "node apps/repokit/dist/bin.js release push",

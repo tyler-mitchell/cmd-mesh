@@ -21,11 +21,24 @@ export const withResources = <A, E, R>(
     : Effect.scoped(
       Effect.forEach(Record.toEntries(specs), ([key, spec]) =>
         Effect.acquireRelease(
-          Effect.tryPromise({
-            try: async () => spec.acquire(),
-            catch: (cause) => new HandlerFailure({ path, cause })
-          }),
-          (value) => Effect.promise(async () => { await spec.release(value) })
+          Effect.suspend(() =>
+            Effect.try({
+              try: () => spec.acquire(),
+              catch: (cause) => new HandlerFailure({ path, cause })
+            }).pipe(
+              Effect.flatMap((value) => Predicate.isPromise(value)
+                ? Effect.tryPromise({
+                  try: () => value,
+                  catch: (cause) => new HandlerFailure({ path, cause })
+                })
+                : Effect.succeed(value))
+            )),
+          (value) => Effect.suspend(() =>
+            Effect.sync(() => spec.release(value)).pipe(
+              Effect.flatMap((released) => Predicate.isPromise(released)
+                ? Effect.promise(() => released)
+                : Effect.void)
+            ))
         ).pipe(Effect.map((value) => [key, value] as const))).pipe(
           Effect.flatMap((entries) => use(Record.fromEntries(entries)))
         )

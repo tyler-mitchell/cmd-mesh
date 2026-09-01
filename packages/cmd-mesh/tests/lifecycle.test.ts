@@ -51,6 +51,30 @@ describe("program resources", () => {
     expect(log).toEqual(["acquire:a", "acquire:b", "release:b", "release:a"])
   })
 
+  it("keeps a synchronous handler synchronous when every resource hook is synchronous", () => {
+    const log: Array<string> = []
+    const syncTool = program({
+      name: "sync-tool",
+      resources: {
+        value: {
+          acquire: () => {
+            log.push("acquire")
+            return "ready"
+          },
+          release: () => {
+            log.push("release")
+          }
+        }
+      },
+      commands: {
+        read: { output: "string", run: (_input, ctx) => ctx.resources.value }
+      }
+    })
+
+    expect(syncTool.read()).toBe("ready")
+    expect(log).toEqual(["acquire", "release"])
+  })
+
   it("releases even when the handler throws", async () => {
     const log: Array<string> = []
     await expect(makeTool(log).boom()).rejects.toThrow(/boom/)
@@ -75,6 +99,20 @@ describe("program resources", () => {
     expect((result.content as ReadonlyArray<{ text: string }>)[0]!.text).toContain("aB")
     expect(log).toEqual(["acquire:a", "acquire:b", "release:b", "release:a"])
     await client.close()
+  })
+
+  it("preserves a child program's resources when it is mounted", () => {
+    const child = program({
+      name: "child",
+      resources: {
+        token: { acquire: () => "child-token", release: () => undefined }
+      },
+      commands: {
+        read: { output: "string", run: (_input, ctx) => ctx.resources.token }
+      }
+    })
+    const parent = program({ name: "parent", commands: { child } })
+    expect(parent.child.read()).toBe("child-token")
   })
 })
 

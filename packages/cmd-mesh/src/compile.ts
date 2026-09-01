@@ -297,17 +297,26 @@ const commandFields = [
 ]
 const cliCommandFields = ["hidden", "alias", "default", "render", "examples"]
 const mcpFields = ["hidden", "name", "annotations", "examples"]
+const mcpProgramFields = [...mcpFields, "server"]
 
 /** An incorrect mcp field keeps a hidden command visible to agents. */
-const commandFieldIssues = (at: string, decl: unknown): ReadonlyArray<DeclarationIssue> => {
+const commandFieldIssues = (
+  at: string,
+  decl: unknown,
+  root = false
+): ReadonlyArray<DeclarationIssue> => {
   const nested = decl as { readonly cli?: unknown; readonly mcp?: unknown }
+  const knownMcpFields = root ? mcpProgramFields : mcpFields
   return strayIssues(at, [
     ...Array.map(strayFields(decl, commandFields), (key) => ({ key, known: commandFields })),
     ...Array.map(strayFields(nested.cli, cliCommandFields), (key) => ({
       key: `cli.${key}`,
       known: cliCommandFields
     })),
-    ...Array.map(strayFields(nested.mcp, mcpFields), (key) => ({ key: `mcp.${key}`, known: mcpFields }))
+    ...Array.map(strayFields(nested.mcp, knownMcpFields), (key) => ({
+      key: `mcp.${key}`,
+      known: knownMcpFields
+    }))
   ])
 }
 
@@ -475,7 +484,8 @@ const collectCommand = (
   path: ReadonlyArray<string>,
   decl: RawCommandDecl,
   inherited: Readonly<globalThis.Record<string, ParameterDef>> = {},
-  inheritedNarrow?: (input: any, ctx: any) => boolean
+  inheritedNarrow?: (input: any, ctx: any) => boolean,
+  root = false
 ): Collected => {
   const at = Array.join(path, " ")
   // program-level options (the root's input) join every command — same
@@ -556,7 +566,8 @@ const collectCommand = (
         Array.append(path, childName),
         child as RawCommandDecl,
         passedDown,
-        passedNarrow
+        passedNarrow,
+        false
       ))
   const children = Record.map(childPairs, ([child]) => child)
   // a subcommand name — real or alias — must resolve to exactly one child
@@ -653,7 +664,7 @@ const collectCommand = (
   }
   const issues = pipe(
     ownIssues,
-    Array.appendAll(commandFieldIssues(at, decl)),
+    Array.appendAll(commandFieldIssues(at, decl, root)),
     Array.appendAll(aliasIssues),
     Array.appendAll(defaultIssues),
     Array.appendAll(safetyIssues),
@@ -672,7 +683,7 @@ export const compileCommand = (
   path: ReadonlyArray<string>,
   decl: RawCommandDecl
 ): CompiledCommand => {
-  const [command, issues] = collectCommand(name, path, decl)
+  const [command, issues] = collectCommand(name, path, decl, {}, undefined, true)
   if (issues.length > 0) {
     throw new InvalidDeclaration({ issues })
   }
@@ -754,7 +765,7 @@ export const compileExternal = (decl: ExternalDecl): CompiledCommand => {
   const issues = pipe(
     Record.toEntries(childPairs),
     Array.flatMap(([, [, childIssues]]) => childIssues),
-    Array.appendAll(commandFieldIssues(decl.name, decl))
+    Array.appendAll(commandFieldIssues(decl.name, decl, true))
   )
   if (issues.length > 0) {
     throw new InvalidDeclaration({ issues })

@@ -89,6 +89,23 @@ describe("declaration validation", () => {
       } as never)
     ).not.toThrow()
   })
+
+  vit("accepts server settings only on the program root", () => {
+    expect(() =>
+      program({
+        name: "tool",
+        mcp: { server: { env: { TOKEN: "value" } } },
+        commands: { run: { run: () => "ok" } }
+      })
+    ).not.toThrow()
+
+    expect(() =>
+      program({
+        name: "tool",
+        commands: { run: { mcp: { server: {} }, run: () => "ok" } }
+      } as never)
+    ).toThrow(/CMSH1013.*mcp\.server/s)
+  })
 })
 
 describe("exec options", () => {

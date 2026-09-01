@@ -14,12 +14,11 @@ import type { CommandSpec, Ctx, McpTool } from "./types.js"
 // come from the value-boundary type (agents speak canonical JSON), via
 // ArkType's own JSON Schema projection.
 
+const projectedSchema = (t: AnyType): Option.Option<unknown> =>
+  Effect.runSync(Effect.option(Effect.try(() => t.toJsonSchema())))
+
 export const jsonSchemaOf = (t: AnyType): unknown =>
-  Effect.runSync(
-    Effect.try(() => t.toJsonSchema()).pipe(
-      Effect.orElseSucceed(() => ({ type: "object" }))
-    )
-  )
+  Option.getOrElse(projectedSchema(t), () => ({ type: "object" }))
 
 const toolName = (cmd: CompiledCommand): string =>
   Option.getOrElse(cmd.mcpName, () => Array.join(cmd.path, "_"))
@@ -109,10 +108,15 @@ const withParameterDocs = (schema: unknown, cmd: CompiledCommand): unknown => {
  * the output side; a morph's own toJsonSchema throws (and the swallow
  * would advertise a number as an object, skipping the wrap). */
 const structuredSchema = (out: AnyType): { readonly schema: unknown; readonly wrapped: boolean } => {
-  const schema = jsonSchemaOf(out.out) as { readonly type?: unknown }
-  return schema.type === "object"
-    ? { schema, wrapped: false }
-    : { schema: { type: "object", properties: { result: schema }, required: ["result"] }, wrapped: true }
+  return Option.match(projectedSchema(out.out), {
+    onNone: () => ({
+      schema: { type: "object", properties: { result: {} }, required: ["result"] },
+      wrapped: true
+    }),
+    onSome: (schema) => (schema as { readonly type?: unknown }).type === "object"
+      ? { schema, wrapped: false }
+      : { schema: { type: "object", properties: { result: schema }, required: ["result"] }, wrapped: true }
+  })
 }
 
 /** examples reach agents twice: appended to the description (the text
@@ -378,7 +382,7 @@ export const buildMcpServer = (
  * functions that log like any other code, so the whole console is
  * pointed at stderr for the life of the server rather than asking every
  * handler to know where it is running. */
-export const routeConsoleToStderr = (): void => {
+export const routeConsoleToStderr = (): (() => void) => {
   const current = globalThis.console
   // pointed at `error`, which already writes to stderr, rather than at
   // a stream: formatting stays console's own, and this holds under a
@@ -391,6 +395,7 @@ export const routeConsoleToStderr = (): void => {
     dir: toStderr,
     table: toStderr
   })
+  return () => { globalThis.console = current }
 }
 
 /** serve the tools over stdio, until the client disconnects and the
@@ -407,20 +412,25 @@ export const serveMcp = (
 ): Effect.Effect<void, Error> =>
   Effect.gen(function*() {
     const server = buildMcpServer(root, meta, invoke, runPromise, ctx, spec)
-    routeConsoleToStderr()
-    yield* Effect.tryPromise({
-      try: () => server.connect(new StdioServerTransport()),
-      catch: (cause) => new Error(`mcp transport failed: ${cause}`)
-    })
-    return yield* Effect.callback<void>((resume) => {
-      const closed = server.onclose
-      server.onclose = () => {
-        closed?.()
-        resume(Effect.void)
-      }
-      // the sdk's stdio transport registers only "data" and "error" on
-      // stdin, so a client that goes away leaves EOF unnoticed and the
-      // transport never closes itself
-      globalThis.process.stdin.once("end", () => void server.close())
-    })
+    return yield* Effect.acquireUseRelease(
+      Effect.sync(routeConsoleToStderr),
+      () => Effect.gen(function*() {
+        yield* Effect.tryPromise({
+          try: () => server.connect(new StdioServerTransport()),
+          catch: (cause) => new Error(`mcp transport failed: ${cause}`)
+        })
+        return yield* Effect.callback<void>((resume) => {
+          const closed = server.onclose
+          server.onclose = () => {
+            closed?.()
+            resume(Effect.void)
+          }
+          // the sdk's stdio transport registers only "data" and "error" on
+          // stdin, so a client that goes away leaves EOF unnoticed and the
+          // transport never closes itself
+          globalThis.process.stdin.once("end", () => void server.close())
+        })
+      }),
+      (restore) => Effect.sync(restore)
+    )
   })

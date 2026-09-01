@@ -50,6 +50,57 @@ const promote = program({
   }
 })
 
+const review = program({
+  name: "review",
+  description: "compact Codex review status for the main → release promotion",
+  commands: {
+    list: {
+      description: "list the promotion PR and its unresolved Codex review threads",
+      safety: "read",
+      output: text,
+      cli: { render: printText },
+      run: async (_input, ctx) => {
+        const repository = (await captured(ctx, "gh", [
+          "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"
+        ])).text
+        const [owner, name] = repository.split("/")
+        if (owner === undefined || name === undefined) throw new Error(`invalid GitHub repository: ${repository}`)
+        const pull = (await captured(ctx, "gh", [
+          "pr", "view", "main", "--json", "number,state,mergeStateStatus,headRefOid,reviews",
+          "--jq",
+          `{number,state,mergeStateStatus,headRefOid,codexReviews:[.reviews[] | select(.author.login | test("codex"; "i")) | {state,submittedAt}]}`
+        ])).text
+        const number = `${(JSON.parse(pull) as { readonly number: number }).number}`
+        const threads = (await captured(ctx, "gh", [
+          "api", "graphql",
+          "-f", "query=query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{id isResolved comments(first:20){nodes{author{login} body path line url}}}}}}}",
+          "-F", `owner=${owner}`,
+          "-F", `name=${name}`,
+          "-F", `number=${number}`,
+          "--jq",
+          `.data.repository.pullRequest.reviewThreads.nodes | map(select(.isResolved | not) | . as $thread | .comments.nodes[] | select(.author.login | test("codex"; "i")) | {thread:$thread.id,path,line,title:(try (.body | capture("</sub></sub>  (?<title>[^*]+)\\*\\*").title) catch "review finding")})`
+        ])).text
+        return { text: JSON.stringify({ pull: JSON.parse(pull), unresolved: JSON.parse(threads) }) }
+      }
+    },
+    resolve: {
+      description: "resolve one verified Codex review thread",
+      safety: "action",
+      input: {
+        thread: ["string", "@", { description: "GraphQL review thread ID from release:review", cli: "<thread>" }]
+      },
+      output: text,
+      cli: { render: printText },
+      run: (input, ctx) => captured(ctx, "gh", [
+        "api", "graphql",
+        "-f", "query=mutation($thread:ID!){resolveReviewThread(input:{threadId:$thread}){thread{id isResolved}}}",
+        "-F", `thread=${input.thread}`,
+        "--jq", ".data.resolveReviewThread.thread"
+      ])
+    }
+  }
+})
+
 // the one repository-specific fact the procedure needs is the
 // published package name (registry-version), so release is a factory
 export const createRelease = (packageName: string) =>
@@ -231,6 +282,7 @@ export const createRelease = (packageName: string) =>
           )).trimEnd()
         })
       },
-      promote
+      promote,
+      review
     }
   })

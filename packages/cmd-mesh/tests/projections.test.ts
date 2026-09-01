@@ -343,6 +343,18 @@ describe("mcp output schemas", () => {
     }
     expect(wrapped.properties?.["result"]?.type).toBe("number")
   })
+
+  it("wraps a primitive output whose custom predicate cannot project to JSON Schema", () => {
+    const opaqueString = type("string").narrow((value) => value.length > 0)
+    const opaque = program({
+      name: "opaque",
+      commands: {
+        read: { output: opaqueString, run: () => "value" }
+      }
+    })
+    const tool = opaque.mcp.tools.find((candidate) => candidate.name === "opaque_read")!
+    expect((tool.outputSchema as Schema).properties).toHaveProperty("result")
+  })
 })
 
 describe("per-parameter surface hiding (contract: 08-final grammar rules)", () => {

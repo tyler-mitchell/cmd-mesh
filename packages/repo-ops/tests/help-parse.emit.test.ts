@@ -56,6 +56,12 @@ describe("the emitted declaration", () => {
     expect(draft).toContain(`"branch"`)
   })
 
+  it("uses a valid export name when the binary is a path", () => {
+    const source = declareExternal("/usr/bin/git", [{ name: "status", description: "status", flags: [] }])
+    expect(source).toContain("export const git = external({")
+    expect(source).toContain('name: "/usr/bin/git"')
+  })
+
   // MEASURED: this proves the emitted source compiles and is structurally
   // a valid declaration. It does NOT prove the ArkType keywords are real —
   // `external`'s `input` is typed `object`, unlike `program`'s, so a bogus

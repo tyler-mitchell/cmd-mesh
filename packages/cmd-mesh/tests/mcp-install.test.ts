@@ -98,20 +98,20 @@ describe("keeping what the file already holds", () => {
   it("leaves a toml file's comments and entries intact", async () => {
     createFile(
       `${home}/.codex/config.toml`,
-      `# my own note\nmodel = "gpt-5"\n\n[mcp_servers.existing]\ncommand = "existing-bin"\n`
+      `# my own note\nmodel = "gpt-5"\n\n[mcp_servers."existing"]\ncommand = "existing-bin"\n`
     )
     installMcpClient("mytool", invocation, "codex")
     const after = await read(homeFs, ".codex/config.toml")
     expect(after).toContain("# my own note")
-    expect(after).toContain("[mcp_servers.existing]")
-    expect(after).toContain("[mcp_servers.mytool]")
+    expect(after).toContain('[mcp_servers."existing"]')
+    expect(after).toContain('[mcp_servers."mytool"]')
   })
 
   it("does not register a toml entry twice", async () => {
     installMcpClient("mytool", invocation, "codex")
     installMcpClient("mytool", invocation, "codex")
     const after = await read(homeFs, ".codex/config.toml")
-    expect(after.match(/\[mcp_servers\.mytool\]/g)).toHaveLength(1)
+    expect(after.match(/\[mcp_servers\."mytool"\]/g)).toHaveLength(1)
   })
 
   // a moved project or a new interpreter leaves the stored command
@@ -119,16 +119,16 @@ describe("keeping what the file already holds", () => {
   it("replaces a stale toml entry rather than leaving it", async () => {
     createFile(
       `${home}/.codex/config.toml`,
-      `# my own note\n\n[mcp_servers.mytool]\ncommand = "/old/stale/node"\nargs = ["/old/bin.js", "mcp"]\n\n[mcp_servers.other]\ncommand = "other-bin"\n`
+      `# my own note\n\n[mcp_servers."mytool"]\ncommand = "/old/stale/node"\nargs = ["/old/bin.js", "mcp"]\n\n[mcp_servers."other"]\ncommand = "other-bin"\n`
     )
     installMcpClient("mytool", { command: "/new/node", args: ["/new/bin.js", "mcp"] }, "codex")
     const after = await read(homeFs, ".codex/config.toml")
     expect(after).toContain(`command = "/new/node"`)
     expect(after).not.toContain("/old/stale/node")
     expect(after).toContain("# my own note")
-    expect(after).toContain("[mcp_servers.other]")
+    expect(after).toContain('[mcp_servers."other"]')
     // the blank line between tables is the file's spacing, not the entry
-    expect(after).toContain(`"mcp"]\n\n[mcp_servers.other]`)
+    expect(after).toContain(`"mcp"]\n\n[mcp_servers."other"]`)
   })
 
   it("replaces a stale json entry too", async () => {
@@ -136,6 +136,16 @@ describe("keeping what the file already holds", () => {
     installMcpClient("mytool", invocation, "claude")
     const after = JSON.parse(await read(projectFs, ".mcp.json"))
     expect(after.mcpServers.mytool).toEqual({ command: "mytool", args: ["mcp"] })
+  })
+
+  it("treats a dotted program name as one literal key in JSON and TOML", async () => {
+    installMcpClient("acme.tool", invocation, "claude")
+    const json = JSON.parse(await read(projectFs, ".mcp.json"))
+    expect(json.mcpServers["acme.tool"]).toEqual(invocation)
+    expect(json.mcpServers.acme).toBeUndefined()
+
+    installMcpClient("acme.tool", invocation, "codex")
+    expect(await read(homeFs, ".codex/config.toml")).toContain('[mcp_servers."acme.tool"]')
   })
 })
 
@@ -277,6 +287,15 @@ describe("the development wiring", () => {
     // the backend must survive verbatim: mcp-reloader spawns it directly
     expect(dev.args.slice(separator + 1)).toEqual([base.command, ...base.args])
   })
+
+  it("derives the reloader cwd from the source entry after interpreter flags", () => {
+    const base = {
+      command: process.execPath,
+      args: ["--import", "tsx", `${project}/src/bin.ts`, "mcp"]
+    } as const
+    const dev = mcpDevInvocation(base)
+    expect(dev.args.slice(0, 2)).toEqual(["--cwd", project])
+  })
 })
 
 // The inverse of install: a renamed or abandoned program has to be
@@ -297,13 +316,13 @@ describe("removing a program from a client", () => {
     const file = `${home}/.codex/config.toml`
     createFile(
       file,
-      `# my own note\nmodel = "gpt-5"\n\n[mcp_servers.keepme]\ncommand = "keep"\n\n[mcp_servers.mytool]\ncommand = "mytool"\n`
+      `# my own note\nmodel = "gpt-5"\n\n[mcp_servers."keepme"]\ncommand = "keep"\n\n[mcp_servers."mytool"]\ncommand = "mytool"\n`
     )
     expect(uninstallMcpClient("mytool", "codex")).toBe(true)
     const after = await read(homeFs, ".codex/config.toml")
     expect(after).toContain("# my own note")
-    expect(after).toContain("[mcp_servers.keepme]")
-    expect(after).not.toContain("[mcp_servers.mytool]")
+    expect(after).toContain('[mcp_servers."keepme"]')
+    expect(after).not.toContain('[mcp_servers."mytool"]')
   })
 
   it("reports honestly when there was nothing to remove", () => {

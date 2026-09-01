@@ -1,4 +1,4 @@
-import { Array, Option, Predicate } from "effect"
+import { Array, Effect, Option, Predicate } from "effect"
 import type { McpServerConfig } from "./types.js"
 import { createFile, getPath, modifyJSONFile, readFile } from "package-management"
 
@@ -121,13 +121,15 @@ const pathOf = (spec: McpClientSpec, path: string): string =>
  * is named by its absolute path; anything else keeps the bare name,
  * which is what a globally installed program wants. */
 const binIn = (alias: "<package_folder>/node_modules/.bin" | "<workspace_folder>/node_modules/.bin", name: string): Option.Option<string> => {
-  try {
-    const path = `${getPath({ to: alias })}/${name}`
-    return exists(path) ? Option.some(path) : Option.none()
-  } catch {
-    // the alias names a location this project does not have
-    return Option.none()
-  }
+  return Effect.runSync(
+    Effect.try(() => {
+      const path = `${getPath({ to: alias })}/${name}`
+      return exists(path) ? Option.some(path) : Option.none<string>()
+    }).pipe(
+      // the alias names a location this project does not have
+      Effect.orElseSucceed(() => Option.none<string>())
+    )
+  )
 }
 
 /** what a client must actually spawn. A host launched from its own
@@ -156,7 +158,7 @@ export const mcpDevInvocation = (base: McpInvocation): McpInvocation => {
   }
   // the backend runs from ITS OWN package, not from wherever install was
   // invoked — a loader like tsx resolves relative to that package
-  const entry = base.args.length > 1 ? base.args[0]! : base.command
+  const entry = base.args.length > 1 ? base.args[base.args.length - 2]! : base.command
   return {
     command: reloader.value,
     args: [
@@ -205,7 +207,7 @@ const tomlTable = (
   invocation: { readonly command: string; readonly args: ReadonlyArray<string> },
   settings: Readonly<globalThis.Record<string, unknown>> = {}
 ): ReadonlyArray<string> => [
-  `[${key}.${name}]`,
+  `[${key}.${JSON.stringify(name)}]`,
   `command = ${JSON.stringify(invocation.command)}`,
   `args = ${JSON.stringify(invocation.args)}`,
   // an inline table keeps the whole entry to one replaceable block
@@ -268,7 +270,7 @@ export const uninstallMcpClient = (name: string, client: McpClientId): boolean =
   if (!exists(file)) return false
   if (spec.format === "toml") {
     const source = readFile(file)
-    const without = withoutTomlTable(source, `[${spec.key}.${name}]`)
+    const without = withoutTomlTable(source, `[${spec.key}.${JSON.stringify(name)}]`)
     if (without === source) return false
     createFile(file, without)
     return true
@@ -277,7 +279,8 @@ export const uninstallMcpClient = (name: string, client: McpClientId): boolean =
   const servers = (current.data?.json.data as
     { readonly [k: string]: Readonly<globalThis.Record<string, unknown>> | undefined })?.[spec.key]
   if (servers === undefined || !(name in servers)) return false
-  const result = modifyJSONFile(file, { [`${spec.key}.${name}`]: { value: undefined } })
+  const { [name]: _removed, ...remaining } = servers
+  const result = modifyJSONFile(file, { [spec.key]: { value: remaining } })
   if (result.error !== undefined) throw result.error
   return true
 }
@@ -301,7 +304,10 @@ export const installMcpClient = (
   const entry = spec.typed === true
     ? { type: "stdio", ...invocation, ...settings }
     : { ...invocation, ...settings }
-  const result = modifyJSONFile(file, { [`${spec.key}.${name}`]: { value: entry } })
+  const current = modifyJSONFile(file, {}, { autoCommit: false })
+  const servers = (current.data?.json.data as
+    { readonly [k: string]: Readonly<globalThis.Record<string, unknown>> | undefined })?.[spec.key] ?? {}
+  const result = modifyJSONFile(file, { [spec.key]: { value: { ...servers, [name]: entry } } })
   if (result.error !== undefined) throw result.error
   // vscode's prompts are a TOP-LEVEL array beside the servers, not a
   // field of one, so they are written as a second edit — merged by id,
