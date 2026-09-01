@@ -191,6 +191,15 @@ describe("the README reference program", () => {
     expect(missing, "public Ctx member missing from the bundled reference").toEqual([])
   })
 
+  it("ships a CLI-first Agent Skill with current declaration syntax", () => {
+    const skill = readFile(getPath("<package_folder>/skills/cmd-mesh/SKILL.md"))
+    expect(skill).toMatch(/^---\nname: cmd-mesh\n/)
+    expect(skill).toContain("Create a CLI by default")
+    expect(skill).toContain("Do not start an MCP server")
+    expect(skill).toContain('["string", "@", { cli: "<file>"')
+    expect(skill).not.toContain('{ type: "string"')
+  })
+
   // The notation table's sibling check. Asserted against the COMPILED
   // spec rather than the source text: a form is covered when a real
   // parameter has that shape, not when a string appears in this file.
