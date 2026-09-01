@@ -126,6 +126,8 @@ interface RawCommandDecl {
 /** surface bindings authored as ArkType metadata */
 interface ParameterMeta {
   readonly description?: string
+  /** JSON Schema annotation only. ArkType defaults use the native `"="` tuple. */
+  readonly default?: unknown
   /** the cli surface: its notation, or the full config */
   readonly cli?: string | CliParameterConfig
   /** the agent surface */
@@ -209,6 +211,7 @@ const parameterIssues = (at: string, p: CompiledParameter): ReadonlyArray<Declar
       p.binding._tag === "positional" && Option.isSome(p.env) ? [diagnostics.CMSH1003()] : [],
       p.binding._tag === "positional" && p.cliHidden ? [diagnostics.CMSH1004()] : [],
       p.binding._tag === "flag" && p.binding.variadic && p.isBoolean ? [diagnostics.CMSH1005()] : [],
+      metaOf(p.def).default !== undefined && !p.defaulted ? [diagnostics.CMSH1016()] : [],
       Option.match(p.source, {
         onNone: () => [],
         onSome: (source) =>

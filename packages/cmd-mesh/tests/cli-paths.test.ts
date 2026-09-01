@@ -54,6 +54,10 @@ describe("a misspelled metadata key is rejected", () => {
       x: [["string", "@", { cli: { usage: "--x", env: "X", hidden: true }, mcp: { hidden: true }, suggest: "filepaths", description: "d" }], "=", "v"]
     })).not.toThrow()
   })
+
+  it("rejects a schema annotation that looks like an applied default", () => {
+    expect(bad({ x: ["number", "@", { default: 1 }] })).toThrow(/CMSH1016.*defaultValue/s)
+  })
 })
 
 describe("cli token path", () => {

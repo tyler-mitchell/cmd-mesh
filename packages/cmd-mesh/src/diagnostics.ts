@@ -72,6 +72,10 @@ export const diagnostics = defineDiagnostics({
     CMSH1015: {
       why: () => "an mcp-hidden parameter is required, so no agent can call the tool",
       fix: "Give the parameter a default, make it optional, or hide the whole command from mcp."
+    },
+    CMSH1016: {
+      why: () => "default metadata documents a schema value but does not apply a parameter default",
+      fix: "Wrap the annotated definition with [definition, \"=\", defaultValue]."
     }
   }
 })

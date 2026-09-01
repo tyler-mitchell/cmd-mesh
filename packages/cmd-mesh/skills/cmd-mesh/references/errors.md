@@ -166,3 +166,14 @@ token: [["string", "@", { mcp: { hidden: true } }], "=", ""]    // ✓ defaulted
 
 To keep a required parameter and still hide the work from agents, hide
 the whole command with `mcp: { hidden: true }` on the command.
+
+## CMSH1016
+
+ArkType accepts `default` as JSON Schema metadata. This metadata does not apply a parameter default or make the key optional.
+
+```ts
+count: ["number.integer", "@", { default: 10 }]             // ✗ required value with a schema annotation
+count: [["number.integer", "@", {}], "=", 10]               // ✓ native ArkType default
+```
+
+Wrap the annotated definition with `[definition, "=", defaultValue]`. The default value must match the definition's input type.
