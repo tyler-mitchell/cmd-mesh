@@ -62,14 +62,55 @@ describe("the operational surface (the closed-distribution contract)", () => {
   })
 
   it("runs the real bumpy status through the typed surface", async () => {
+    // state-independent: bumpy reports JSON whether or not bumps are
+    // pending (exit 1 with none is a report, not a failure)
     const status = await repokit.release.status()
     const parsed = JSON.parse(status.text) as { packageNames: ReadonlyArray<string> }
-    expect(parsed.packageNames).toContain("cmd-mesh")
+    expect(Array.isArray(parsed.packageNames)).toBe(true)
   })
 
   it("runs the real strict bump check", async () => {
     const checked = await repokit.release.check()
-    expect(checked.text).toContain("bump")
+    // every outcome bumpy reports, including the one a SHALLOW checkout
+    // produces: with a single commit it can detect no changes at all, so
+    // asserting only the first two made this test fail in CI and never
+    // there otherwise. The contract is that the command runs and returns
+    // bumpy's report, not which report today's history happens to give.
+    expect(checked.text).toMatch(
+      /bump files|No managed packages have changed|No changed files detected/
+    )
+  })
+
+  it("exposes git as a typed external surface", async () => {
+    // the 08 thesis live: git.status is a typed call over the binary
+    const status = await repokit.git.status({ short: true })
+    expect(status).toBeTypeOf("string")
+    const log = await repokit.git.log({ oneline: true, count: "1" })
+    expect(log.trimEnd().split("\n").length).toBe(1)
+  })
+})
+
+describe("mcp surface", () => {
+  it("hands an agent a real external's output as text, not as quoted json", async () => {
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js")
+    const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js")
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    await repokit.mcp.server().connect(serverTransport)
+    const client = new Client({ name: "witness", version: "0.0.0" })
+    await client.connect(clientTransport)
+
+    const called = await client.callTool({ name: "repokit_git_status", arguments: { short: true } })
+    const text = (called.content as Array<{ text: string }>)[0]!.text
+    expect(text.startsWith("\"")).toBe(false)
+    expect(text).not.toMatch(/\\n/)
+    expect(text).toBe(await repokit.git.status({ short: true }))
+  })
+
+  it("keeps terminal-bound operations off the agent surface", () => {
+    const names = repokit.mcp.tools.map((tool) => tool.name)
+    expect(names).toContain("repokit_release_status")
+    expect(names).not.toContain("repokit_ci_watch")
+    expect(names).not.toContain("repokit_release_add")
   })
 })
 

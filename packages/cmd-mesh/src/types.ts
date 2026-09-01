@@ -1,21 +1,16 @@
+import type { requiredKeyOf, unionToTuple } from "@ark/util"
 import type { distill, type } from "arktype"
-import type { project, workspace } from "package-management"
+import type { Toolkit } from "./toolkit.js"
 
 // ─── declaration model ──────────────────────────────────────────────────────
 // the consumer-authored data. parameters are ArkType property-position
 // definitions; argv-specific config sits under `cli`, mcp-specific under
 // `mcp`. see ideations/08-final.ts for the adopted contract.
 
-export interface SuggestContext {
+/** Capabilities for one dynamic suggestion request. `words` contains the canonical command words collected so far. */
+export interface SuggestContext extends Toolkit {
   exec(bin: string, args: ReadonlyArray<string>, options?: ExecOptions): Promise<ExecResult>
   readonly words: ReadonlyArray<string>
-  /** repository resolution — package-management's `project(...)` verbatim:
-   * `ctx.project("<package_folder>")` answers manifest, dependency, and
-   * package-manager questions for the invocation's repository */
-  readonly project: typeof project
-  /** workspace enumeration — `ctx.workspace.packageNames()` is the
-   * canonical monorepo completion source */
-  readonly workspace: typeof workspace
 }
 
 /** a Fig-style generator: computes suggestions on demand, with process
@@ -42,26 +37,46 @@ export interface CliParameterConfig {
   readonly hidden?: boolean
 }
 
-export interface ParameterDescriptor {
-  /** any ArkType definition: a string ("string.integer.parse = '3000'"),
-   * an object def ({ a: "string" }), a tuple expression, or a Type
-   * instance. structured (non-string-def) parameters take a JSON token on
-   * the cli and real values on the call/mcp surface. */
-  readonly type: unknown
-  readonly description?: string
-  /** candidate values, universal to every surface. hoist generator
-   * functions to consts with annotated parameters — inline arrows are
-   * context-sensitive and collapse the command's type inference. */
-  readonly suggest?: SuggestSource
-  /** flags are optional unless required; positionals ignore this */
-  readonly required?: boolean
-  readonly cli?: string | CliParameterConfig
-  /** drop this parameter from the mcp tool schema; it still validates
-   * if supplied (secrets and internals stay unadvertised to agents) */
-  readonly mcp?: { readonly hidden?: boolean }
+/** surface bindings ride in ArkType metadata, so a parameter IS an
+ * ArkType property definition: `["string", "@", { cli: "<who>" }]`.
+ * ArkType owns the domain, optionality, defaults and morphs; this
+ * package owns only what argv and agents need on top. */
+// ArkType already carries `description`, `examples`, and `deprecated`.
+// Its `default` metadata is a JSON Schema annotation, so CMSH1016 directs
+// callers to ArkType's native `"="` tuple instead. Everything below is a
+// fact ArkType cannot know: how the value reaches the program, and which
+// surfaces show it. NAME UNSETTLED for `argv` — see docs/internal/backlog.md.
+declare global {
+  interface ArkEnv {
+    meta(): {
+      /** how the parameter is written on the command line: "<x>" a
+       * required positional, "[x]" optional, "<...xs>" variadic,
+       * "--flag, -f" a flag and its aliases. omitted ⇒ a derived
+       * --kebab-case flag. */
+      cli?: string | CliParameterConfig
+      /** the agent surface. `hidden` drops the parameter from the tool
+       * schema; it still validates when supplied, so hiding is
+       * presentation and never a security boundary. */
+      mcp?: { readonly hidden?: boolean }
+      /** candidate values, universal to every surface: shell completion
+       * is their cli projection, schema examples their mcp projection.
+       * hoist generator functions to consts with annotated parameters —
+       * inline arrows are context-sensitive and collapse inference. */
+      suggest?: SuggestSource
+    }
+  }
 }
 
-export type ParameterDef = string | ParameterDescriptor
+/** an input record is an ArkType object definition. validation is
+ * ArkType's own: a valid definition returns unchanged, an invalid one
+ * returns ArkType's error message, which makes the argument fail to
+ * assign at the declaration site. */
+export type ValidateInput<I> = type.validate<I>
+
+/** an output contract is any ArkType definition, validated the same way */
+export type ValidateOutput<O> = type.validate<O>
+
+export type ParameterDef = unknown
 
 export interface CliCommandConfig<Out = never> {
   readonly hidden?: boolean
@@ -79,12 +94,65 @@ export interface CliCommandConfig<Out = never> {
   readonly examples?: ReadonlyArray<string>
 }
 
+/** safety classification for a command, devframe's taxonomy: drives
+ * MCP hint annotations (read → readOnlyHint, action → readOnlyHint
+ * false, destructive → destructiveHint) and marks what automated
+ * verification may invoke */
+export type CommandSafety = "read" | "action" | "destructive"
+
+/** an example invocation shown to agents: canonical argument values
+ * plus what the call accomplishes */
+export interface McpExample {
+  readonly args: Readonly<globalThis.Record<string, unknown>>
+  readonly description?: string
+}
+
+/** how a client should RUN this program's server, as opposed to how it
+ * should present one tool. Declared once in this vocabulary and units,
+ * then projected into each client's own spelling; a client without a
+ * setting simply does not receive it. */
+export interface McpServerConfig {
+  /** environment for the server process. every client supports this */
+  readonly env?: Readonly<globalThis.Record<string, string>>
+  /** how long one tool call may run. claude spells this `timeout` in
+   * milliseconds, codex `tool_timeout_sec` in seconds */
+  readonly toolTimeoutMs?: number
+  /** how long the server may take to start — codex alone today
+   * (`startup_timeout_sec`) */
+  readonly startupTimeoutMs?: number
+  /** connect the server when the client starts, rather than on first
+   * use. Claude Code alone spells this (`alwaysLoad`) */
+  readonly eager?: boolean
+  /** restrict the server's filesystem and network access. VS Code
+   * alone offers it (`sandboxEnabled`), macOS and Linux only */
+  readonly sandbox?: boolean
+  /** values the client should PROMPT for rather than read from the
+   * environment, referenced from `env` as `${input:<id>}`. VS Code
+   * alone has the concept, and it keeps them out of the config file.
+   * Declared here because a reference without its declaration is
+   * unresolvable — the pair only works written together. */
+  readonly prompts?: ReadonlyArray<{
+    readonly id: string
+    readonly description: string
+    /** mask what the user types */
+    readonly secret?: boolean
+  }>
+}
+
+/** a program's `mcp` describes the SERVER as well as its own tool */
+export interface McpProgramConfig extends McpCommandConfig {
+  readonly server?: McpServerConfig
+}
+
 export interface McpCommandConfig {
   readonly hidden?: boolean
   /** overrides the derived flattened tool name */
   readonly name?: string
   /** mcp tool annotations, e.g. { readOnlyHint: true, destructiveHint: true } */
   readonly annotations?: Readonly<globalThis.Record<string, unknown>>
+  /** example invocations, appended to the tool description and
+   * projected as the input schema's `examples` */
+  readonly examples?: ReadonlyArray<McpExample>
 }
 
 /** structural subset of ArkType's traversal context — consumers never import arktype */
@@ -112,83 +180,89 @@ export interface ExecOptions {
    * "inherit" streams the child straight to the parent terminal — the
    * result then carries empty output strings and the exit code */
   readonly stdio?: "capture" | "inherit"
+  /** "ignore" gives the child no input at all, so a binary that reads
+   * stdin sees end-of-input immediately instead of waiting for a write
+   * that never comes. The default leaves the pipe open. */
+  readonly stdin?: "pipe" | "ignore"
   /** kill the process and fail if it runs longer than this */
   readonly timeoutMs?: number
   /** exit codes that count as success — any other exit throws
    * `ExternalExit`, the same vocabulary external commands use. omitted,
    * exit codes stay data on the result (branch on `result.exitCode`) */
   readonly successCodes?: ReadonlyArray<number>
+  /** prepend the enclosing workspace's `node_modules/.bin` (resolved
+   * upward from cwd, git root as the fallback) to PATH so
+   * workspace-local binaries resolve regardless of how the process was
+   * started (execa's preferLocal, tinyexec's default); a no-op outside
+   * any repository */
+  readonly preferLocal?: boolean
 }
 
 export type Surface = "cli" | "mcp" | "call"
 
-/** interpreter-owned capabilities handed to handlers. not user DI.
- * `project` and `workspace` are package-management's own consumer
- * surfaces, exposed whole — mediated here so handlers stay mockable
- * (hand a fake ctx) and auditable per invocation. */
-export interface Ctx {
+/** a program-level resource: acquired before a handler runs, released
+ * in reverse acquisition order after it settles — success or failure.
+ * an acquire failure fails the invocation before the handler; a
+ * release rejection surfaces as a defect. */
+export interface ResourceSpec<T> {
+  readonly acquire: () => T | Promise<T>
+  readonly release: (resource: Awaited<T>) => void | Promise<void>
+}
+
+export type AcquiredResources<R> = {
+  readonly [K in keyof R]: R[K] extends ResourceSpec<infer T> ? Awaited<T> : never
+}
+
+export interface WithResources<R> {
+  readonly resources: AcquiredResources<R>
+}
+
+/**
+ * Capabilities for one handler invocation.
+ *
+ * The stateless members come from the exported `toolkit` object. `exec`,
+ * `surface`, and `resources` belong to the current invocation. Hand-built
+ * test values can spread `toolkit` and replace only those three members.
+ */
+export interface Ctx extends Toolkit {
   exec(bin: string, args: ReadonlyArray<string>, options?: ExecOptions): Promise<ExecResult>
   readonly surface: Surface
-  readonly project: typeof project
-  readonly workspace: typeof workspace
+  /** the program's acquired resources for this invocation; empty when
+   * the declaration has none */
+  readonly resources: Readonly<globalThis.Record<string, unknown>>
 }
 
 // ─── static inference ───────────────────────────────────────────────────────
-// what the compiler must produce, computed from the declaration literal.
-// param def string → ArkType inference; cli usage notation → optionality
-// and variadic shape.
+// `input` is an ArkType object definition, so ArkType's own inference is
+// the whole answer. its two sides ARE this package's two boundaries:
+// the input side is what a caller may supply (defaults and optional keys
+// omitted, morph inputs accepted), the output side what a handler
+// receives (defaults applied, morphs run).
 
-export type DefOf<P> = P extends string ? P : P extends { readonly type: infer D } ? D : never
-
-export type UsageOf<P> = P extends { readonly cli: infer C }
-  ? C extends string ? C : C extends { readonly usage: infer U extends string } ? U : ""
-  : ""
-
-/** raw inference of a morphing def is its morph signature — distill to the
- * output side, which is what handlers and callers see */
-type OutOf<P> = distill<type.infer<DefOf<P>>, "out">
-
-/** any notation carrying `...`: variadic positionals (`<...xs>`,
- * `[...xs]`) and repeatable flags (`--tag <tags...>`) */
-type IsVariadic<P> = UsageOf<P> extends `${string}...${string}` ? true : false
-type IsPositional<P> = UsageOf<P> extends `<${string}` | `[${string}` ? true : false
-type IsOptionalPositional<P> = UsageOf<P> extends `[${string}` ? true : false
-type HasDefault<P> = DefOf<P> extends `${string}=${string}` ? true : false
-type IsBoolean<P> = [OutOf<P>] extends [boolean] ? true : false
-type IsRequiredFlag<P> = P extends { readonly required: true } ? true : false
-
-type ValueOf<P> = IsVariadic<P> extends true ? ReadonlyArray<OutOf<P>> : OutOf<P>
-
-/** optional at the call boundary: defaulted, optional positional, or a
- * non-required flag (booleans default false, plain flags may be absent) */
-type CallOptional<P> = HasDefault<P> extends true ? true
-  : IsOptionalPositional<P> extends true ? true
-  : IsPositional<P> extends true ? false
-  : IsRequiredFlag<P> extends true ? false
-  : true
-
-/** still possibly absent when the handler runs: no default fills it */
-type HandlerOptional<P> = HasDefault<P> extends true ? false
-  : IsBoolean<P> extends true ? false
-  : IsVariadic<P> extends true ? false
-  : CallOptional<P>
-
+// ArkType's own `show` ends in `& unknown`, which TypeScript simplifies
+// away and leaves the mapped type deferred; `& {}` forces it to resolve,
+// which the handler's contextual type needs. `@ark/util`'s `merge` calls
+// that `show` internally, so this keeps a local pair.
 type Show<T> = { [K in keyof T]: T[K] } & {}
 
-export type CallInput<I> = Show<
-  & { readonly [K in keyof I as CallOptional<I[K]> extends true ? never : K]: ValueOf<I[K]> }
-  & { readonly [K in keyof I as CallOptional<I[K]> extends true ? K : never]?: ValueOf<I[K]> }
->
+/** later keys win, the type-level twin of the runtime spread that joins
+ * program-level options to a command's own input */
+type Merge<A, B> = Show<Omit<A, keyof B> & B>
 
-export type HandlerInput<I> = Show<
-  & { readonly [K in keyof I as HandlerOptional<I[K]> extends true ? never : K]: ValueOf<I[K]> }
-  & { readonly [K in keyof I as HandlerOptional<I[K]> extends true ? K : never]?: ValueOf<I[K]> }
->
+/** the call surface — ArkType's input side */
+export type CallInput<I> = Show<type.infer.In<I>>
+
+/** the handler surface — ArkType's output side */
+export type HandlerInput<I> = Show<type.infer.Out<I>>
 
 type InputOf<C> = C extends { readonly input: infer I } ? I : {}
 
-export type OutputOf<C, R> = C extends { readonly output: infer O } ? distill<type.infer<O>, "out">
+// `output` is an optional field, so `infer O` carries `| undefined` —
+// strip it, or the contract widens instead of constraining
+export type OutputOf<C, R> = C extends { readonly output: infer O }
+  ? [O] extends [undefined] ? Awaited<R> : distill<type.infer<NonNullable<O>>, "out">
   : Awaited<R>
+
 
 // ─── declaration inference ──────────────────────────────────────────────────
 // reverse-mapped-type pattern. TS inverts a homomorphic mapped type only
@@ -204,16 +278,37 @@ export type OutputOf<C, R> = C extends { readonly output: infer O } ? distill<ty
 // are mounted subprograms (`commands: { cache }`), each with its own full
 // inference — mounting is the contract's nesting mechanism anyway.
 
+// `input` and `output` are validated by ArkType itself, in place: a valid
+// definition passes through, an invalid one becomes ArkType's error
+// message and the declaration stops assigning.
 export type CommandsData<M> = {
-  readonly [N in keyof M]: M[N] extends Mounted ? M[N] : { readonly [K in keyof M[N]]: M[N][K] }
+  readonly [N in keyof M]: M[N] extends Mounted ? M[N] : {
+    readonly [K in keyof M[N]]: M[N][K]
+  }
+}
+
+/** ArkType's validators, applied OUTSIDE the inference path. Naming them
+ * inside `CommandsData` forces TypeScript to invert `type.validate` to
+ * recover the commands record, which it cannot do — a `Type` instance
+ * then infers as nothing. Under `NoInfer` this only constrains. */
+export type CommandsContracts<M> = {
+  readonly [N in keyof M]?:
+    & (M[N] extends { readonly input: infer I } ? { readonly input?: ValidateInput<I> } : unknown)
+    & (M[N] extends { readonly output: infer O } ? { readonly output?: ValidateOutput<O> } : unknown)
 }
 
 /** program-level options (root input) join every command's handler and
  * call surface — the same model as an external's binary-global options */
-export type CommandsOverlay<M, Rs, RIn = {}> = {
+export type CommandsOverlay<M, Rs, RIn = {}, Rsrc = {}> = {
   readonly [N in keyof Rs]: {
-    readonly run?: (input: HandlerInput<RIn & InputOf<M[N & keyof M]>>, ctx: Ctx) => Rs[N]
-    readonly narrow?: (input: HandlerInput<RIn & InputOf<M[N & keyof M]>>, ctx: NarrowContext) => boolean
+    readonly run?: (
+      input: HandlerInput<Merge<RIn, InputOf<M[N & keyof M]>>>,
+      ctx: Ctx & WithResources<Rsrc>
+    ) => Rs[N]
+    readonly narrow?: (
+      input: HandlerInput<Merge<RIn, InputOf<M[N & keyof M]>>>,
+      ctx: NarrowContext
+    ) => boolean
     // typed from the declared output contract only — referencing Rs here
     // would make the reverse mapped type uninvertible and collapse
     // handler inference. a contract-less command renders `unknown`.
@@ -221,34 +316,54 @@ export type CommandsOverlay<M, Rs, RIn = {}> = {
   }
 }
 
-export interface ProgramDeclOf<Name extends string, RootIn, RootOut, RootR, Cs, Rs> {
+export interface ProgramDeclOf<Name extends string, RootIn, RootOut, RootR, Cs, Rs, Rsrc = {}> {
   readonly name: Name
   readonly version?: string
   readonly description?: string
-  readonly input?: RootIn
-  readonly output?: RootOut
+  /** program-level resources, acquired per invocation around every
+   * handler of this program's own commands */
+  readonly resources?: Rsrc
+  readonly input?: ValidateInput<RootIn>
+  readonly output?: ValidateOutput<RootOut>
   readonly narrow?: (input: HandlerInput<NoInfer<RootIn>>, ctx: NarrowContext) => boolean
-  readonly run?: (input: HandlerInput<NoInfer<RootIn>>, ctx: Ctx) => RootR
-  readonly commands?: CommandsData<Cs> & CommandsOverlay<NoInfer<Cs>, Rs, NoInfer<RootIn>>
+  readonly run?: (input: HandlerInput<NoInfer<RootIn>>, ctx: Ctx & WithResources<NoInfer<Rsrc>>) => RootR
+  readonly commands?:
+    & CommandsData<Cs>
+    & CommandsOverlay<NoInfer<Cs>, Rs, NoInfer<RootIn>, NoInfer<Rsrc>>
+    & CommandsContracts<NoInfer<Cs>>
   // render typed from the declared root output, like command-level
   // render (contract-less roots render `unknown`)
   readonly cli?: CliCommandConfig<
     RootOut extends undefined ? unknown : OutputOf<{ readonly output: NoInfer<RootOut> }, unknown>
   >
-  readonly mcp?: McpCommandConfig
+  readonly mcp?: McpProgramConfig
 }
 
 export interface ExternalCommandDecl {
   readonly description?: string
-  readonly input?: globalThis.Record<string, ParameterDef>
+  /** an ArkType object definition; surface bindings ride in metadata */
+  readonly input?: object
   /** ArkType definition applied to stdout on success */
   readonly output?: unknown
   /** exit codes that count as success (default [0]) — `git grep`'s
    * 1-means-no-match declares [0, 1]; anything else stays a failure */
   readonly successCodes?: ReadonlyArray<number>
+  readonly safety?: CommandSafety
   readonly commands?: globalThis.Record<string, ExternalCommandDecl>
   readonly cli?: CliCommandConfig
   readonly mcp?: McpCommandConfig
+}
+
+/** ArkType's validators over an external's commands, applied OUTSIDE the
+ * inference path for the same reason `CommandsContracts` is: naming a
+ * validator where the declaration is inferred forces TypeScript to
+ * invert it. Recurses, so a nested subcommand is checked too. */
+export type ExternalContracts<M> = {
+  readonly [N in keyof M]?:
+    & (M[N] extends { readonly input: infer I } ? { readonly input?: ValidateInput<I> } : unknown)
+    & (M[N] extends { readonly output: infer O } ? { readonly output?: ValidateOutput<O> } : unknown)
+    & (M[N] extends { readonly commands: infer C } ? { readonly commands?: ExternalContracts<C> }
+      : unknown)
 }
 
 export interface ExternalDecl {
@@ -259,7 +374,7 @@ export interface ExternalDecl {
   /** the binary's GLOBAL options (git's `-C`, `--no-pager`): emitted
    * before the subcommand path and available on every command's call
    * surface. command-level input emits after the subcommand. */
-  readonly input?: globalThis.Record<string, ParameterDef>
+  readonly input?: object
   readonly commands: globalThis.Record<string, ExternalCommandDecl>
 }
 
@@ -289,13 +404,29 @@ type CommandResult<C, R> = [R] extends [Promise<unknown>] ? Promise<OutputOf<C, 
 
 /** the input argument is optional whenever every key is optional.
  * RIn: program-level options joining this command's call surface. */
-export type CommandFn<C, R, RIn = {}> = {} extends CallInput<RIn & InputOf<C>>
-  ? (input?: CallInput<RIn & InputOf<C>>) => CommandResult<C, R>
-  : (input: CallInput<RIn & InputOf<C>>) => CommandResult<C, R>
+/** the lone required key, when exactly one exists and its value cannot
+ * be confused with the input record itself. a plain-object value would
+ * make the two call forms ambiguous, so it keeps only the record form;
+ * an array is unambiguous and keeps both. */
+type SoleRequired<T, K = unionToTuple<requiredKeyOf<T>>> = K extends readonly [infer Only]
+  ? Only extends keyof T
+    ? T[Only] extends ReadonlyArray<unknown> ? Only : T[Only] extends object ? never : Only
+  : never
+  : never
+
+/** shorthand: a command whose input is one required parameter takes
+ * that parameter's value directly — `git.commit("message")` */
+type BareFn<T, R, Rest extends ReadonlyArray<unknown> = []> = [SoleRequired<T>] extends [never]
+  ? unknown
+  : (value: T[SoleRequired<T>], ...rest: Rest) => R
+
+export type CommandFn<C, R, RIn = {}, I = CallInput<Merge<RIn, InputOf<C>>>> =
+  & ({} extends I ? (input?: I) => CommandResult<C, R> : (input: I) => CommandResult<C, R>)
+  & BareFn<I, CommandResult<C, R>>
 
 export type CommandModule<C, R, RIn = {}> =
   & CommandFn<C, R, RIn>
-  & { readonly args: ArgsType<HandlerInput<RIn & InputOf<C>>> }
+  & { readonly args: ArgsType<HandlerInput<Merge<RIn, InputOf<C>>>> }
   & (C extends { readonly commands: infer M } ? {
       readonly [K in keyof M]: M[K] extends Mounted ? M[K] : CommandModule<M[K], unknown, RIn>
     }
@@ -342,6 +473,12 @@ export interface CommandSpec {
   readonly defaultCommand?: string
   readonly runnable: boolean
   readonly external: boolean
+  /** safety classification — automated verification may invoke only
+   * `read` commands; drives MCP hint annotations */
+  readonly safety?: CommandSafety
+  /** example invocations declared for agents, schema-validated at
+   * compile time */
+  readonly mcpExamples?: ReadonlyArray<McpExample>
   /** external commands: exit codes that count as success — doc gen
    * explains a `git grep`-style exit 1 with this */
   readonly successCodes?: ReadonlyArray<number>
@@ -364,6 +501,10 @@ export interface McpTool {
 export interface McpProjection {
   readonly tools: ReadonlyArray<McpTool>
   serve(): Promise<void>
+  /** the same server as a connectable instance for a caller-owned
+   * transport — an HTTP route, a test pair; `serve()` is the stdio
+   * production path */
+  server(): import("@modelcontextprotocol/sdk/server/index.js").Server
 }
 
 /** the cli projection: parse, route, run, render, resolve exit code.
@@ -419,9 +560,19 @@ type ExternalIn<D> = D extends { readonly input: infer I } ? I : {}
 
 /** an external always crosses a process boundary — inherently async.
  * global (root-level) parameters join every command's call surface. */
-export type ExternalCommandFn<C, RIn> = {} extends CallInput<RIn & InputOf<C>>
-  ? (input?: CallInput<RIn & InputOf<C>>, options?: ExternalCallOptions) => Promise<OutputOf<C, Promise<string>>>
-  : (input: CallInput<RIn & InputOf<C>>, options?: ExternalCallOptions) => Promise<OutputOf<C, Promise<string>>>
+export type ExternalCommandFn<
+  C,
+  RIn,
+  I = CallInput<Merge<RIn, InputOf<C>>>,
+  R = Promise<OutputOf<C, Promise<string>>>
+> =
+  & ({} extends I ? (input?: I, options?: ExternalCallOptions) => R
+    : (input: I, options?: ExternalCallOptions) => R)
+  & BareFn<I, R, [options?: ExternalCallOptions]>
+
+type ExternalArgvFn<I> =
+  & ({} extends I ? (input?: I) => ReadonlyArray<string> : (input: I) => ReadonlyArray<string>)
+  & BareFn<I, ReadonlyArray<string>>
 
 export type ExternalModule<D extends ExternalDecl> =
   & Mounted
@@ -431,7 +582,12 @@ export type ExternalModule<D extends ExternalDecl> =
 
 export type ExternalCommandModule<C extends ExternalCommandDecl, RIn = {}> =
   & ExternalCommandFn<C, RIn>
-  & { readonly args: ArgsType<HandlerInput<RIn & InputOf<C>>> }
+  & { readonly args: ArgsType<HandlerInput<Merge<RIn, InputOf<C>>>> }
+  /** the argv this command would emit, without spawning the binary —
+   * mirrors the call surface, shorthand included */
+  & {
+    readonly argv: ExternalArgvFn<CallInput<Merge<RIn, InputOf<C>>>>
+  }
   & (C extends { readonly commands: infer M extends globalThis.Record<string, ExternalCommandDecl> }
     ? { readonly [K in keyof M]: ExternalCommandModule<M[K], RIn> }
     : {})

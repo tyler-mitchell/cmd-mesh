@@ -2,16 +2,19 @@ import { type, Type } from "arktype"
 import { Array, Effect, Option, Predicate, Record, String, pipe } from "effect"
 import type { DeclarationIssue } from "./errors.js"
 import { InvalidDeclaration } from "./errors.js"
+import { diagnostics, issueText } from "./diagnostics.js"
 import type {
   CliCommandConfig,
-  CliParameterConfig,
+  CommandSafety,
   ExternalCommandDecl,
   ExternalDecl,
   McpCommandConfig,
+  McpExample,
   Mounted,
   ParameterDef,
-  ParameterDescriptor,
-  SuggestGenerator
+  CliParameterConfig,
+  SuggestGenerator,
+  SuggestSource
 } from "./types.js"
 import { mounted } from "./types.js"
 
@@ -95,6 +98,8 @@ export interface CompiledCommand {
   readonly mcpHidden: boolean
   readonly mcpName: Option.Option<string>
   readonly mcpAnnotations: Option.Option<Readonly<globalThis.Record<string, unknown>>>
+  readonly mcpExamples: ReadonlyArray<McpExample>
+  readonly safety: Option.Option<CommandSafety>
   /** cli-only presentation override for the command's output */
   readonly cliRender: Option.Option<(output: unknown) => string>
   /** present on external commands: binary, fixed leading argv, and the
@@ -112,16 +117,47 @@ interface RawCommandDecl {
   readonly output?: unknown
   readonly narrow?: (input: any, ctx: any) => boolean
   readonly run?: (input: any, ctx: any) => unknown
+  readonly safety?: string
   readonly commands?: globalThis.Record<string, RawCommandDecl | Mounted>
   readonly cli?: CliCommandConfig<never>
   readonly mcp?: McpCommandConfig
 }
 
+/** surface bindings authored as ArkType metadata */
+interface ParameterMeta {
+  readonly description?: string
+  /** JSON Schema annotation only. ArkType defaults use the native `"="` tuple. */
+  readonly default?: unknown
+  /** the cli surface: its notation, or the full config */
+  readonly cli?: string | CliParameterConfig
+  /** the agent surface */
+  readonly mcp?: { readonly hidden?: boolean }
+  readonly suggest?: SuggestSource
+}
+
 const normalizeCli = (cli: string | CliParameterConfig | undefined): CliParameterConfig =>
   cli === undefined ? {} : String.isString(cli) ? { usage: cli } : cli
 
-const normalizeDescriptor = (def: ParameterDef): ParameterDescriptor =>
-  String.isString(def) ? { type: def } : def
+/** an ArkType key carries its own optionality: "note?" is optional */
+const bareKey = (key: string): string => String.endsWith("?")(key) ? key.slice(0, -1) : key
+
+/** surface bindings come from the AUTHORED definition, not the parsed
+ * type: ArkType drops a morph's metadata behind a default wrapper, where
+ * no public face (meta, in, out) still carries it. walks the two tuple
+ * operators a parameter can use — "@" annotates, "=" defaults. */
+const metaOf = (def: unknown): ParameterMeta => {
+  if (globalThis.Array.isArray(def)) {
+    if (def[1] === "@") return { ...metaOf(def[0]), ...(def[2] as ParameterMeta) }
+    if (def[1] === "=") return metaOf(def[0])
+    return {}
+  }
+  return Predicate.hasProperty(def, "meta") ? ((def as { meta: ParameterMeta }).meta ?? {}) : {}
+}
+
+/** the type a single argv token is measured against: a variadic declares
+ * its array, so its tokens are measured against the element */
+const elementOf = (t: AnyType): AnyType =>
+  Effect.runSync(Effect.try(() => t.get(0) as AnyType).pipe(Effect.orElseSucceed(() => t)))
 
 const parseBinding = (key: string, usage: string): Binding => {
   const trimmed = String.trim(usage)
@@ -164,24 +200,27 @@ const attempt = <A>(f: () => A): Attempt<A> =>
     })
   )
 
+// A suggest string must be a named source. Other values give no candidates.
+const namedSuggestSources = ["filepaths", "folders"]
+
 /** structural problems a single parameter can carry */
 const parameterIssues = (at: string, p: CompiledParameter): ReadonlyArray<DeclarationIssue> =>
   Array.flatMap(
     [
-      p.binding._tag === "positional" && p.isBoolean
-        ? [`a positional cannot be boolean — booleans are flag presence`]
-        : [],
-      p.binding._tag === "positional" && Option.isSome(p.env)
-        ? [`env fallback is only meaningful on flags`]
-        : [],
-      p.binding._tag === "positional" && p.cliHidden
-        ? [`a positional cannot be cli-hidden — it would corrupt argv order`]
-        : [],
-      p.binding._tag === "flag" && p.binding.variadic && p.isBoolean
-        ? [`a boolean flag cannot take a value slot — presence is its value`]
-        : []
+      p.binding._tag === "positional" && p.isBoolean ? [diagnostics.CMSH1002()] : [],
+      p.binding._tag === "positional" && Option.isSome(p.env) ? [diagnostics.CMSH1003()] : [],
+      p.binding._tag === "positional" && p.cliHidden ? [diagnostics.CMSH1004()] : [],
+      p.binding._tag === "flag" && p.binding.variadic && p.isBoolean ? [diagnostics.CMSH1005()] : [],
+      metaOf(p.def).default !== undefined && !p.defaulted ? [diagnostics.CMSH1016()] : [],
+      Option.match(p.source, {
+        onNone: () => [],
+        onSome: (source) =>
+          Array.contains(namedSuggestSources, source)
+            ? []
+            : [diagnostics.CMSH1014({ source, known: Array.join(namedSuggestSources, ", ") })]
+      })
     ],
-    (problems) => Array.map(problems, (problem) => ({ at, problem }))
+    (found) => Array.map(found, (diagnostic) => ({ at, problem: issueText(diagnostic) }))
   )
 
 /** cross-parameter problems: flag token collisions, positional ordering */
@@ -201,9 +240,10 @@ const commandIssues = (
       owners.length > 1
         ? [{
           at,
-          problem: `flag ${token} is claimed by ${
-            Array.join(Array.map(owners, ([, key]) => key), " and ")
-          }`
+          problem: issueText(diagnostics.CMSH1006({
+            token,
+            owners: Array.join(Array.map(owners, ([, key]) => key), " and ")
+          }))
         }]
         : [])
   )
@@ -213,7 +253,7 @@ const commandIssues = (
     Array.findFirstIndex((p) => p.binding._tag === "positional" && p.binding.variadic),
     Option.flatMap((index) =>
       index < positionals.length - 1
-        ? Option.some({ at, problem: `variadic positional must be the last positional` })
+        ? Option.some({ at, problem: issueText(diagnostics.CMSH1007()) })
         : Option.none()
     ),
     Option.match({ onNone: () => [] as ReadonlyArray<DeclarationIssue>, onSome: (issue) => [issue] })
@@ -221,81 +261,153 @@ const commandIssues = (
   return Array.appendAll(collisions, misplacedVariadic)
 }
 
-const compileParameter = (key: string, rawDef: ParameterDef): CompiledParameter => {
-  const descriptor = normalizeDescriptor(rawDef)
-  const cli = normalizeCli(descriptor.cli)
-  const binding = parseBinding(key, cli.usage ?? "")
+const strayFields = (value: unknown, known: ReadonlyArray<string>): ReadonlyArray<string> =>
+  Predicate.isObject(value) && !Predicate.isFunction(value)
+    ? Array.filter(
+      Record.keys(value as globalThis.Record<string, unknown>),
+      (key) => !Array.contains(known, key)
+    )
+    : []
+
+const strayIssues = (
+  at: string,
+  found: ReadonlyArray<{ readonly key: string; readonly known: ReadonlyArray<string> }>
+): ReadonlyArray<DeclarationIssue> =>
+  Array.map(found, ({ key, known }) => ({
+    at,
+    problem: issueText(diagnostics.CMSH1013({ key, known: Array.join(known, ", ") }))
+  }))
+
+// One list for all command forms. An incorrect name is not in the list.
+const commandFields = [
+  "description",
+  "input",
+  "output",
+  "narrow",
+  "run",
+  "safety",
+  "commands",
+  "cli",
+  "mcp",
+  "successCodes",
+  "name",
+  "version",
+  "resources",
+  "bin"
+]
+const cliCommandFields = ["hidden", "alias", "default", "render", "examples"]
+const mcpFields = ["hidden", "name", "annotations", "examples"]
+const mcpProgramFields = [...mcpFields, "server"]
+
+/** An incorrect mcp field keeps a hidden command visible to agents. */
+const commandFieldIssues = (
+  at: string,
+  decl: unknown,
+  root = false
+): ReadonlyArray<DeclarationIssue> => {
+  const nested = decl as { readonly cli?: unknown; readonly mcp?: unknown }
+  const knownMcpFields = root ? mcpProgramFields : mcpFields
+  return strayIssues(at, [
+    ...Array.map(strayFields(decl, commandFields), (key) => ({ key, known: commandFields })),
+    ...Array.map(strayFields(nested.cli, cliCommandFields), (key) => ({
+      key: `cli.${key}`,
+      known: cliCommandFields
+    })),
+    ...Array.map(strayFields(nested.mcp, knownMcpFields), (key) => ({
+      key: `mcp.${key}`,
+      known: knownMcpFields
+    }))
+  ])
+}
+
+// this package's metadata keys plus the ArkType-native ones it reads.
+// TypeScript rejects a stray key through `ArkEnv`, but a JavaScript
+// caller has no check, and a misspelled key silently does nothing — an
+// incorrect `mcp` would leave a secret advertised to agents.
+const metaFields = [
+  "cli",
+  "mcp",
+  "suggest",
+  "description",
+  "examples",
+  "default",
+  "deprecated",
+  "title",
+  "format",
+  "alias",
+  "onFail"
+]
+
+const metaIssues = (at: string, rawDef: ParameterDef): ReadonlyArray<DeclarationIssue> => {
+  const meta = metaOf(rawDef) as globalThis.Record<string, unknown>
+  return strayIssues(at, [
+    ...Array.map(strayFields(meta, metaFields), (key) => ({ key, known: metaFields })),
+    ...Array.map(strayFields(normalizeCli(metaOf(rawDef).cli), cliFields), (key) => ({
+      key: `cli.${key}`,
+      known: cliFields
+    })),
+    ...Array.map(strayFields(metaOf(rawDef).mcp, mcpParameterFields), (key) => ({
+      key: `mcp.${key}`,
+      known: mcpParameterFields
+    }))
+  ])
+}
+
+const cliFields = ["usage", "env", "hidden"]
+const mcpParameterFields = ["hidden"]
+
+const compileParameter = (rawKey: string, rawDef: ParameterDef): CompiledParameter => {
+  const key = bareKey(rawKey)
   // probe the def at property position: defaults only exist there, and
   // applying the probe to {} both detects a default and evaluates it
   // through its own morph into the value domain.
-  const probe = type({ v: descriptor.type } as never) as AnyType
+  const probe = type({ v: rawDef } as never) as AnyType
   const probed = probe({})
   const defaulted = !(probed instanceof type.errors)
   const defaultValue = defaulted ? Option.some((probed as { v: unknown }).v) : Option.none()
   const inner = probe.get("v") as AnyType
-  // a defaulted def's extracted type is the default wrapper; boolean-ness
-  // must be read off the unwrapped output side
-  const isBoolean = defaulted
-    ? (inner.out.exclude("undefined") as AnyType).extends("boolean")
-    : inner.extends("boolean")
-  // authored arktype meta (`.describe(...)`) is a description source; a
-  // default wrapper hides it one level down on the unwrapped output side
-  const metaDescription = Option.fromNullishOr(
-    (inner.meta as { readonly description?: string }).description
-  ).pipe(
-    Option.orElse(() =>
-      defaulted
-        ? Option.fromNullishOr(
-          ((inner.out.exclude("undefined") as AnyType).meta as { readonly description?: string })
-            .description
-        )
-        : Option.none()
-    )
-  )
+  // a default wrapper hides both the domain and the metadata one level
+  // down, on the unwrapped output side
+  const unwrapped = defaulted ? (inner.out.exclude("undefined") as AnyType) : inner
+  const meta = metaOf(rawDef)
+  const cli = normalizeCli(meta.cli)
+  const binding = parseBinding(key, cli.usage ?? "")
   return {
     key,
-    def: descriptor.type,
+    def: rawDef,
     binding,
-    description: Option.fromNullishOr(descriptor.description).pipe(
-      Option.orElse(() => metaDescription)
-    ),
-    source: String.isString(descriptor.suggest) ? Option.some(descriptor.suggest) : Option.none(),
-    staticSuggestions: globalThis.Array.isArray(descriptor.suggest)
-      ? Option.some(descriptor.suggest)
-      : Option.none(),
-    generator: Predicate.isFunction(descriptor.suggest)
-      ? Option.some(descriptor.suggest as SuggestGenerator)
+    description: Option.fromNullishOr(meta.description),
+    source: String.isString(meta.suggest) ? Option.some(meta.suggest) : Option.none(),
+    staticSuggestions: globalThis.Array.isArray(meta.suggest) ? Option.some(meta.suggest) : Option.none(),
+    generator: Predicate.isFunction(meta.suggest)
+      ? Option.some(meta.suggest as SuggestGenerator)
       : Option.none(),
     env: Option.fromNullishOr(cli.env),
     cliHidden: cli.hidden === true,
-    mcpHidden: descriptor.mcp?.hidden === true,
-    required: descriptor.required === true,
+    mcpHidden: meta.mcp?.hidden === true,
+    // ArkType owns optionality: an unmarked, undefaulted key is required
+    required: !String.endsWith("?")(rawKey) && !defaulted,
     defaulted,
     defaultValue,
     defaultFactory: defaulted ? Option.some(() => (probe({}) as { v: unknown }).v) : Option.none(),
-    isBoolean,
+    // ArkType models boolean as `false | true`, which does not satisfy
+    // .extends("boolean") once a default wrapper has been stripped
+    isBoolean: unwrapped.expression === "boolean",
     global: false,
     inner
   }
 }
 
-const isRequiredVariadic = (p: CompiledParameter): boolean =>
-  p.binding._tag === "positional"
-    ? p.binding.variadic && !p.binding.optional
-    : p.binding.variadic && p.required
 
-const isOptionalNoDefault = (p: CompiledParameter): boolean => {
-  if (p.defaulted || p.isBoolean) return false
-  if (p.binding._tag === "positional") {
-    return p.binding.optional && !p.binding.variadic
-  }
-  return !p.required
-}
-
-const variadicOf = (base: AnyType, p: CompiledParameter): AnyType => {
-  const array = base.array() as AnyType
-  return isRequiredVariadic(p) ? (array.atLeastLength(1) as AnyType) : array
-}
+const hiddenRequiredIssues = (
+  at: string,
+  parameters: ReadonlyArray<CompiledParameter>,
+  commandHiddenFromMcp: boolean
+): ReadonlyArray<DeclarationIssue> =>
+  commandHiddenFromMcp ? [] : Array.flatMap(parameters, (p) =>
+    p.mcpHidden && p.required
+      ? [{ at: `${at} · ${p.key}`, problem: issueText(diagnostics.CMSH1015()) }]
+      : [])
 
 const isVariadic = (p: CompiledParameter): boolean => p.binding.variadic
 
@@ -304,20 +416,21 @@ const isVariadic = (p: CompiledParameter): boolean => p.binding.variadic
  * so Type instances classify the same as the string defs they equal */
 const takesRawToken = (p: CompiledParameter): boolean =>
   String.isString(p.def) || Effect.runSync(
-    Effect.try(() => ((p.inner.in as AnyType).extract("string") as AnyType).expression !== "never").pipe(
-      Effect.orElseSucceed(() => false)
-    )
+    Effect.try(() => {
+      const base = p.binding.variadic ? elementOf(tokenDomain(p)) : tokenDomain(p)
+      return ((base.extract("string") as AnyType).expression !== "never")
+    }).pipe(Effect.orElseSucceed(() => false))
   )
 
-/** a structured (non-string-def) parameter consumes a JSON token on the
- * cli: parse the token, then pipe into the declared definition. a
- * defaultable def is illegal as a `.to` target — a defaulted structured
- * param pipes into its unwrapped output type instead (defaults are the
- * value boundary's job on this path anyway) */
-const jsonToken = (p: CompiledParameter): AnyType =>
-  type("string.json.parse").to(
-    (p.defaulted ? ((p.inner.out as AnyType).exclude("undefined")) : p.def) as never
-  ) as AnyType
+/** the input domain a token is measured against, with any default
+ * wrapper stripped — the wrapper hides an array from the element check */
+const tokenDomain = (p: CompiledParameter): AnyType => {
+  const input = p.inner.in as AnyType
+  const base = p.defaulted ? (input.exclude("undefined") as AnyType) : input
+  // the token key is optional and the value boundary owns defaults, so a
+  // `default` still riding in metadata would land on an optional key
+  return base.configure({ default: undefined }) as AnyType
+}
 
 /** boolean flags cross the token boundary as presence booleans or as the
  * literal tokens of `--flag=value`; the literal set follows the effect
@@ -332,49 +445,16 @@ const booleanTokenType = type("boolean")
  * and defaults are enforced by the value boundary, which the cli path
  * always runs after this one */
 const tokenEntry = (p: CompiledParameter): readonly [string, unknown] => {
+  // every entry is optional and stays in the declared INPUT domain: the
+  // value boundary runs after this one on the cli path and owns morphs,
+  // defaults and requiredness. morphing here too would run them twice.
+  // presence is a boolean flag's token, so it is never a raw or json value
+  if (p.isBoolean) return [`${p.key}?`, booleanTokenType]
   if (!takesRawToken(p)) {
-    const wrapped = jsonToken(p)
-    return [`${p.key}?`, isVariadic(p) ? variadicOf(wrapped, p) : wrapped]
+    const parsed = type("string.json.parse") as AnyType
+    return [`${p.key}?`, isVariadic(p) ? (parsed.array() as AnyType) : parsed]
   }
-  // an optional variadic (`[...xs]`) is present-and-empty when omitted;
-  // a required one (`<...xs>`) demands at least one value
-  if (isVariadic(p)) {
-    return isRequiredVariadic(p)
-      ? [p.key, variadicOf(p.inner, p)]
-      : [p.key, [variadicOf(p.inner, p), "=", () => []]]
-  }
-  // a required boolean stays required: presence is its true value and
-  // omission is a reportable error, not a silent false
-  if (p.isBoolean) {
-    if (p.defaulted) {
-      return [p.key, [booleanTokenType, "=", () => Option.getOrThrow(p.defaultFactory)()]]
-    }
-    return p.required ? [p.key, booleanTokenType] : [p.key, [booleanTokenType, "=", false]]
-  }
-  if (isOptionalNoDefault(p)) return [`${p.key}?`, p.inner]
-  return [p.key, p.def]
-}
-
-/** entry for the value side: output-domain types with defaults evaluated
- * through the morph at compile time. a defaulted prop's extracted .out
- * carries `| undefined` from the default wrapper — strip it, or it breaks
- * the JSON Schema projection. */
-const valueEntry = (p: CompiledParameter): readonly [string, unknown] => {
-  const rawOut = p.inner.out as AnyType
-  const out = p.defaulted ? (rawOut.exclude("undefined") as AnyType) : rawOut
-  if (isVariadic(p)) {
-    return isRequiredVariadic(p)
-      ? [p.key, variadicOf(out, p)]
-      : [p.key, [variadicOf(out, p), "=", () => []]]
-  }
-  if (p.isBoolean && !p.defaulted) {
-    return p.required ? [p.key, out] : [p.key, [out, "=", false]]
-  }
-  if (p.defaulted) {
-    return [p.key, [out, "=", () => Option.getOrThrow(p.defaultFactory)()]]
-  }
-  if (isOptionalNoDefault(p)) return [`${p.key}?`, out]
-  return [p.key, out]
+  return [`${p.key}?`, tokenDomain(p)]
 }
 
 const assemble = (
@@ -404,7 +484,8 @@ const collectCommand = (
   path: ReadonlyArray<string>,
   decl: RawCommandDecl,
   inherited: Readonly<globalThis.Record<string, ParameterDef>> = {},
-  inheritedNarrow?: (input: any, ctx: any) => boolean
+  inheritedNarrow?: (input: any, ctx: any) => boolean,
+  root = false
 ): Collected => {
   const at = Array.join(path, " ")
   // program-level options (the root's input) join every command — same
@@ -416,22 +497,34 @@ const collectCommand = (
   )
   const parameters = pipe(
     Array.flatMap(attempts, ({ result }) => result._tag === "ok" ? [result.value] : []),
-    Array.map((p) =>
-      Option.isSome(Record.get(inherited, p.key)) && (decl.input?.[p.key]) === undefined
-        ? { ...p, global: true }
-        : p
-    )
+    Array.map((p) => {
+      // bare names: an ArkType key carries its own optionality
+      const inheritedHere = Array.contains(Array.map(Record.keys(inherited), bareKey), p.key)
+      const ownHere = Array.contains(Array.map(Record.keys(decl.input ?? {}), bareKey), p.key)
+      return inheritedHere && !ownHere ? { ...p, global: true } : p
+    })
   )
   const outputAttempt = decl.output === undefined
     ? undefined
     : attempt(() => type(decl.output as never) as AnyType)
   const ownIssuesBase = pipe(
     Array.flatMap(attempts, ({ key, result }) =>
-      result._tag === "failed" ? [{ at: `${at} · ${key}`, problem: result.problem }] : []),
+      result._tag === "failed"
+        ? [{ at: `${at} · ${key}`, problem: issueText(diagnostics.CMSH1001({ error: result.problem })) }]
+        : []),
+    Array.appendAll(
+      Array.flatMap(Record.toEntries(merged), ([key, def]) => metaIssues(`${at} · ${bareKey(key)}`, def))
+    ),
     Array.appendAll(Array.flatMap(parameters, (p) => parameterIssues(`${at} · ${p.key}`, p))),
+    Array.appendAll(hiddenRequiredIssues(at, parameters, decl.mcp?.hidden === true)),
     Array.appendAll(commandIssues(at, parameters)),
     Array.appendAll(
-      outputAttempt?._tag === "failed" ? [{ at: `${at} · output`, problem: outputAttempt.problem }] : []
+      outputAttempt?._tag === "failed"
+        ? [{
+          at: `${at} · output`,
+          problem: issueText(diagnostics.CMSH1001({ error: outputAttempt.problem }))
+        }]
+        : []
     )
   )
   // with a broken declaration the types are placeholders; program() throws
@@ -442,10 +535,12 @@ const collectCommand = (
     ? undefined
     : attempt(() => ({
       tokenType: assemble(parameters, tokenEntry),
-      schemaType: assemble(parameters, valueEntry)
+      // the value boundary IS the declared ArkType type — nothing is
+      // reassembled, so what is declared and what is enforced cannot drift
+      schemaType: type(merged as never) as AnyType
     }))
   const assemblyIssues: ReadonlyArray<DeclarationIssue> = assemblyAttempt?._tag === "failed"
-    ? [{ at, problem: assemblyAttempt.problem }]
+    ? [{ at, problem: issueText(diagnostics.CMSH1001({ error: assemblyAttempt.problem })) }]
     : []
   const assembly = assemblyAttempt?._tag === "ok"
     ? assemblyAttempt.value
@@ -455,6 +550,8 @@ const collectCommand = (
   // parsing first and the value boundary second, so it still applies
   // once. a root narrow travels with the root's options — an invariant
   // over program-level values holds wherever they are supplied.
+  // a handler receives its declared input and nothing else; agent-supplied
+  // keys are stripped at the boundary. See skills/cmd-mesh/references/reference.md.
   const valueType = withNarrow(withNarrow(assembly.schemaType, inheritedNarrow), decl.narrow)
   // only the PROGRAM root's input propagates (path length 1) — mirrors
   // externals, where only binary-root globals join every command.
@@ -469,7 +566,8 @@ const collectCommand = (
         Array.append(path, childName),
         child as RawCommandDecl,
         passedDown,
-        passedNarrow
+        passedNarrow,
+        false
       ))
   const children = Record.map(childPairs, ([child]) => child)
   // a subcommand name — real or alias — must resolve to exactly one child
@@ -486,9 +584,10 @@ const collectCommand = (
       owners.length > 1
         ? [{
           at,
-          problem: `subcommand name ${token} is claimed by ${
-            Array.join(Array.map(owners, ([, owner]) => owner), " and ")
-          }`
+          problem: issueText(diagnostics.CMSH1012({
+            token,
+            owners: Array.join(Array.map(owners, ([, owner]) => owner), " and ")
+          }))
         }]
         : [])
   )
@@ -511,14 +610,27 @@ const collectCommand = (
       onSome: (name) =>
         Array.flatMap(
           [
-            decl.run === undefined ? [] : [`cannot declare both run and cli.default`],
-            Option.isSome(Option.flatten(resolvedDefault))
-              ? []
-              : [`cli.default names a missing subcommand: ${name}`]
+            decl.run === undefined ? [] : [diagnostics.CMSH1008()],
+            Option.isSome(Option.flatten(resolvedDefault)) ? [] : [diagnostics.CMSH1009({ name })]
           ],
-          (problems) => Array.map(problems, (problem) => ({ at, problem }))
+          (found) => Array.map(found, (diagnostic) => ({ at, problem: issueText(diagnostic) }))
         )
     })
+  )
+  const safetyIssues: ReadonlyArray<DeclarationIssue> =
+    decl.safety !== undefined && !Array.contains(["read", "action", "destructive"], decl.safety)
+      ? [{ at, problem: issueText(diagnostics.CMSH1010({ got: `${decl.safety}` })) }]
+      : []
+  const exampleIssues: ReadonlyArray<DeclarationIssue> = pipe(
+    (decl.mcp?.examples ?? []) as ReadonlyArray<McpExample>,
+    Array.flatMap((example, index) =>
+      (assembly.schemaType as AnyType).allows(example.args)
+        ? []
+        : [{
+          at,
+          problem: issueText(diagnostics.CMSH1011({ index, args: JSON.stringify(example.args) }))
+        }]
+    )
   )
   const command: CompiledCommand = {
     kind: "internal",
@@ -545,13 +657,18 @@ const collectCommand = (
     mcpHidden: decl.mcp?.hidden === true,
     mcpName: Option.fromNullishOr(decl.mcp?.name),
     mcpAnnotations: Option.fromNullishOr(decl.mcp?.annotations),
+    mcpExamples: decl.mcp?.examples ?? [],
+    safety: Option.fromNullishOr(decl.safety as CommandSafety | undefined),
     cliRender: Option.fromNullishOr(decl.cli?.render as ((output: unknown) => string) | undefined),
     external: Option.none()
   }
   const issues = pipe(
     ownIssues,
+    Array.appendAll(commandFieldIssues(at, decl, root)),
     Array.appendAll(aliasIssues),
     Array.appendAll(defaultIssues),
+    Array.appendAll(safetyIssues),
+    Array.appendAll(exampleIssues),
     Array.appendAll(
       pipe(Record.toEntries(childPairs), Array.flatMap(([, [, childIssues]]) => childIssues))
     )
@@ -566,7 +683,7 @@ export const compileCommand = (
   path: ReadonlyArray<string>,
   decl: RawCommandDecl
 ): CompiledCommand => {
-  const [command, issues] = collectCommand(name, path, decl)
+  const [command, issues] = collectCommand(name, path, decl, {}, undefined, true)
   if (issues.length > 0) {
     throw new InvalidDeclaration({ issues })
   }
@@ -584,9 +701,12 @@ const collectExternalCommand = (
   const { commands: _children, ...withoutChildren } = decl
   // a command redefining a binary-global key would make one token mean
   // two things in a single invocation — undiagnosable from the spawn
+  // an ArkType key carries its own optionality, so compare bare names:
+  // "repo?" and "repo" are the same parameter
+  const globalKeys = Array.map(Record.keys(globals), bareKey)
   const collisionIssues = pipe(
     Record.keys(decl.input ?? {}),
-    Array.filter((key) => Option.isSome(Record.get(globals, key))),
+    Array.filter((key) => Array.contains(globalKeys, bareKey(key))),
     Array.map((key) => ({
       at: Array.join(path, " "),
       problem: `parameter ${key} redefines a binary-global option`
@@ -600,7 +720,7 @@ const collectExternalCommand = (
     input: { ...globals, ...decl.input }
   })
   const marked = Array.map(base.parameters, (p) =>
-    Option.isSome(Record.get(globals, p.key)) ? { ...p, global: true } : p)
+    Array.contains(globalKeys, p.key) ? { ...p, global: true } : p)
   const childPairs = Record.map(decl.commands ?? {}, (child, childName): Collected =>
     collectExternalCommand(
       bin,
@@ -623,6 +743,7 @@ const collectExternalCommand = (
   const issues = pipe(
     collisionIssues,
     Array.appendAll(ownIssues),
+    Array.appendAll(commandFieldIssues(Array.join(path, " "), decl)),
     Array.appendAll(
       pipe(Record.toEntries(childPairs), Array.flatMap(([, [, childIssues]]) => childIssues))
     )
@@ -635,13 +756,17 @@ export const compileExternal = (decl: ExternalDecl): CompiledCommand => {
   const childPairs = Record.map(decl.commands, (child, childName): Collected =>
     collectExternalCommand(
       bin,
-      decl.input ?? {},
+      (decl.input ?? {}) as Readonly<globalThis.Record<string, ParameterDef>>,
       [String.kebabCase(childName)],
       childName,
       [decl.name, childName],
       child
     ))
-  const issues = pipe(Record.toEntries(childPairs), Array.flatMap(([, [, childIssues]]) => childIssues))
+  const issues = pipe(
+    Record.toEntries(childPairs),
+    Array.flatMap(([, [, childIssues]]) => childIssues),
+    Array.appendAll(commandFieldIssues(decl.name, decl, true))
+  )
   if (issues.length > 0) {
     throw new InvalidDeclaration({ issues })
   }
@@ -664,6 +789,8 @@ export const compileExternal = (decl: ExternalDecl): CompiledCommand => {
     mcpHidden: false,
     mcpName: Option.none(),
     mcpAnnotations: Option.none(),
+    mcpExamples: [],
+    safety: Option.none(),
     cliRender: Option.none(),
     external: Option.some({ bin, argPath: [], successCodes: [0] })
   }

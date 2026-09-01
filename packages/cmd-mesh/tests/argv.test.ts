@@ -211,8 +211,12 @@ describe("repeatable flags (commander value-slot notation)", () => {
       mark: {
         description: "mark with tags",
         input: {
-          item: { type: "string", cli: "<item>" },
-          tag: { type: "string", description: "may repeat", cli: "--tag <tags...>, -t" }
+          item: ["string", "@", { cli: "<item>" }],
+          tag: [
+            ["string[]", "@", { description: "may repeat", cli: "--tag <tags...>, -t" }],
+            "=",
+            () => []
+          ]
         },
         output: { item: "string", tags: "string[]" },
         run: (input) => ({ item: input.item, tags: [...input.tag] })
@@ -248,8 +252,12 @@ describe("repeatable flags (commander value-slot notation)", () => {
         mark: {
           description: "mark",
           input: {
-            item: { type: "string", cli: "<item>" },
-            tag: { type: "string", cli: { usage: "--tag <tags...>", env: "MARK_TAG" } }
+            item: ["string", "@", { cli: "<item>" }],
+            tag: [
+              ["string[]", "@", { cli: { usage: "--tag <tags...>", env: "MARK_TAG" } }],
+              "=",
+              () => []
+            ]
           },
           output: { tags: "string[]" },
           run: (input) => ({ tags: [...input.tag] })
@@ -273,13 +281,13 @@ describe("positional notations", () => {
     commands: {
       show: {
         description: "optional positional",
-        input: { path: { type: "string", cli: "[path]" } },
+        input: { "path?": ["string", "@", { cli: "[path]" }] },
         output: { "path?": "string" },
         run: (input) => (input.path === undefined ? {} : { path: input.path })
       },
       pack: {
         description: "optional variadic",
-        input: { entries: { type: "string", cli: "[...entries]" } },
+        input: { entries: [["string[]", "@", { cli: "[...entries]" }], "=", () => []] },
         output: { count: "number" },
         run: (input) => ({ count: input.entries.length })
       }
@@ -304,6 +312,33 @@ describe("positional notations", () => {
   it("keeps the typed surface consistent with the cli", () => {
     expect(files.pack({})).toEqual({ count: 0 })
     expect(files.pack({ entries: ["a"] })).toEqual({ count: 1 })
+  })
+
+  // Declaration order IS argv order. The two programs below differ in
+  // nothing else, so if order stopped deciding the slot they would parse
+  // the same and this fails. A reader-back of parameter order from a
+  // parsed arktype type would break this: arktype sorts its keys.
+  it("fills positional slots in the order the parameters are declared", async () => {
+    const twoWay = (input: Record<string, unknown>) =>
+      program({
+        name: "order",
+        version: "0.0.0",
+        commands: {
+          go: {
+            description: "two positionals",
+            input: input as never,
+            output: { head: "string", tail: "string" },
+            run: (parsed: { readonly head: string; readonly tail: string }) => parsed
+          }
+        }
+      })
+    const head = ["string", "@", { cli: "<head>" }]
+    const tail = ["string", "@", { cli: "<tail>" }]
+
+    expect(await ok(twoWay({ head, tail }), ["go", "a", "b"]))
+      .toEqual({ head: "a", tail: "b" })
+    expect(await ok(twoWay({ tail, head }), ["go", "a", "b"]))
+      .toEqual({ tail: "a", head: "b" })
   })
 })
 

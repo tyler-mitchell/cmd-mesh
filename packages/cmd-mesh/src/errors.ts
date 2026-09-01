@@ -101,7 +101,14 @@ export class ExecFailure extends Data.TaggedError("ExecFailure")<{
   readonly cause: unknown
 }> {
   override get message(): string {
-    return `failed to execute ${this.bin}: ${this.cause}`
+    // a missing binary is the commonest exec failure by far, and the
+    // spawner reports it as "NotFound" wrapped in its own platform
+    // error. Naming the binary and what to do beats forwarding
+    // `PlatformError: NotFound: ChildProcess.spawn` to someone who
+    // only wants to know what to install.
+    return /NotFound|ENOENT/.test(String(this.cause))
+      ? `${this.bin} is not installed, or not on PATH`
+      : `failed to execute ${this.bin}: ${this.cause}`
   }
 }
 
@@ -112,7 +119,12 @@ export class ExternalExit extends Data.TaggedError("ExternalExit")<{
   readonly stderr: string
 }> {
   override get message(): string {
-    return `${this.bin} exited with ${this.exitCode}: ${this.stderr}`
+    // a streamed child already wrote its stderr to the terminal, so the
+    // captured text is empty and there is nothing to append
+    const trimmed = this.stderr.trim()
+    return trimmed === ""
+      ? `${this.bin} exited with ${this.exitCode}`
+      : `${this.bin} exited with ${this.exitCode}: ${trimmed}`
   }
 }
 

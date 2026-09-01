@@ -10,11 +10,19 @@ import { program } from "../src/index.js"
 const command = (n: number) => ({
   description: `command ${n}`,
   input: {
-    entry: { type: "string", cli: "<entry>" },
-    port: { type: "string.integer.parse = '3000'", cli: { usage: "--port, -p", env: `X_${n}_PORT` } },
-    level: { type: "'debug' | 'info' | 'warn' = 'info'" },
-    tags: { type: "string", cli: "--tag <tags...>" },
-    verbose: { type: "boolean", cli: "--verbose, -v" }
+    entry: ["string", "@", { cli: "<entry>" }],
+    port: [
+      [
+        "string.integer.parse",
+        "@",
+        { cli: { usage: "--port, -p", env: `X_${n}_PORT` } }
+      ],
+      "=",
+      "3000"
+    ],
+    level: [["'debug' | 'info' | 'warn'", "@", {}], "=", "info"],
+    tags: [["string[]", "@", { cli: "--tag <tags...>" }], "=", () => []],
+    verbose: [["boolean", "@", { cli: "--verbose, -v" }], "=", false]
   },
   output: { url: "string", tags: "string[]" },
   run: (input: { entry: string; port: number; tags: string[] }) => ({
@@ -28,29 +36,42 @@ const declare = (size: number) =>
     name: `bench${size}`,
     version: "0.0.0",
     description: "compile-cost subject",
+    // a factory-built declaration is not a literal, so its tuples widen
+    // and contract inference cannot apply. this measures RUNTIME compile
+    // cost, where the tuples are intact, so the cast loses nothing.
     commands: Object.fromEntries(
       Array.from({ length: size }, (_, n) => [`cmd${n}`, command(n)])
-    )
+    ) as never
   })
+
+/** the middle of several readings, because one reading measures the
+ * machine's mood as much as the code — this file's own history has a
+ * loaded run reporting 591ms for a change repetition put at ~30% */
+const medianMs = (size: number): number => {
+  const readings = Array.from({ length: 5 }, () => {
+    const started = performance.now()
+    declare(size)
+    return performance.now() - started
+  })
+  return [...readings].sort((a, b) => a - b)[2] as number
+}
 
 describe("declaration compile cost", () => {
+  it("stays linear in the number of commands", () => {
+    // What would reopen lazy subcommand loading is SUPERLINEAR cost, and
+    // a ratio says that directly: five times the commands should cost
+    // about five times as much, where quadratic would be about
+    // twenty-five. Load stretches both readings, so the ratio holds
+    // where an absolute wall-clock budget flakes.
+    const ratio = medianMs(50) / medianMs(10)
+    expect(ratio).toBeLessThan(12)
+  })
+
   it("stays interactive at CLI scale (50 five-parameter commands)", () => {
-    const started = performance.now()
     const compiled = declare(50)
-    const elapsed = performance.now() - started
     expect(Object.keys(compiled.cli).length).toBeGreaterThan(0)
-    // Solo measurement: ~2.5ms per command (125ms at 50). The pin is an
-    // order-of-magnitude tripwire, not a precise budget — wall-clock
-    // under parallel suite workers runs several times slower than a
-    // cold CLI start, and only a regression that would genuinely
-    // reopen lazy loading (10x) should fail it.
-    expect(elapsed).toBeLessThan(1000)
-    console.info(`program(): 5 commands ${time(5)}ms · 20 ${time(20)}ms · 50 ${elapsed.toFixed(1)}ms`)
+    // A catastrophic backstop, not a constant-factor pin: the solo
+    // baseline is ~124ms at 50 commands, about 2.5ms each.
+    expect(medianMs(50)).toBeLessThan(500)
   })
 })
-
-const time = (size: number) => {
-  const started = performance.now()
-  declare(size)
-  return (performance.now() - started).toFixed(1)
-}

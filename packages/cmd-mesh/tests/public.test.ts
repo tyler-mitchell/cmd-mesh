@@ -18,7 +18,7 @@ describe("the typed program", () => {
   })
 
   it("accepts explicit value-domain input", () => {
-    expect(mesh.snapshot({ directory: ".", depth: 4, verbose: true })).toEqual({
+    expect(mesh.snapshot({ directory: ".", depth: "4", verbose: true })).toEqual({
       snapped: ".",
       depth: 4,
       verbose: true
@@ -83,7 +83,7 @@ describe("external commands", () => {
       name: "ls",
       commands: {
         show: {
-          input: { path: { type: "string", cli: "<path>" } }
+          input: { path: ["string", "@", { cli: "<path>" }] }
         }
       }
     })
@@ -151,15 +151,58 @@ describe("the repository toolkit re-exports", () => {
   })
 
   it("writes a file through missing directories", async () => {
-    const { createFile } = await import("../src/index.js")
+    const { readFile, toolkit, writeFile } = await import("../src/index.js")
     const { mkdtempSync, readFileSync, rmSync } = await import("node:fs")
     const { tmpdir } = await import("node:os")
     const { join } = await import("node:path")
     const root = mkdtempSync(join(tmpdir(), "cmd-mesh-create-file-"))
     try {
       const target = join(root, "deep", "nested", "note.txt")
-      createFile(target, "made whole")
+      toolkit.writeFile(target, "made whole")
       expect(readFileSync(target, "utf8")).toBe("made whole")
+      expect(toolkit.readFile).toBe(readFile)
+      expect(toolkit.writeFile).toBe(writeFile)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it("gives handlers the same toolkit used by direct imports", async () => {
+    const { program, toolkit } = await import("../src/index.js")
+    const { mkdtempSync, rmSync } = await import("node:fs")
+    const { tmpdir } = await import("node:os")
+    const { join } = await import("node:path")
+    const root = mkdtempSync(join(tmpdir(), "cmd-mesh-toolkit-"))
+    const file = join(root, "nested", "config.jsonc")
+    const files = program({
+      name: "files",
+      commands: {
+        roundtrip: {
+          description: "write and edit a config",
+          safety: "action",
+          output: { source: "string", sameRead: "boolean", sameWrite: "boolean" },
+          run: (_input, ctx) => {
+            ctx.writeFile(file, "{\n  // keep\n  \"a\": 1\n}\n")
+            const result = ctx.modifyJSONFile(file, { "b.c": { value: 2 } })
+            if (result.error !== undefined) throw result.error
+            return {
+              source: ctx.readFile(file),
+              sameRead: ctx.readFile === toolkit.readFile,
+              sameWrite: ctx.writeFile === toolkit.writeFile
+            }
+          }
+        }
+      }
+    })
+
+    try {
+      const result = files.roundtrip()
+      expect(result.source).toContain("// keep")
+      expect(toolkit.resolveConfigSource({ text: result.source, format: "jsonc" }, "data"))
+        .toEqual({ a: 1, b: { c: 2 } })
+      expect(result.sameRead).toBe(true)
+      expect(result.sameWrite).toBe(true)
+      expect(toolkit.readFileSafely(join(root, "missing.txt"))).toBeUndefined()
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -195,11 +238,11 @@ describe("the mcp projection", () => {
     const audited = program({
       name: "audited2",
       version: "0.0.0",
-      input: { registry: { type: "string = 'https://npm.dev'", cli: "--registry" } },
+      input: { registry: [["string", "@", { cli: "--registry" }], "=", "https://npm.dev"] },
       commands: {
         add: {
           description: "add",
-          input: { pkg: { type: "string", cli: "<pkg>" } },
+          input: { pkg: ["string", "@", { cli: "<pkg>" }] },
           output: { ok: "boolean" },
           run: () => ({ ok: true })
         }

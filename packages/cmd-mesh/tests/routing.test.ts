@@ -20,6 +20,55 @@ const compiledOf = (program: unknown): CompiledCommand =>
 const routed = (root: CompiledCommand, argv: ReadonlyArray<string>) =>
   Effect.runPromise(routeArgv(root, argv))
 
+describe("a group with a default child and its own flags", () => {
+  const vite = program({
+    name: "vite",
+    commands: {
+      serve: {
+        input: { "port?": ["string", "@", { cli: "--port" }] },
+        cli: { default: "dev" },
+        commands: {
+          dev: {
+            input: { "port?": ["string", "@", { cli: "--port" }] },
+            output: { ran: "string", port: "string" },
+            run: (input: { readonly port?: string }) => ({ ran: "dev", port: input.port ?? "none" })
+          }
+        }
+      }
+    }
+  })
+
+  it("routes a flag the group itself declares", async () => {
+    const { code, out } = await captureCli(() => vite.cli.run(["serve", "--port", "3000", "--json"]))
+    expect(code).toBe(0)
+    expect(JSON.parse(out)).toMatchObject({ ran: "dev", port: "3000" })
+  })
+
+  const withGroupOnlyFlag = program({
+    name: "vite2",
+    commands: {
+      serve: {
+        input: { "config?": ["string", "@", { cli: "--config" }] },
+        cli: { default: "dev" },
+        commands: {
+          dev: {
+            output: { ran: "string" },
+            run: () => ({ ran: "dev" })
+          }
+        }
+      }
+    }
+  })
+
+  it("reports a group flag the default child never declares", async () => {
+    const { code, err } = await captureCli(() =>
+      withGroupOnlyFlag.cli.run(["serve", "--config", "vite.config.ts", "--json"]))
+    expect(code).toBe(2)
+    expect(err).toMatch(/unknown flag --config/)
+    expect(err).toMatch(/Usage: vite2 serve dev/)
+  })
+})
+
 describe("reserved tokens versus program vocabulary", () => {
   const root = compiledOf(tasks)
 

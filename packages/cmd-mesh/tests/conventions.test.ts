@@ -17,8 +17,8 @@ const serve = program({
   version: "1.0.0",
   description: "a dev server with root flags and subcommands",
   input: {
-    port: { type: "string.integer.parse = '3000'", cli: "--port, -p" },
-    watch: { type: "boolean", cli: "--watch" }
+    port: [["string.integer.parse", "@", { cli: "--port, -p" }], "=", "3000"],
+    watch: [["boolean", "@", { cli: "--watch" }], "=", false]
   },
   commands: {
     start: {
@@ -43,8 +43,8 @@ const claimant = program({
     info: {
       description: "report host info",
       input: {
-        host: { type: "string = 'localhost'", cli: "--host, -h" },
-        version: { type: "boolean", cli: "--version" }
+        host: [["string", "@", { cli: "--host, -h" }], "=", "localhost"],
+        version: [["boolean", "@", { cli: "--version" }], "=", false]
       },
       output: { host: "string", version: "boolean" },
       run: (input) => ({ host: input.host, version: input.version })
@@ -89,7 +89,7 @@ describe("boolean negation against defaults (citty parser)", () => {
       commands: {
         build: {
           description: "build with cache on by default",
-          input: { cache: { type: "boolean = true", cli: "--cache" } },
+          input: { cache: [["boolean", "@", { cli: "--cache" }], "=", true] },
           output: { cache: "boolean" },
           run: (input: { readonly cache: boolean }) => ({ cache: input.cache })
         }
@@ -109,7 +109,7 @@ describe("boolean negation against defaults (citty parser)", () => {
       commands: {
         build: {
           description: "build",
-          input: { install: { type: "boolean = true", cli: "--install" } },
+          input: { install: [["boolean", "@", { cli: "--install" }], "=", true] },
           output: { install: "boolean" },
           run: (input: { readonly install: boolean }) => ({ install: input.install })
         }
@@ -155,8 +155,8 @@ describe("parent flags before the subcommand (citty resolveSubCommand)", () => {
       version: "0.0.0",
       description: "root invariant over program-level options",
       input: {
-        trace: { type: "boolean", cli: "--trace" },
-        traceFile: { type: "string", cli: "--trace-file" }
+        trace: [["boolean", "@", { cli: "--trace" }], "=", false],
+        "traceFile?": ["string", "@", { cli: "--trace-file" }]
       },
       narrow: (input, ctx) =>
         input.traceFile === undefined || input.trace ? true : ctx.mustBe("used with --trace"),
@@ -184,7 +184,7 @@ describe("parent flags before the subcommand (citty resolveSubCommand)", () => {
       name: "enved",
       version: "0.0.0",
       input: {
-        region: { type: "string = 'us-east'", cli: { usage: "--region", env: "ENVED_REGION" } }
+        region: [["string", "@", { cli: { usage: "--region", env: "ENVED_REGION" } }], "=", "us-east"]
       },
       commands: {
         deploy: {
@@ -211,9 +211,9 @@ describe("parent flags before the subcommand (citty resolveSubCommand)", () => {
       commands: {
         emit: {
           description: "emit",
-          input: { json: { type: "boolean", cli: "--json" } },
+          input: { json: [["boolean", "@", { cli: "--json" }], "=", false] },
           output: { asJson: "boolean" },
-          run: (input: { readonly json: boolean }) => ({ asJson: input.json })
+          run: (input) => ({ asJson: input.json })
         }
       }
     })
@@ -233,12 +233,12 @@ describe("parent flags before the subcommand (citty resolveSubCommand)", () => {
       version: "0.0.0",
       description: "root flags reach children",
       input: {
-        registry: { type: "string = 'https://npm.dev'", cli: "--registry" }
+        registry: [["string", "@", { cli: "--registry" }], "=", "https://npm.dev"]
       },
       commands: {
         add: {
           description: "add",
-          input: { pkg: { type: "string", cli: "<pkg>" } },
+          input: { pkg: ["string", "@", { cli: "<pkg>" }] },
           output: { pkg: "string", registry: "string" },
           run: (input) => ({ pkg: input.pkg, registry: input.registry })
         }
@@ -352,8 +352,8 @@ describe("subcommand aliases (citty main)", () => {
         name: "clash",
         version: "0.0.0",
         commands: {
-          install: { description: "a", cli: { alias: "i" }, run: () => "a" },
-          i: { description: "b", run: () => "b" }
+          install: { description: "a", cli: { alias: "i" }, run: (): string => "a" },
+          i: { description: "b", run: (): string => "b" }
         }
       })
     ).toThrow(/subcommand name i is claimed by install and i/)
@@ -368,7 +368,7 @@ describe("root run beside subcommands", () => {
     version: "1.0.0",
     description: "format, with a check mode as a child",
     input: {
-      write: { type: "boolean", cli: "--write" }
+      write: [["boolean", "@", { cli: "--write" }], "=", false]
     },
     output: { via: "string", write: "boolean" },
     run: (input) => ({ via: "root", write: input.write }),
@@ -413,7 +413,7 @@ describe("default subcommand (citty main)", () => {
     commands: {
       dev: {
         description: "start dev mode",
-        input: { watch: { type: "boolean", cli: "--watch" } },
+        input: { watch: [["boolean", "@", { cli: "--watch" }], "=", false] },
         output: { via: "string", watch: "boolean" },
         run: (input) => ({ via: "dev", watch: input.watch })
       },

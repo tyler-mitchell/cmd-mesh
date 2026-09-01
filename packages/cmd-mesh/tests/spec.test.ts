@@ -76,8 +76,8 @@ describe("spec answers the prompt-UI consumer", () => {
       pick: {
         description: "pick",
         input: {
-          fruit: { type: "string", suggest: ["apple", "pear"], cli: "<fruit>" },
-          dir: { type: "string", suggest: "folders", cli: "--dir" }
+          fruit: ["string", "@", { suggest: ["apple", "pear"], cli: "<fruit>" }],
+          "dir?": ["string", "@", { suggest: "folders", cli: "--dir" }]
         },
         output: { ok: "boolean" },
         run: () => ({ ok: true })
@@ -100,7 +100,7 @@ describe("spec answers the doc-gen consumer on exit semantics", () => {
         grep: {
           description: "search",
           successCodes: [0, 1],
-          input: { pattern: { type: "string", cli: "<pattern>" } },
+          input: { pattern: ["string", "@", { cli: "<pattern>" }] },
           output: "string"
         }
       }
@@ -149,7 +149,9 @@ describe("spec keeps its JSON promise for every default", () => {
       commands: {
         since: {
           description: "since",
-          input: { from: { type: "string.date.iso.parse = '2024-01-05T00:00:00.000Z'", cli: "--from" } },
+          input: {
+            from: [["string.date.iso.parse", "@", { cli: "--from" }], "=", "2024-01-05T00:00:00.000Z"]
+          },
           output: { ok: "boolean" },
           run: () => ({ ok: true })
         }

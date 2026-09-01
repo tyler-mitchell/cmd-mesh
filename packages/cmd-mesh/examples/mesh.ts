@@ -1,5 +1,7 @@
 // the shared example program: a small dev tool exercising every contract
-// surface — used by demo.ts, bin.ts, and the test suite.
+// surface — used by demo.ts, bin.ts, and the test suite. It is also what
+// a reader copies, so it declares `safety` on every command and uses
+// ArkType's native default tuples.
 import { external, program } from "../src/index.js";
 
 export const git = external({
@@ -7,9 +9,10 @@ export const git = external({
   commands: {
     status: {
       description: "working tree status",
+      safety: "read",
       input: {
-        short: { type: "boolean", cli: "--short, -s" },
-        branch: { type: "boolean", cli: "--branch, -b" },
+        short: [["boolean", "@", { cli: "--short, -s" }], "=", false],
+        branch: [["boolean", "@", { cli: "--branch, -b" }], "=", false],
       },
       output: "string",
     },
@@ -23,23 +26,31 @@ export const mesh = program({
   commands: {
     snapshot: {
       description: "record a directory snapshot",
+      safety: "action",
       input: {
-        directory: {
-          type: "string",
-          description: "directory to snapshot",
-          suggest: "folders",
-          cli: "<directory>",
-        },
-        depth: {
-          type: "string.integer.parse = '2'",
-          description: "traversal depth",
-          cli: { usage: "--depth, -d", env: "MESH_DEPTH" },
-        },
-        verbose: { type: "boolean", cli: "--verbose, -v" },
-        signCert: { type: "string" },
+        directory: [
+          "string",
+          "@",
+          {
+            description: "directory to snapshot",
+            suggest: "folders",
+            cli: "<directory>",
+          },
+        ],
+        depth: [
+          [
+            "string.integer.parse | number.integer",
+            "@",
+            { description: "a traversal depth", cli: { usage: "--depth, -d", env: "MESH_DEPTH" } },
+          ],
+          "=",
+          "2"
+        ],
+        verbose: [["boolean", "@", { cli: "--verbose, -v" }], "=", false],
+        "signCert?": "string",
         // object ArkType defs are first-class: real object on the
         // call/mcp surface, JSON token on the cli
-        signKey: { type: { a: "string" } },
+        "signKey?": { a: "string" },
       },
       narrow: (input, ctx) =>
         (input.signCert === undefined) === (input.signKey === undefined) ||
@@ -53,9 +64,18 @@ export const mesh = program({
     },
     build: {
       description: "bundle entry files",
+      safety: "action",
       input: {
-        entries: { type: "string", cli: "<...entries>" },
-        outDir: { type: "string = 'dist'", description: "output directory" },
+        entries: ["string[] >= 1", "@", { cli: "<...entries>" }],
+        outDir: [
+          [
+            "string",
+            "@",
+            { description: "an output directory" },
+          ],
+          "=",
+          "dist"
+        ],
       },
       output: { bundled: "string[]", into: "string" },
       run: (input) => ({ bundled: [...input.entries], into: input.outDir }),
@@ -65,11 +85,14 @@ export const mesh = program({
       commands: {
         stat: {
           description: "cache statistics",
+          safety: "read",
           output: { entries: "number" },
           run: () => ({ entries: 0 }),
         },
         clear: {
           description: "drop the cache",
+          // dropping a cache is not recoverable from the tool
+          safety: "destructive",
           // a void command: side effect only, nothing to report
           run: () => undefined,
         },
@@ -77,6 +100,7 @@ export const mesh = program({
     },
     disk: {
       description: "disk usage of cwd via ctx.exec",
+      safety: "read",
       run: async (_input, ctx) => {
         const result = await ctx.exec("du", ["-sh", "."]);
         return { surface: ctx.surface, usage: result.stdout.trim() };

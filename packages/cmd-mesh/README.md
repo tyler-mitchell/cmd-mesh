@@ -1,10 +1,18 @@
 # `cmd-mesh`
 
-The command mesh model, implemented: one declarative program definition that
-is simultaneously a set of plain typed functions, a CLI, an MCP server, a
-completion source, and a typed wrap over external binaries. The contract is
-[ideations/08-final.ts](./ideations/08-final.ts); this package is its
-interpreter.
+Declare a command program once and get four surfaces from the one
+declaration: plain typed functions, a full CLI, an MCP server for
+agents, and a machine-readable spec. External binaries wrap into the
+same model.
+
+## Install
+
+```sh
+pnpm add cmd-mesh
+```
+
+cmd-mesh requires Node.js 22 or later. Create a CLI by default. Start or
+register MCP only when the application requires an MCP server.
 
 ```ts
 import { external, program } from "cmd-mesh"
@@ -14,7 +22,8 @@ const git = external({
   commands: {
     status: {
       description: "working tree status",
-      input: { short: { type: "boolean", cli: "--short, -s" } },
+      safety: "read",
+      input: { short: [["boolean", "@", { cli: "--short, -s" }], "=", false] },
       output: "string"
     }
   }
@@ -26,10 +35,22 @@ const mesh = program({
   commands: {
     snapshot: {
       description: "record a directory snapshot",
+      safety: "action",
       input: {
-        directory: { type: "string", suggest: "folders", cli: "<directory>" },
-        depth: { type: "string.integer.parse = '2'", cli: { usage: "--depth, -d", env: "MESH_DEPTH" } },
-        verbose: { type: "boolean", cli: "--verbose, -v" }
+        // a parameter IS an ArkType definition; surface bindings ride in
+        // its metadata, so ArkType owns the domain and optionality
+        directory: ["string", "@", { suggest: "folders", cli: "<directory>" }],
+        // a union over both boundaries: argv carries "4", an agent sends 4
+        depth: [
+          [
+            "string.integer.parse | number.integer",
+            "@",
+            { cli: { usage: "--depth, -d", env: "MESH_DEPTH" } }
+          ],
+          "=",
+          "2"
+        ],
+        verbose: [["boolean", "@", { cli: "--verbose, -v" }], "=", false]
       },
       run: (input) => ({ snapped: input.directory, depth: input.depth })
       //     ^ inferred: { directory: string; depth: number; verbose: boolean }
@@ -39,12 +60,14 @@ const mesh = program({
 })
 ```
 
-The typed functions ARE the program; the CLI and the MCP server are its
-two projections:
+The typed functions ARE the program; every other surface is a
+projection:
 
 ```ts
 mesh.snapshot({ directory: "./public" })  // the program itself: a sync handler
                                           //   is a sync function — no promise
+mesh.snapshot("./public")                 // one required parameter takes its
+                                          //   value bare
 
 // bin.ts — the complete entry point; the word `mcp` serves agents,
 // everything else is the cli. one line, zero plumbing.
@@ -52,89 +75,211 @@ await mesh.main()
 
 // claude mcp config: { "command": "mesh-bin", "args": ["mcp"] }
 //   → tools mesh_snapshot, mesh_git_status with ArkType-projected JSON Schemas
+
+mesh.spec  // the whole surface as one JSON descriptor — doc generators
+           //   and UIs consume this, never help text
 ```
 
-## Declaration reference
+A parameter is an ArkType definition. `verbose: "boolean"` is complete on
+its own. The flag `--verbose` comes from the key. The `"@"` metadata tuple
+adds a short alias, a positional slot, an environment fallback, or suggestions.
 
-Everything a parameter or command can declare, in one place. The `cli`
-string is the usage notation; an object form adds cli config beside it.
+The complete lookup tables — every command field, parameter form, ctx
+member, exit code, and argv convention — live in
+[the bundled reference](./skills/cmd-mesh/references/reference.md).
+
+## Install the agent skill
+
+The npm package includes an Agent Skills-compatible guide at
+`skills/cmd-mesh/SKILL.md`. Its description triggers when a user asks an
+agent to use `cmd-mesh`, build a typed CLI, or expose commands through MCP.
+
+Install the package first. Then install its version-matched skill into the
+current repository:
+
+```sh
+pnpm dlx skills add ./node_modules/cmd-mesh/skills/cmd-mesh -y
+```
+
+The command creates `.agents/skills/cmd-mesh`. Codex and other compatible
+agents load the skill from that standard project location. The skill starts
+with a complete program and links to the detailed references in the same
+package.
+
+The skill treats CLI creation as the default. It does not start an MCP server
+or edit an MCP client configuration unless the user explicitly requests MCP.
+
+## Safety is a contract
+
+```ts
+safety: "read"         // no side effects — agents and verification call freely
+safety: "action"       // mutates state — call deliberately
+safety: "destructive"  // hard to reverse — agent clients prompt first
+```
+
+Safety validates at compile time, appears in the spec, and projects to
+MCP `readOnlyHint`/`destructiveHint` with both hints always explicit —
+clients treat an absent `destructiveHint` as true, so partial hints
+can read as destructive. Verification probes invoke only `read`
+commands.
+
+## Agents plan from the spec
+
+The MCP projection serves the spec both ways: resource `cmd-mesh://spec`
+and a paired `<name>_spec` tool for clients that only consume tools.
+Declared examples travel with each tool and are schema-validated at
+compile time — a lying example is a declaration error:
+
+```ts
+mcp: {
+  examples: [
+    { args: { directory: "./public", depth: 4 }, description: "a bounded snapshot" }
+  ]
+}
+```
+
+## Installing the server in a client
+
+A cmd-mesh program is a stdio server: the bin plus the argument `mcp`.
+`mcp install` registers it, keeping everything the config already holds.
+
+`mesh` below is the example program's own name — cmd-mesh ships no
+binary of its own. The command is whatever your `package.json` `bin`
+calls it; in this repository the same program is `repokit`.
+
+```sh
+mesh mcp install           # the client this project already uses
+mesh mcp install codex     # or name one
+mesh mcp install --dev     # while developing the program itself
+mesh mcp uninstall         # take it back out
+```
+
+`mcp uninstall` removes only this program's entry. Every other server,
+every prompted value, and every comment in the file stays where it was,
+and a program that was never registered is reported as such rather than
+treated as an error.
+
+`--dev` registers the server under
+[`mcp-reloader`](https://npmjs.com/package/mcp-reloader), which
+supervises it and adds a `reload` tool: after an edit, one call
+re-spawns the server and the client keeps its connection instead of
+restarting. Run it from the source entry and the flags that entry runs
+under — a loader, an export condition — travel into the written
+command, so the supervised process resolves its imports the same way.
+
+| client | file | key |
+| --- | --- | --- |
+| Claude Code | `.mcp.json` | `mcpServers` |
+| Cursor | `.cursor/mcp.json` | `mcpServers` |
+| VSCode | `.vscode/mcp.json` | `servers`, and the entry names `type: "stdio"` |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` | `mcpServers` |
+| Codex | `~/.codex/config.toml` | `mcp_servers` |
+
+The entry names what the client must actually spawn. A host started
+from its own launcher carries none of a shell's `PATH`, so a bare
+program name would fail to spawn — the installed `node_modules/.bin`
+entry is written absolutely, and a program still being developed is
+written as its own interpreter plus its script.
+
+Re-run it whenever that invocation goes stale — a moved project or a new
+interpreter — and the existing entry is replaced in place, comments and
+neighbouring servers untouched.
+
+Bare `mcp install` only picks a client whose configuration lives in this
+project. Windsurf and Codex keep theirs in your home directory, so they
+are named directly. A project command must not edit settings outside the
+project on its own.
+
+Before wiring a client, run the server by hand — `mesh mcp` reads
+JSON-RPC on stdin, and closing stdin exits `0`. A client that starts
+the bin and later closes it leaves no orphan process.
+
+Serve stdio in production, or hand the same server to your own
+transport:
+
+```ts
+await mesh.mcp.serve()                  // stdio
+
+const server = mesh.mcp.server()        // @modelcontextprotocol/sdk Server
+await server.connect(myTransport)       // HTTP route, in-memory test pair
+```
+
+## Program resources
+
+Declared acquire/release pairs run around every handler invocation on
+all three surfaces — acquired before the handler, typed on
+`ctx.resources`, released in reverse order whether the handler succeeds
+or throws:
 
 ```ts
 const tool = program({
   name: "tool",
-  version: "1.0.0",
-  cli: { default: "dev" },              // bare `tool` runs `tool dev` (an alias works too)
-  // program-level options: root input joins EVERY command's handler,
-  // call surface, and schema — `tool --log-level debug dev` and
-  // `tool dev --log-level debug` both reach the handler
-  input: {
-    logLevel: { type: "'debug' | 'info' = 'info'", cli: "--log-level" }
+  resources: {
+    db: {
+      acquire: () => openDb(),
+      release: (db) => db.close()
+    }
   },
   commands: {
-    dev: {
-      description: "start dev mode",
-      cli: {
-        alias: ["d"],                                       // `tool d` ≡ `tool dev`
-        examples: ["tool dev src/main.ts --port 8080"]      // an Examples section in help
-      },
-      input: {
-        entry: { type: "string", cli: "<entry>" },          // required positional
-        out: { type: "string", cli: "[out]" },              // optional positional
-        files: { type: "string", cli: "[...files]" },       // variadic (zero ok; <...files> requires one)
-        port: { type: "string.integer.parse = '3000'",      // parsed + defaulted
-          cli: { usage: "--port, -p", env: "TOOL_PORT" } }, // argv > env > default
-        tag: { type: "string", cli: "--tag <tags...>" },    // repeatable → string[]
-        token: { type: "string",                            // `required: true` would force a flag
-          cli: { usage: "--token", hidden: true },          // hidden: out of help/completion, still parses
-          mcp: { hidden: true } },                          // out of the tool schema, still validates
-        level: { type: "'debug' | 'info' | 'warn'" }        // no cli → derived --level flag,
-        //                                                  //   union members tab-complete
-      },
-      narrow: (input, ctx) =>                               // cross-field invariant, both boundaries
-        input.out === input.entry ? ctx.mustBe("a distinct output path") : true,
-      output: { url: "string", tags: "string[]", logLevel: "string" },
-      run: (input) => ({                                    // ArkType output contract → MCP outputSchema
-        url: `http://localhost:${input.port}`,
-        tags: [...input.tag],
-        logLevel: input.logLevel                            // ← the program-level option, right here
-      }),
-      mcp: {
-        name: "tool_serve",                                 // overrides the derived tool name
-        annotations: { readOnlyHint: true }                 // MCP tool annotations, verbatim
-      }
-    },
-    render: {
-      description: "custom human rendering",
-      cli: { render: (output) => `→ ${output.url}` },       // humans only; --json and MCP unaffected
-      output: { url: "string" },
-      run: () => ({ url: "https://example.com" })
+    stats: {
+      safety: "read",
+      output: "number",
+      run: (_input, ctx) => ctx.resources.db.count()
     }
   }
 })
 ```
 
-Every command also answers `--json` (machine output on stdout), `--help`,
-and the program `--version`.
-
-## Exit codes
-
-`cli.run`/`main` resolve the getopt convention: `0` success, `2` usage
-errors (unknown command/flag, missing value, invalid input), `1` runtime
-failures. Every usage error appends the routed command's usage line and
-a `--help` pointer, so one failed invocation is enough to self-correct. A handler that needs a *report* exit — `diff`'s "differences
-found", a linter's severity code — throws an error carrying `exitCode`;
-that code owns the exit and the message prints bare, without failure
-framing:
+## Running processes
 
 ```ts
-run: (input) => {
-  const drifted = check(input)
-  if (drifted.length > 0) {
-    throw Object.assign(new Error(`${drifted.length} files drifted`), { exitCode: 3 })
-  }
-  return { clean: true }
+// report mode (default): exit codes are data — branch on them.
+const probe = await ctx.exec("which", [candidate])
+if (probe.exitCode === 0) return probe.stdout.trim()
+
+// succeed-or-throw: declare the success set; any other exit throws
+// ExternalExit with the child's stderr. NEVER hand-roll this wrapper.
+await ctx.exec("pnpm", ["run", "build"], { cwd, stdio: "inherit", successCodes: [0] })
+
+// workspace-local binaries resolve regardless of how the process started
+await ctx.exec("vitest", ["run"], { preferLocal: true })
+```
+
+`ctx.project` and `ctx.workspace` are
+[`package-management`](https://npmjs.com/package/package-management)'s
+own consumer surfaces, exposed whole — repository questions without
+spawning and parsing:
+
+```ts
+run: async (input, ctx) => {
+  const self = ctx.project("<package_folder>")   // manifest, mtime-cached
+  self.packageJson.version
+  const pm = await self.findPackageManager()      // lockfile-detected
+  await pm.installPackage(["left-pad"])           // injection-guarded, batched
 }
 ```
+
+The exported `toolkit` is the stateless part of every handler context. Use it
+outside an invocation:
+
+```ts
+import { toolkit } from "cmd-mesh"
+
+toolkit.getPath("<workspace_folder>/node_modules/.bin")
+toolkit.readFile("package.json")
+toolkit.writeFile("tmp/report.txt", "ready\n")
+toolkit.modifyJSONFile("tsconfig.json", {
+  "compilerOptions.strict": { value: true }
+})
+toolkit.isPackageDependency("typescript")
+toolkit.resolvePackageModulePath("typescript")
+//   ^ comment-preserving JSONC edits, dot paths, sequential-edit safe
+```
+
+The bundled [handler context reference](./skills/cmd-mesh/references/reference.md#ctx)
+lists every `ctx` member. It covers `ctx.exec`, files, paths, configuration,
+dependencies, dynamic imports, projects, workspaces, resources, and entry
+surfaces.
 
 ## Testing a mesh program
 
@@ -146,24 +291,40 @@ expect(tool.dev({ entry: "src/main.ts" })).toEqual({ url: "http://localhost:3000
 expect(() => tool.dev({ entry: "x", out: "x" })).toThrow(/distinct output/)
 ```
 
-For argv-grammar concerns, `cli.run(argv)` is pure toward the process —
-it returns the exit code and never calls `process.exit` — so asserting
-on it composes with any output-capture your test harness already has.
-`cli.help()` and `cli.complete(words)` return strings/arrays directly.
-
-A handler that shells out needs no mocking seam: it is a plain function
-and `Ctx` is a structural exported type, so hoist it to a const and unit
-test it against a hand-built ctx:
+`cli.run(argv)` is pure toward the process — it returns the exit code
+and never calls `process.exit`. A handler is a plain function and `Ctx`
+is structural, so hoist it and test against a hand-built ctx:
 
 ```ts
+import { toolkit } from "cmd-mesh"
 import type { Ctx } from "cmd-mesh"
 
 const list = async (input: { readonly dir: string }, ctx: Ctx) => {
   const result = await ctx.exec("git", ["ls-files", input.dir])
   return { files: result.stdout.split("\n").filter(Boolean) }
 }
-// in the declaration: run: list
-// in the test: await list({ dir: "src" }, { surface: "call", exec: fakeExec })
+
+const fake: Ctx = {
+  ...toolkit,
+  surface: "call",
+  resources: {},
+  exec: async () => ({ stdout: "src/index.ts\n", stderr: "", exitCode: 0 })
+}
+
+await list({ dir: "src" }, fake)
+```
+
+The MCP surface tests the same way over an in-memory pair:
+
+```ts
+import { Client } from "@modelcontextprotocol/sdk/client/index.js"
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
+
+const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+await tool.mcp.server().connect(serverTransport)
+const client = new Client({ name: "test", version: "0.0.0" })
+await client.connect(clientTransport)
+await client.callTool({ name: "tool_stats", arguments: {} })
 ```
 
 ## The two boundaries
@@ -177,50 +338,24 @@ Each command compiles to two ArkType types:
   (`depth: 4`), defaults evaluated through their morphs at compile time,
   same command-level `narrow` cross-field invariants.
 
-Both feed the same handler. `module.args` exposes the value-boundary type
-(`assert`/`allows`/`toJsonSchema`); the un-narrowed variant powers MCP input
-schemas (predicates are not JSON-Schema-representable).
-
-A parameter's `type` is any ArkType definition — string defs, object defs,
-tuple expressions, Type instances. A bare string at parameter position is
-the shorthand; an object at parameter position is always a descriptor, and
-its `type` field is verbatim ArkType. Structured parameters
-(`signKey: { type: { a: "string" } }`) take real objects on the value
-boundary and a JSON token on the CLI (`--sign-key '{"a":"…"}'` —
-input-domain JSON, morphed through the definition), and project full
-nested JSON Schemas to MCP.
+Both feed the same handler. `module.args` exposes the value-boundary
+type (`assert`/`allows`/`toJsonSchema`).
 
 ## Synchrony
 
-The typed functions keep their handler's own synchrony: a sync handler
-compiles to a sync function, and only a handler that returns a promise
-(async work, `ctx.exec`, wrapped externals) compiles to an async one —
-the return type tells you which. Input validation is eager and
-synchronous for every function (assert semantics: invalid input throws,
-even from an async-typed function); handler and output failures follow
-the handler's synchrony. `try { await fn(...) } catch` handles every case
-uniformly. Failures are the exported tagged classes (`InvalidInput`,
-`HandlerFailure`, `InvalidOutput`, `ExternalExit`, …), catchable by type.
-
-## Module surface
-
-| member | meaning |
-| --- | --- |
-| `module(input)` / `module.sub(input)` | the program itself: typed invocation, handler-synchronous (the argument is optional when every key is optional) |
-| `module.args` | compiled value-boundary ArkType surface (`assert`/`allows`/`toJsonSchema`) |
-| `module.main(argv?)` | the composed bin: head token `mcp` serves the MCP projection, anything else runs the CLI projection. Bare `main()` reads process argv and owns the exit code — a complete `bin.ts` is `await mytool.main()`. A program whose own vocabulary needs the word `mcp` uses `cli.run()` as its bin instead |
-| `module.cli.run(argv?)` | the CLI projection alone: parse, route, run, render, resolve exit code; routes `--help`, `--version`, and the `complete` protocol |
-| `module.cli.help(path?)` / `module.cli.complete(words)` | rendered help (usage, Arguments/Options with `[possible values: …]`, defaults, required markers, root Built-in row); completion candidates |
-| `module.mcp.tools` / `module.mcp.serve()` | the MCP projection (stdio, `@modelcontextprotocol/sdk`) — tools carry `outputSchema` and `annotations`, calls return schema-conformant `structuredContent` (non-object outputs wrapped under `result`) |
-| `module.spec` | the machine-readable self-description: a JSON-serializable tree of every command (path, aliases, examples, per-surface hiding, runnability, documented input/output JSON Schemas) and parameter (cli grammar, required/variadic/boolean, default value, env). Doc generators and UI generators consume this — never parse help text |
+A sync handler compiles to a sync function; only a handler that returns
+a promise compiles to an async one — the return type tells you which.
+Input validation is eager and synchronous on every surface. Failures are
+exported tagged classes (`InvalidInput`, `HandlerFailure`,
+`InvalidOutput`, `ExternalExit`, …), catchable by type.
 
 ## Declaration validation
 
-`program()`/`external()` validate the whole declaration at compile time and
-throw one `InvalidDeclaration` listing every problem with its
-command/parameter path — unparsable ArkType defs, flag token collisions
-(including aliases), variadic positionals that aren't last, boolean
-positionals, env fallback on positionals:
+`program()`/`external()` validate the whole declaration at compile time
+and throw one `InvalidDeclaration` listing every problem with its
+command/parameter path — unparsable ArkType defs, flag collisions,
+variadic positionals that aren't last, unknown safety values, examples
+that fail their own schema:
 
 ```
 invalid declaration:
@@ -228,184 +363,48 @@ invalid declaration:
   tool broken: flag --same is claimed by flag and other
 ```
 
-## The execution context
-
-Handlers and suggest generators receive `ctx` — interpreter-owned
-capability, not user dependency injection. Every member is mockable by
-handing a plain fake object (`Ctx` is structural) and mediated per
-invocation.
-
-**`ctx.exec(bin, args, options?)`** runs through the Effect process
-spawner. Two modes, both first-class:
-
-```ts
-// report mode (default): exit codes are data — branch on them.
-// `which`-probing and `git grep`'s 1-means-no-match live here.
-const probe = await ctx.exec("which", [candidate])
-if (probe.exitCode === 0) return probe.stdout.trim()
-
-// succeed-or-throw: declare the success set; any other exit throws
-// ExternalExit with the child's stderr. NEVER hand-roll this wrapper.
-await ctx.exec("pnpm", ["run", "build"], { cwd, stdio: "inherit", successCodes: [0] })
-```
-
-Options: `cwd`, `env`, `timeoutMs` (interruption kills the process),
-`stdio: "inherit"` to stream a long-running child to the terminal, and
-`successCodes` — the same vocabulary external commands use.
-
-**`ctx.project` and `ctx.workspace`** are
-[`package-management`](https://npmjs.com/package/package-management)'s
-own consumer surfaces, exposed whole — repository questions without
-spawning and parsing:
-
-```ts
-run: async (input, ctx) => {
-  const self = ctx.project("<package_folder>")   // manifest, mtime-cached
-  self.packageJson.version
-  self.isDependencyInPackageJson("arktype")
-  const pm = await self.findPackageManager()      // lockfile-detected
-  await pm.installPackage(["left-pad"])           // injection-guarded, batched
-}
-
-// the canonical monorepo completion source:
-const workspacePackages = (ctx: SuggestContext) => ctx.workspace.packageNames()
-//   … suggest: workspacePackages
-```
-
-## The repository toolkit
-
-The same library's path-anchored utilities are re-exported from
-`cmd-mesh` directly — import them wherever no invocation context is
-involved:
-
-```ts
-import { getPath, modifyJSONFile, project, workspace } from "cmd-mesh"
-
-getPath("<workspace_folder>/node_modules/.bin")   // absolute local-bin path
-modifyJSONFile("tsconfig.json", { "compilerOptions.strict": { value: true } })
-//   ^ comment-preserving JSONC edits, dot paths, sequential-edit safe
-```
-
-Also exported: `modifyJSON` (in-memory form), `createFile` (writes
-through missing directories), `definePackageManagerClient`,
-`importer`/`importMap`/`definePackage` (install-on-missing imports), and
-the `PackageJson`/`PackageInfo`/`PackageName` types.
-
 ## Guided invocation
 
 `cli.interactive(path?)` walks the same compiled model as prompts:
-select a command (descriptions as hints, `cli.default` preselected),
-answer one typed prompt per parameter — booleans confirm, enumerable
-literals select, suggestion sources autocomplete, everything else is
-text validated by the parameter's own token morph, so the prompt can
-never accept what the parser would reject — then preview the
-equivalent command line and dispatch it through the ordinary cli path
-(same rendering, same exit codes; cancelling exits 130). `path`
-pre-selects a starting command; without a terminal it exits 1.
+select a command, answer one typed prompt per parameter — each prompt
+validated by the parameter's own token morph, so a prompt can never
+accept what the parser would reject — preview the equivalent command
+line, dispatch through the ordinary cli path. A bin that wants bare
+terminal invocations to open it routes them itself:
 
 ```ts
-await mesh.cli.interactive()          // full walk from the root
-await mesh.cli.interactive(["build"]) // start at a command
+const argv = process.argv.slice(2)
+if (argv.length === 0 && process.stdin.isTTY === true) {
+  process.exitCode = await tool.cli.interactive()
+} else {
+  await tool.main()
+}
 ```
 
 ## Shell completion
 
 Completion runs on [`@bomb.sh/tab`](https://github.com/bombshell-dev/tab)
-— the Cobra-protocol completion engine used by Cloudflare, Nuxt, Astro,
-and Vitest. The compiled model projects into tab's registry, so the same
-declaration answers zsh, bash, fish, and powershell:
+— the Cobra-protocol engine used by Cloudflare, Nuxt, Astro, and
+Vitest. The same declaration answers zsh, bash, fish, and powershell:
 
 ```sh
-# print an installable script for your shell
-mesh complete zsh
-
-# what the shell script calls back into (value, description, directive)
-mesh complete -- snapshot --d
+mesh complete zsh              # print an installable script
+mesh complete -- snapshot --d  # what the shell calls back into
 ```
 
-```
---depth	traversal depth
-:4
-```
-
-Because the protocol re-invokes the bin, candidates are computed live:
-literal values enumerate from ArkType unions (`"'patch' | 'minor'"`
-tab-completes), `suggest: "folders" | "filepaths"` lists the working
-directory at completion time, and a Fig-style generator —
-`(ctx: SuggestContext) => Promise<string[]>` with `ctx.exec` available —
-resolves real branch names or workspace manifests on demand. Generator
-failures degrade to static candidates; completion never errors. Hoist
-generators to consts with annotated parameters: an inline arrow is
-context-sensitive and collapses the command's type inference.
-
-tab also registers completion delegation for package managers, so a
-locally-installed bin completes through `pnpm exec mesh <TAB>` without
-being on `PATH`.
-
-## CLI conventions
-
-The argv grammar follows the conventions the wider ecosystem settled on
-(the suite borrows citty's own test cases, including two citty cannot
-pass):
-
-```sh
-mesh snapshot ./public --depth=4      # = syntax, long or short (-d=4)
-mesh --verbose snapshot ./public      # flags are position-free; the
-                                      #   subcommand path is positional
-mesh snapshot ./public --verbose=off  # boolean literals: true/false,
-                                      #   yes/no, on/off, 1/0
-mesh build --no-minify src/a.ts       # --no-x negates any long boolean
-MESH_DEPTH=4 mesh snapshot ./public   # argv > env > default, all three
-                                      #   validated by the same token type
-mesh run -- --help                    # after --, every token is a value
-```
-
-When a wrapped external's positional value itself starts with `-`, the
-reconstructed argv fences it behind `--` so it reaches the binary as data
-— argv injection into `git rev-parse` and friends is structurally off.
-
-## CLI rendering
-
-Human output follows the grep convention: string results print raw, arrays
-of flat records print as aligned rows, everything else pretty JSON. Agents
-never see this — MCP responses carry JSON text plus `structuredContent`.
-
-## Program-level options
-
-Root `input` declares options every command receives — handler, typed
-call, schema, and spec alike, with argv accepting them on either side of
-the subcommand. A root `narrow` travels with them, so an invariant over
-program-level values holds wherever they are supplied. One inference
-bound: a root `narrow` beside *bare* child handlers can trip TS2589
-("excessively deep") — annotate those handlers' input parameter.
-
-## Nesting
-
-Mount modules by reference — `commands: { cache, git }` — at any depth; each
-mounted program/external carries its own full inference. Inline `commands`
-one level deep infer fully (bare `(input, ctx)` handlers included); deeper
-inline handlers lose contextual parameter types (a TypeScript
-reverse-mapped-inference limit), which surfaces as a loud implicit-any error
-— the fix is to mount a subprogram, which is the intended structure anyway.
+Candidates are computed live: ArkType unions enumerate, `suggest:
+"folders" | "filepaths"` lists the working directory, and a declared
+generator resolves real branch names on demand. Generator failures
+degrade to static candidates; completion never errors.
 
 ## Internals
 
-- Effect TS v4 throughout, per the repo praxis in [AGENTS.md](../../AGENTS.md).
-  Nothing Effect-shaped leaks: the public surface is plain values and
-  Promises via `ManagedRuntime`.
-- Process execution is `effect/unstable/process` (`ChildProcessSpawner`),
-  chosen over tinyexec: scoped interruption-safe child processes, streamed
-  output, typed exit codes, zero adapter code. `ctx.exec` in handlers is a
-  thin promise bridge over the same service.
-- Validation is ArkType only. Errors are `Data.TaggedError` classes —
-  Effect Schema is not used anywhere.
-
-## Planned projections
-
-- **Interactive CLI** (Ink): generated prompt flows from the same compiled
-  model — each parameter already carries type, description, completion
-  source, and default, which is exactly what a prompt generator needs. This
-  is the Fig lineage of the design: a rich spec that powers a human UI.
+- Effect TS v4 throughout. Nothing Effect-shaped leaks: the public
+  surface is plain values and Promises via `ManagedRuntime`.
+- Process execution is `effect/unstable/process`
+  (`ChildProcessSpawner`): scoped interruption-safe children, streamed
+  output, typed exit codes.
+- Validation is ArkType only. Errors are `Data.TaggedError` classes.
 
 ## Validation
 

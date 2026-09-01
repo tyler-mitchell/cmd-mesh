@@ -62,10 +62,19 @@ const commandLine = (defaultName: Option.Option<string>) =>
 const section = (title: string, lines: ReadonlyArray<string>): ReadonlyArray<string> =>
   lines.length === 0 ? [] : Array.prependAll(lines, ["", `${title}:`])
 
-const builtinLines = (cmd: CompiledCommand): ReadonlyArray<string> =>
+// the mcp rows belong to `main()`, the composed bin. a program whose bin
+// is `cli.run()` has no mcp surface, so listing them there would lie.
+const builtinLines = (cmd: CompiledCommand, mcp: boolean): ReadonlyArray<string> =>
   Array.flatMap(
     [
-      ["complete <shell>", "print a zsh, bash, fish, or powershell completion script"]
+      ["complete <shell>", "print a zsh, bash, fish, or powershell completion script"],
+      ...(mcp
+        ? ([
+          ["mcp", "serve this program to agents over stdio"],
+          ["mcp install", "register this program with an editor"],
+          ["mcp uninstall", "remove this program from an editor"]
+        ] as const)
+        : [])
     ] as const,
     ([name, description]) =>
       Option.isNone(Record.get(cmd.children, pipe(name, String.split(" "), Array.headNonEmpty)))
@@ -97,8 +106,12 @@ export const usageLine = (cmd: CompiledCommand): string => {
 }
 
 /** render help for one command from the compiled model. `builtins` adds
- * the reserved subcommands — pass it for the program root only */
-export const renderHelp = (cmd: CompiledCommand, options?: { readonly builtins?: boolean }): string => {
+ * the reserved subcommands — pass it for the program root only, and
+ * `mcp` with it when the bin is `main()` rather than `cli.run()` */
+export const renderHelp = (
+  cmd: CompiledCommand,
+  options?: { readonly builtins?: boolean; readonly mcp?: boolean }
+): string => {
   const flags = Array.filter(cmd.parameters, (p) => p.binding._tag === "flag" && !p.cliHidden)
   const visibleChildren = pipe(
     Record.toEntries(cmd.children),
@@ -120,7 +133,9 @@ export const renderHelp = (cmd: CompiledCommand, options?: { readonly builtins?:
       ),
       ...section("Options", Array.flatMap(flags, optionLines)),
       ...section("Examples", Array.map(cmd.cliExamples, (example) => `  ${example}`)),
-      ...(options?.builtins === true ? section("Built-in", builtinLines(cmd)) : [])
+      ...(options?.builtins === true
+        ? section("Built-in", builtinLines(cmd, options.mcp === true))
+        : [])
     ],
     Array.join("\n")
   )

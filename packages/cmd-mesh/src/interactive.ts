@@ -123,7 +123,8 @@ const candidatesFor = (
     )
   )
 
-const skippable = (p: CompiledParameter): boolean => !p.required || p.defaulted
+const skippable = (p: CompiledParameter): boolean =>
+  p.defaulted || (p.binding._tag === "positional" ? p.binding.optional : !p.required)
 
 /** one value for one parameter: boolean → confirm; enumerable units →
  * select; candidates → autocomplete; otherwise validated text. an

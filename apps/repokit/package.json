@@ -19,9 +19,11 @@
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
-    "cmd-mesh": "workspace:*"
+    "cmd-mesh": "workspace:*",
+    "repo-ops": "workspace:*"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "catalog:",
     "tsx": "catalog:",
     "vitest": "catalog:"
   }

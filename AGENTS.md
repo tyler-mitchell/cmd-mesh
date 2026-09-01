@@ -1,5 +1,26 @@
 # Agent Workflow
 
+## Autonomous operation
+
+When an autonomous mission is active (an advance gate, a goal, or an
+explicit self-drive instruction), the agent holds standing decision
+authority in this repository. Releases, publishes, deletions and
+demolitions, dependency changes, API and contract changes, new
+packages, and roadmap additions are the agent's own decisions under
+the mission. The agent waits ONLY on: spending money beyond
+established tooling, repositories or accounts the user explicitly
+marked hands-off, and destruction of data that exists nowhere else.
+Writing "awaiting your ruling" or requesting permission for work
+outside that reserved list is a named failure. Deference is churn;
+asking is idling.
+
+The work queue is `docs/internal/backlog.md`: the top unblocked item is
+always the next work. When the queue is empty, derive the next
+functional item from the repository's state, append it, and begin it.
+Producing substantially the same completion or holding statement two
+turns in a row is prohibited; a prior turn's own "this is blocked"
+classification is never evidence — re-derive from the repository.
+
 ## Shared branches
 
 - Daily branch: `main`
@@ -143,3 +164,51 @@ Binding for every agent implementing in this repository.
   non-Schema error constructors (`Data.TaggedError`).
 - Process execution goes through `effect/unstable/process` (`ChildProcess` +
   `ChildProcessSpawner`), never `node:child_process` directly.
+
+## Attaching repokit's MCP for development
+
+Attach repokit by running its SOURCE entrypoint under `mcp-reloader`, so
+an edit is one `reload` call away instead of a host restart:
+
+```jsonc
+// .mcp.json — gitignored: it carries this machine's own absolute paths
+{
+  "mcpServers": {
+    "repokit": {
+      "command": "<repo>/node_modules/.bin/mcp-reloader",
+      "args": ["--cwd", "<repo>/apps/repokit",
+               "--", "node", "--import", "tsx",
+               "--conditions=development", "src/bin.ts", "mcp"]
+    }
+  }
+}
+```
+
+The backend's tools surface unchanged and one extra tool appears:
+`reload`. After editing any of repokit, repo-ops or cmd-mesh, call
+`reload`, then call the tools normally — the connection stays up.
+
+`reload` swaps the implementation behind the tools a session already
+has. ADDING a command is different: the reload reports it in
+`toolsAdded` and the backend serves it, but a client attached before it
+existed cannot call it — measured 2026-08-30, the call answered "No
+such tool available". Editing is one `reload`; a new command still
+needs a restart.
+
+No `--build` is passed, because the launch line already runs source.
+
+`--conditions=development` is what makes that reach the OTHER packages.
+cmd-mesh and repo-ops each declare a `development` export condition
+pointing at `src`, so under that flag repokit imports their source
+rather than their `dist`. Without it only repokit's own edits land, and
+a cmd-mesh change stays invisible until every package downstream of it
+rebuilds — the dist tripwire. The condition is inert for published
+consumers, who never pass the flag.
+
+`--cwd` is repokit's own directory so `tsx` resolves from there, and the
+backend after `--` must be a direct executable — `mcp-reloader` cannot
+wrap an `npm`/shell wrapper. Call `reload` only when the server is idle;
+it re-spawns the backend, so a call in flight fails.
+
+Recreate the file with `node apps/repokit/dist/bin.js mcp install claude`
+for the plain (non-reloading) form, then edit in the wrapper.

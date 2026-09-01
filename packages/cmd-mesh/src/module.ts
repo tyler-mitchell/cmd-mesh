@@ -25,25 +25,45 @@ import {
 } from "./completion.js"
 import { Exec } from "./exec.js"
 import { promptArgv } from "./interactive.js"
-import { invokeParsed, invokeValues } from "./invoke.js"
-import { collectTools, inputSchema, serveMcp } from "./mcp.js"
+import {
+  detectMcpClient,
+  installMcpClient,
+  isMcpClientId,
+  mcpClientIds,
+  mcpDevInvocation,
+  mcpInvocation,
+  uninstallMcpClient
+} from "./install.js"
+import type { McpClientId } from "./install.js"
+import { externalArgv, invokeParsed, invokeValues, withResources } from "./invoke.js"
+import type { ExternalContracts, McpServerConfig } from "./types.js"
+import { buildMcpServer, collectTools, inputSchema, serveMcp } from "./mcp.js"
 import { Predicate } from "effect"
 import { renderHelp, renderResult, usageLine } from "./render.js"
-import { project, workspace } from "package-management"
 import { deepFrozen, specOf } from "./spec.js"
+import { toolkit } from "./toolkit.js"
 import type {
   Ctx,
   ExternalCallOptions,
   ExternalDecl,
   ExternalModule,
-  ParameterDef,
   ProgramDeclOf,
   ProgramModule,
+  ResourceSpec,
   Surface
 } from "./types.js"
 import { mounted } from "./types.js"
 
 type MeshRuntime = ManagedRuntime.ManagedRuntime<Exec, never>
+
+type Resources = Readonly<globalThis.Record<string, ResourceSpec<unknown>>>
+
+const resourceSpecs: unique symbol = Symbol("cmd-mesh/resource-specs")
+
+const mountedResources = (value: unknown, fallback: Resources): Resources =>
+  (Predicate.isObject(value) || Predicate.isFunction(value)) && resourceSpecs in value
+    ? (value as { readonly [resourceSpecs]: Resources })[resourceSpecs]
+    : fallback
 
 // the one sanctioned Object.assign seam in this package: a module IS a
 // function carrying its subtree, and Effect has no callable-with-properties
@@ -53,12 +73,15 @@ const callableModule = (
   props: globalThis.Record<string | symbol, unknown>
 ): any => Object.assign(fn, props)
 
-const makeCtx = (runtime: MeshRuntime, surface: Surface): Ctx => ({
+const makeCtx = (
+  runtime: MeshRuntime,
+  surface: Surface,
+  resources: Readonly<globalThis.Record<string, unknown>> = {}
+): Ctx => ({
+  ...toolkit,
   surface,
   exec: (bin, args, options) => runtime.runPromise(Exec.use((s) => s.exec(bin, args, options))),
-  // the library functions themselves — nothing constructed until called
-  project,
-  workspace
+  resources
 })
 
 /** run an invocation preserving the handler's synchrony: a fiber that
@@ -124,15 +147,44 @@ const argsOf = (cmd: CompiledCommand) => ({
   toJsonSchema: () => inputSchema(cmd)
 })
 
-const buildCommandModule = (cmd: CompiledCommand, runtime: MeshRuntime): any =>
+/** the shorthand call form: a command whose input is one required
+ * parameter takes that value bare. an array is a value; any other
+ * object is the input record itself, so the two forms never collide. */
+const soleRequired = (cmd: CompiledCommand): Option.Option<string> => {
+  const required = cmd.parameters.filter((p) => p.required)
+  const sole = required[0]
+  return required.length === 1 && sole !== undefined ? Option.some(sole.key) : Option.none()
+}
+
+const callInput = (cmd: CompiledCommand, input: unknown): unknown =>
+  input === undefined ? {}
+    : Predicate.isObject(input) ? input
+    : Option.match(soleRequired(cmd), {
+      onNone: () => input,
+      onSome: (key) => ({ [key]: input })
+    })
+
+const buildCommandModule = (
+  cmd: CompiledCommand,
+  runtime: MeshRuntime,
+  specs: Resources = {}
+): any =>
   callableModule(
     // the second argument is external-only execution context (cwd, env,
     // timeout); program commands ignore it by construction
     (input?: unknown, options?: ExternalCallOptions) =>
-      runAuto(runtime, invokeValues(cmd, input ?? {}, makeCtx(runtime, "call"), options)),
+      runAuto(
+        runtime,
+        withResources(cmd.path, specs, (resources) =>
+          invokeValues(cmd, callInput(cmd, input), makeCtx(runtime, "call", resources), options))
+      ),
     {
       args: argsOf(cmd),
-      ...Record.map(cmd.children, (child) => buildCommandModule(child, runtime))
+      // argv reconstruction is parse-only, so it stays synchronous
+      ...(cmd.kind === "external"
+        ? { argv: (input?: unknown) => Effect.runSync(externalArgv(cmd, callInput(cmd, input))) }
+        : {}),
+      ...Record.map(cmd.children, (child) => buildCommandModule(child, runtime, specs))
     }
   )
 
@@ -155,7 +207,7 @@ const completeEffect = (
       onNone: () => Effect.succeed([] as ReadonlyArray<string>),
       onSome: (generator) =>
         Effect.tryPromise(async () =>
-          generator({ exec: makeCtx(runtime, "call").exec, words, project, workspace })
+          generator({ ...toolkit, exec: makeCtx(runtime, "call").exec, words })
         ).pipe(
           Effect.orElseSucceed(() => [] as ReadonlyArray<string>)
         )
@@ -163,31 +215,130 @@ const completeEffect = (
     return completionLines(compiled, words, dynamic)
   })
 
+/** these verbs answer `--help` like every other command does — on
+ * stdout, exit 0. Reaching them through the usage error would print to
+ * stderr and exit 2, telling a script that asking was a mistake. */
+const askedForHelp = (rest: ReadonlyArray<string>): boolean =>
+  Array.some(rest, (token) => token === "--help" || token === "-h")
+
+const mcpVerbUsage = (verb: string, extra = ""): string =>
+  `Usage: mcp ${verb} ${extra}[client]\n\n`
+  + `  client                      one of: ${Array.join(mcpClientIds, ", ")}\n`
+  + `                              omitted, the client this project uses is detected`
+
+/** `mcp uninstall [client]`: remove this bin from an editor's config.
+ * Named clients only when detection finds nothing, same as install. */
+const uninstallEffect = (
+  name: string,
+  rest: ReadonlyArray<string>
+): Effect.Effect<number> =>
+  Effect.gen(function*() {
+    if (askedForHelp(rest)) {
+      yield* Console.log(mcpVerbUsage("uninstall"))
+      return 0
+    }
+    const named = Array.head(rest)
+    if (rest.length > 1 || (Option.isSome(named) && !isMcpClientId(named.value))) {
+      yield* Console.error(`mcp uninstall takes one of: ${Array.join(mcpClientIds, ", ")}`)
+      return 2
+    }
+    const client = Option.orElse(named as Option.Option<McpClientId>, detectMcpClient)
+    if (Option.isNone(client)) {
+      yield* Console.error(
+        `no mcp client found here — name one of: ${Array.join(mcpClientIds, ", ")}`
+      )
+      return 1
+    }
+    return yield* Effect.try(() => uninstallMcpClient(name, client.value)).pipe(
+      Effect.flatMap((removed) =>
+        Console.log(
+          removed ? `removed ${name} from ${client.value}` : `${name} was not registered with ${client.value}`
+        ).pipe(Effect.as(0))
+      ),
+      Effect.catch((error) => Console.error(`${error}`).pipe(Effect.as(1)))
+    )
+  })
+
+/** `mcp install [client]`: register this bin with an editor. The client
+ * is detected from the working directory unless one is named. */
+const installEffect = (
+  name: string,
+  rest: ReadonlyArray<string>,
+  server?: McpServerConfig
+): Effect.Effect<number> =>
+  Effect.gen(function*() {
+    if (askedForHelp(rest)) {
+      yield* Console.log(
+        `${mcpVerbUsage("install", "[--dev] ")}\n`
+          + `  --dev                       supervise the server so an edit is one reload,\n`
+          + `                              instead of restarting the client`
+      )
+      return 0
+    }
+    // `--dev` supervises the server so an edit is one `reload` call
+    const dev = Array.contains(rest, "--dev")
+    const positional = Array.filter(rest, (token) => token !== "--dev")
+    const named = Array.head(positional)
+    if (positional.length > 1 || (Option.isSome(named) && !isMcpClientId(named.value))) {
+      yield* Console.error(
+        `mcp install takes [--dev] and one of: ${Array.join(mcpClientIds, ", ")}`
+      )
+      return 2
+    }
+    const client = Option.isSome(named) && isMcpClientId(named.value)
+      ? Option.some(named.value)
+      : detectMcpClient()
+    if (Option.isNone(client)) {
+      yield* Console.error(
+        `no editor config found here — name one of: ${Array.join(mcpClientIds, ", ")}`
+      )
+      return 2
+    }
+    // the program's own name: what its package `bin` puts on PATH, and
+    // the only value that resolves once the host runs it detached
+    return yield* Effect.try(() => {
+      const base = mcpInvocation(name)
+      return installMcpClient(name, dev ? mcpDevInvocation(base) : base, client.value, server)
+    }).pipe(
+      Effect.flatMap((file) => Console.log(`registered ${name} in ${file}`).pipe(Effect.as(0))),
+      Effect.catch((error) => Console.error(`${error}`).pipe(Effect.as(1)))
+    )
+  })
+
 const serveEffect = (
   runtime: MeshRuntime,
   compiled: CompiledCommand,
-  version: string
-): Effect.Effect<never, Error> =>
+  version: string,
+  specs: Resources
+): Effect.Effect<void, Error> =>
   serveMcp(
     compiled,
     { name: compiled.name, version },
-    (cmd, input, ctx) => invokeValues(cmd, input, ctx),
+    (cmd, input, ctx) =>
+      withResources(cmd.path, specs, (resources) => invokeValues(cmd, input, { ...ctx, resources })),
     (effect, signal) => runAbortable(runtime, effect, signal),
-    makeCtx(runtime, "mcp")
+    makeCtx(runtime, "mcp"),
+    deepFrozen(specOf(compiled, version))
   )
 
 const runCli = (
   runtime: MeshRuntime,
   compiled: CompiledCommand,
   version: string,
+  specs: Resources,
   argv: ReadonlyArray<string>,
-  binName?: string
+  options?: { readonly binName?: string | undefined; readonly mcp?: boolean }
 ): Effect.Effect<number, never, Exec> =>
   Effect.gen(function*() {
+    const binName = options?.binName
+    const help = (command: CompiledCommand) =>
+      renderHelp(command, {
+        builtins: command === compiled,
+        mcp: options?.mcp === true
+      })
     const routed = yield* routeArgv(compiled, argv)
     return yield* Match.value(routed).pipe(
-      Match.tag("help", ({ command }) =>
-        Console.log(renderHelp(command, { builtins: command === compiled })).pipe(Effect.as(0))),
+      Match.tag("help", ({ command }) => Console.log(help(command)).pipe(Effect.as(0))),
       Match.tag("version", () => Console.log(version).pipe(Effect.as(0))),
       Match.tag("complete", ({ words }) =>
         Effect.gen(function*() {
@@ -208,10 +359,11 @@ const runCli = (
         }).pipe(Effect.as(0))),
       Match.tag("run", ({ command, record, json }) =>
         isGroup(command)
-          ? Console.log(renderHelp(command, { builtins: command === compiled })).pipe(Effect.as(0))
+          ? Console.log(help(command)).pipe(Effect.as(0))
           : Effect.gen(function*() {
             const parsed = yield* parseTokens(command, record)
-            const result = yield* invokeParsed(command, parsed, makeCtx(runtime, "cli"))
+            const result = yield* withResources(command.path, specs, (resources) =>
+              invokeParsed(command, parsed, makeCtx(runtime, "cli", resources)))
             // --json > per-command render override > default human rendering
             const text = json
               ? JSON.stringify(result, null, 2) ?? ""
@@ -296,15 +448,20 @@ const errorText = (error: unknown): string =>
 /** interpret a program declaration into its callable module */
 export const program = <
   const Name extends string,
-  const RootIn extends globalThis.Record<string, ParameterDef> = {},
+  const RootIn extends object = {},
   const RootOut = undefined,
   RootR = void,
   const Cs = {},
-  Rs = {}
+  Rs = {},
+  const Rsrc extends Readonly<globalThis.Record<string, ResourceSpec<any>>> = {},
+  // the result is deferred through a type parameter, as ArkType's own
+  // `type` does: computing it in the return position instantiates eagerly
+  r = ProgramModule<RootIn, RootOut, RootR, Cs, Rs>
 >(
-  def: ProgramDeclOf<Name, RootIn, RootOut, RootR, Cs, Rs>
-): ProgramModule<RootIn, RootOut, RootR, Cs, Rs> => {
+  def: ProgramDeclOf<Name, RootIn, RootOut, RootR, Cs, Rs, Rsrc>
+): r extends infer _ ? _ : never => {
   const compiled = compileCommand(def.name, [def.name], def as never)
+  const specs: Resources = def.resources ?? {}
   const runtime: MeshRuntime = ManagedRuntime.make(Exec.layer)
   // the layer is sync; building it eagerly keeps the first typed call as
   // synchronous as every later one
@@ -338,10 +495,23 @@ export const program = <
     )
 
   return callableModule(
-    (input?: unknown) => runAuto(runtime, invokeValues(compiled, input ?? {}, makeCtx(runtime, "call"))),
+    (input?: unknown) =>
+      runAuto(
+        runtime,
+        withResources(compiled.path, specs, (resources) =>
+          invokeValues(compiled, input ?? {}, makeCtx(runtime, "call", resources)))
+      ),
     {
       args: argsOf(compiled),
-      ...Record.map(compiled.children, (child) => buildCommandModule(child, runtime)),
+      ...Record.map(compiled.children, (child, name) =>
+        buildCommandModule(
+          child,
+          runtime,
+          mountedResources(
+            (def.commands as Readonly<globalThis.Record<string, unknown>> | undefined)?.[name],
+            specs
+          )
+        )),
       // main() is the composed bin: the head token `mcp` serves the mcp
       // projection, everything else is the cli projection. the projections
       // themselves stay separate — this is the one named composition point,
@@ -352,19 +522,29 @@ export const program = <
         // serving forever on it would hide the mistake
         const run = Array.head(tokens).pipe(Option.contains("mcp"))
           ? tokens.length > 1
-            ? runtime.runPromise(
-              Console.error(
-                `mcp takes no further arguments (got: ${Array.join(Array.drop(tokens, 1), " ")})`
-              ).pipe(Effect.as(2))
-            )
+            ? tokens[1] === "install"
+              ? runtime.runPromise(
+                installEffect(compiled.name, Array.drop(tokens, 2), def.mcp?.server)
+              )
+              : tokens[1] === "uninstall"
+              ? runtime.runPromise(uninstallEffect(compiled.name, Array.drop(tokens, 2)))
+              : runtime.runPromise(
+                Console.error(
+                  `mcp takes no further arguments (got: ${Array.join(Array.drop(tokens, 1), " ")})`
+                ).pipe(Effect.as(2))
+              )
             : runtime.runPromise(
-              serveEffect(runtime, compiled, version).pipe(
+              serveEffect(runtime, compiled, version, specs).pipe(
                 Effect.as(0),
                 Effect.catch((error) => Console.error(`${error}`).pipe(Effect.as(1)))
               )
             )
           : runtime.runPromise(
-            runCli(runtime, compiled, version, tokens, argv === undefined ? invokedBinName() : undefined)
+            runCli(runtime, compiled, version, specs, tokens, {
+              // main() IS the composed bin, so its help names the mcp surface
+              mcp: true,
+              ...(argv === undefined ? { binName: invokedBinName() } : {})
+            })
           )
         return argv === undefined ? asBin(run) : run
       },
@@ -378,8 +558,9 @@ export const program = <
               runtime,
               compiled,
               version,
+              specs,
               argv ?? Array.drop(globalThis.process.argv, 2),
-              argv === undefined ? invokedBinName() : undefined
+              argv === undefined ? { binName: invokedBinName() } : undefined
             )
           )
           return argv === undefined ? asBin(run) : run
@@ -398,30 +579,43 @@ export const program = <
             : runtime.runPromise(
               promptArgv(
                 compiled,
-                (words) => ({ exec: makeCtx(runtime, "cli").exec, words, project, workspace }),
+                (words) => ({ ...toolkit, exec: makeCtx(runtime, "cli").exec, words }),
                 path ?? []
               ).pipe(
-                Effect.flatMap((argv) => runCli(runtime, compiled, version, argv)),
+                Effect.flatMap((argv) => runCli(runtime, compiled, version, specs, argv)),
                 Effect.catchTag("PromptCancelled", () => Effect.succeed(130))
               )
             )
       },
       mcp: {
         tools: deepFrozen(Array.map(collectTools(compiled), (t) => t.tool)),
-        serve: () => runtime.runPromise(Effect.asVoid(serveEffect(runtime, compiled, version)))
+        serve: () => runtime.runPromise(Effect.asVoid(serveEffect(runtime, compiled, version, specs))),
+        server: () =>
+          buildMcpServer(
+            compiled,
+            { name: compiled.name, version },
+            (cmd, input, ctx) =>
+              withResources(cmd.path, specs, (resources) => invokeValues(cmd, input, { ...ctx, resources })),
+            (effect, signal) => runAbortable(runtime, effect, signal),
+            makeCtx(runtime, "mcp"),
+            deepFrozen(specOf(compiled, version))
+          )
       },
       spec: deepFrozen(specOf(compiled, version)),
-      [mounted]: compiled
+      [mounted]: compiled,
+      [resourceSpecs]: specs
     }
   )
 }
 
 /** interpret an external-binary declaration into its callable module */
-export const external = <const D extends ExternalDecl>(def: D): ExternalModule<D> => {
+export const external = <const D extends ExternalDecl, r = ExternalModule<D>>(
+  def: D & { readonly commands?: ExternalContracts<NoInfer<D>["commands"]> }
+): r extends infer _ ? _ : never => {
   const compiled = compileExternal(def)
   const runtime: MeshRuntime = ManagedRuntime.make(Exec.layer)
   return {
     ...Record.map(compiled.children, (child) => buildCommandModule(child, runtime)),
     [mounted]: compiled
-  } as ExternalModule<D>
+  } as never
 }

@@ -73,6 +73,8 @@ export const specOf = (cmd: CompiledCommand, version?: string): CommandSpec => (
   // internal nodes need an own handler
   runnable: cmd.kind === "external" ? Option.isSome(cmd.external) : Option.isSome(cmd.run),
   external: cmd.kind === "external",
+  ...Option.match(cmd.safety, { onNone: () => ({}), onSome: (safety) => ({ safety }) }),
+  ...(cmd.mcpExamples.length === 0 ? {} : { mcpExamples: cmd.mcpExamples }),
   ...Option.match(cmd.external, {
     onNone: () => ({}),
     onSome: ({ successCodes }) => ({ successCodes })

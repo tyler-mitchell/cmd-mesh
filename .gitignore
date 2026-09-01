@@ -13,6 +13,10 @@ dist/
 .turbo/
 .pnpm-debug.log*
 
-docs/audit/
+docs/internal/
+.tmp/
 
-packages/spine
+# `mcp install` writes this machine's own absolute paths into it
+.mcp.json
+# transient: the emit test writes a draft here to compile and run it
+.generated/

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { external, program } from "../src/index.js"
-import { InvalidDeclaration } from "../src/errors.js"
+import { ExternalExit, InvalidDeclaration } from "../src/errors.js"
 import { captureCli } from "./fixtures/capture.js"
 
 // Wrapped binaries.
@@ -18,24 +18,24 @@ describe("argv reconstruction", () => {
       status: {
         description: "working tree status",
         input: {
-          short: { type: "boolean", cli: "--short, -s" },
-          branch: { type: "boolean", cli: "--branch, -b" }
+          short: [["boolean", "@", { cli: "--short, -s" }], "=", false],
+          branch: [["boolean", "@", { cli: "--branch, -b" }], "=", false]
         },
         output: "string"
       },
       revParse: {
         description: "resolve a revision",
         input: {
-          rev: { type: "string", cli: "<rev>" },
-          verify: { type: "boolean", cli: "--verify" }
+          rev: ["string", "@", { cli: "<rev>" }],
+          verify: [["boolean", "@", { cli: "--verify" }], "=", false]
         },
         output: "string"
       },
       "rev-parse": {
         description: "resolve a revision, spelled as the binary spells it",
         input: {
-          verify: { type: "boolean", cli: "--verify" },
-          rev: { type: "string", cli: "<rev>" }
+          verify: [["boolean", "@", { cli: "--verify" }], "=", false],
+          rev: ["string", "@", { cli: "<rev>" }]
         },
         output: "string"
       }
@@ -54,8 +54,8 @@ describe("argv reconstruction", () => {
         mark: {
           description: "echo argv",
           input: {
-            tag: { type: "string", cli: "--tag <tags...>" },
-            item: { type: "string", cli: "<item>" }
+            tag: [["string[]", "@", { cli: "--tag <tags...>" }], "=", () => []],
+            item: ["string", "@", { cli: "<item>" }]
           },
           output: "string"
         }
@@ -72,7 +72,7 @@ describe("argv reconstruction", () => {
       commands: {
         say: {
           description: "echo argv",
-          input: { words: { type: "string", cli: "<...words>" } },
+          input: { words: ["string[] >= 1", "@", { cli: "<...words>" }] },
           output: "string"
         }
       }
@@ -91,8 +91,8 @@ describe("argv reconstruction", () => {
         run: {
           description: "echo argv",
           input: {
-            branch: { type: "boolean", cli: "--branch" },
-            short: { type: "boolean", cli: "--short" }
+            branch: [["boolean", "@", { cli: "--branch" }], "=", false],
+            short: [["boolean", "@", { cli: "--short" }], "=", false]
           },
           output: "string"
         }
@@ -128,11 +128,7 @@ describe("mounted modules through the parent cli", () => {
       say: {
         description: "print a word",
         input: {
-          word: {
-            type: "string",
-            suggest: ["hello", "world"],
-            cli: "<word>"
-          }
+          word: ["string", "@", { suggest: ["hello", "world"], cli: "<word>" }]
         },
         output: "string"
       }
@@ -186,7 +182,7 @@ describe("mounted modules through the parent cli", () => {
         grep: {
           description: "search",
           successCodes: [0, 1],
-          input: { pattern: { type: "string", cli: "<pattern>" } },
+          input: { pattern: ["string", "@", { cli: "<pattern>" }] },
           output: "string"
         }
       }
@@ -204,7 +200,7 @@ describe("mounted modules through the parent cli", () => {
       commands: {
         count: {
           description: "count",
-          input: { word: { type: "string", cli: "<word>" } },
+          input: { word: ["string", "@", { cli: "<word>" }] },
           output: "string.numeric.parse"
         }
       }
@@ -226,7 +222,7 @@ describe("mounted modules through the parent cli", () => {
           commands: {
             up: {
               description: "bring up",
-              input: { detach: { type: "boolean", cli: "--detach, -d" } },
+              input: { detach: [["boolean", "@", { cli: "--detach, -d" }], "=", false] },
               output: "string"
             }
           }
@@ -242,11 +238,11 @@ describe("mounted modules through the parent cli", () => {
     expect(() =>
       external({
         name: "clash",
-        input: { dir: { type: "string", cli: "-C" } },
+        input: { dir: ["string", "@", { cli: "-C" }] },
         commands: {
           run: {
             description: "run",
-            input: { dir: { type: "string", cli: "-C" } },
+            input: { dir: ["string", "@", { cli: "-C" }] },
             output: "string"
           }
         }
@@ -263,14 +259,14 @@ describe("mounted modules through the parent cli", () => {
           description: "destructive wipe",
           cli: { examples: ["backup wipe --confirm"] },
           mcp: { annotations: { destructiveHint: true } },
-          input: { confirm: { type: "boolean", cli: "--confirm" } },
+          input: { confirm: [["boolean", "@", { cli: "--confirm" }], "=", false] },
           output: "string"
         }
       }
     })
     const mounted = program({ name: "host3", version: "0.0.0", commands: { backup } })
     const tool = mounted.mcp.tools.find((t) => t.name === "host3_backup_wipe")!
-    expect(tool.annotations).toEqual({ destructiveHint: true })
+    expect(tool.annotations).toEqual({ readOnlyHint: false, destructiveHint: true })
     expect(mounted.cli.help(["backup", "wipe"])).toMatch(/backup wipe --confirm/)
   })
 })
@@ -282,17 +278,17 @@ describe("global versus command options (level = placement)", () => {
   const git = external({
     name: "git",
     input: {
-      repo: { type: "string", description: "run as if started in this directory", cli: "-C" }
+      "repo?": ["string", "@", { description: "run as if started in this directory", cli: "-C" }]
     },
     commands: {
       status: {
         description: "working tree status",
-        input: { short: { type: "boolean", cli: "--short" } },
+        input: { short: [["boolean", "@", { cli: "--short" }], "=", false] },
         output: "string"
       },
       log: {
         description: "commit log",
-        input: { count: { type: "string.integer.parse = '2'", cli: "-n" } },
+        input: { count: [["string.integer.parse", "@", { cli: "-n" }], "=", "2"] },
         output: "string"
       }
     }
@@ -317,7 +313,7 @@ describe("global versus command options (level = placement)", () => {
   })
 
   it("combines both levels in one invocation", async () => {
-    const log = await git.log({ repo: process.cwd(), count: 1 })
+    const log = await git.log({ repo: process.cwd(), count: "1" })
     expect(log.split("\n").filter((line) => line.startsWith("commit ")).length).toBe(1)
   })
 })
@@ -329,7 +325,7 @@ describe("per-invocation execution options", () => {
       commands: {
         "rev-parse": {
           description: "resolve",
-          input: { toplevel: { type: "boolean", cli: "--show-toplevel" } },
+          input: { toplevel: [["boolean", "@", { cli: "--show-toplevel" }], "=", false] },
           output: "string"
         }
       }
@@ -349,8 +345,8 @@ describe("expected exit codes", () => {
         description: "search tracked files",
         successCodes: [0, 1],
         input: {
-          pattern: { type: "string", cli: "<pattern>" },
-          path: { type: "string", cli: "[path]" }
+          pattern: ["string", "@", { cli: "<pattern>" }],
+          "path?": ["string", "@", { cli: "[path]" }]
         },
         output: "string"
       }
@@ -367,8 +363,11 @@ describe("expected exit codes", () => {
 
   it("still fails on codes outside the declared set", async () => {
     // a nonexistent pathspec makes git grep exit 128, outside [0, 1]
-    await expect(git.grep({ pattern: "x", path: "definitely/not/here-xyz" }))
-      .rejects.toThrow(/exited with/)
+    // The class is the contract: callers catch ExternalExit by type.
+    const failure = await git.grep({ pattern: "x", path: "definitely/not/here-xyz" })
+      .then(() => undefined, (error: unknown) => error)
+    expect(failure).toBeInstanceOf(ExternalExit)
+    expect(`${failure}`).toMatch(/exited with/)
   })
 })
 
@@ -378,11 +377,14 @@ describe("external declaration validation", () => {
       external({
         name: "tool",
         commands: {
-          first: { input: { bad: { type: "not.a.keyword" } } },
+          // now rejected at the declaration site too; the runtime
+          // diagnostic below is what this case is really asserting
+          // @ts-expect-error — 'not.a.keyword' is unresolvable
+          first: { input: { bad: "not.a.keyword" } },
           second: {
             input: {
-              a: { type: "string", cli: "--same" },
-              b: { type: "string", cli: "--same" }
+              a: ["string", "@", { cli: "--same" }],
+              b: ["string", "@", { cli: "--same" }]
             }
           }
         }
@@ -395,6 +397,97 @@ describe("external declaration validation", () => {
       expect(message).toMatch(/--same is claimed by a and b/)
     }
   })
+
+  // This error was in repo-ops. It stopped the completion for git add.
+  // The compiler now catches it at the declaration site as well, so the
+  // runtime diagnostic is the second line of defence rather than the only one.
+  it("rejects a misspelled parameter field", () => {
+    expect(() =>
+      external({
+        name: "tool",
+        commands: {
+          // @ts-expect-error — `complete` is not a cli config field
+          add: { input: { paths: ["string[]", "@", { cli: { usage: "<...paths>", complete: "filepaths" } }] } }
+        }
+      })
+    ).toThrow(/CMSH1013.*cli\.complete/s)
+  })
+
+  // TypeScript rejects this field. A JavaScript caller has no check.
+  it("rejects a misspelled mcp field instead of exposing the command", () => {
+    expect(() =>
+      external({
+        name: "tool",
+        commands: { secret: { description: "internal", mcp: { hiden: true } } }
+      } as never)
+    ).toThrow(/CMSH1013.*mcp\.hiden/s)
+  })
+
+  it("rejects a misspelled command field", () => {
+    expect(() =>
+      external({ name: "tool", commands: { go: { description: "go", saftey: "read" } } })
+    ).toThrow(/CMSH1013.*saftey/s)
+  })
+
+  it("takes a bare type string as a whole parameter and derives its flag", async () => {
+    const probe = external({
+      name: "probe-bare",
+      bin: "echo",
+      commands: {
+        mark: { input: { short: "boolean", tag: "string" }, output: "string" }
+      }
+    })
+    await expect(probe.mark({ short: true, tag: "x" })).resolves.toBe("mark --short --tag x\n")
+  })
+
+  it("names the exit code without a dangling colon when stderr was streamed", async () => {
+    const { ExternalExit } = await import("../src/errors.js")
+    const streamed = new ExternalExit({ bin: "pnpm", args: [], exitCode: 1, stderr: "" })
+    expect(streamed.message).toBe("pnpm exited with 1")
+    const captured = new ExternalExit({ bin: "git", args: [], exitCode: 128, stderr: "fatal: bad\n" })
+    expect(captured.message).toBe("git exited with 128: fatal: bad")
+  })
+
+  it("rejects a misspelled parameter mcp field, which would advertise a secret", () => {
+    expect(() =>
+      external({
+        name: "tool",
+        commands: {
+          push: {
+            input: { token: ["string", "@", { cli: "--token", mcp: { hiden: true } }] as never }
+          }
+        }
+      })
+    ).toThrow(/CMSH1013.*hiden/s)
+  })
+
+  it("rejects a suggestion source that lists nothing", () => {
+    expect(() =>
+      external({
+        name: "tool",
+        commands: { add: { input: { paths: ["string", "@", { suggest: "flepaths", cli: "<paths>" }] } } }
+      })
+    ).toThrow(/CMSH1014.*flepaths/s)
+  })
+
+  it("anchors every issue at its own errors reference section", () => {
+    expect(() =>
+      external({
+        name: "tool",
+        commands: { add: { input: { paths: ["string", "@", { suggest: "flepaths", cli: "<paths>" }] } } }
+      })
+    ).toThrow(/skills\/cmd-mesh\/references\/errors\.md#cmsh1014/)
+  })
+
+  it("rejects a misspelled metadata key", () => {
+    expect(() =>
+      external({
+        name: "tool",
+        // @ts-expect-error — `sugest` is not a declared metadata key
+        commands: { go: { input: { where: ["string", "@", { sugest: "folders", cli: "<where>" }] } } }
+      })
+    ).toThrow(/CMSH1013.*sugest/s)
+  })
 })
 
 describe("externals mounted in a program", () => {
@@ -403,7 +496,7 @@ describe("externals mounted in a program", () => {
     commands: {
       status: {
         description: "working tree status",
-        input: { short: { type: "boolean", cli: "--short, -s" } },
+        input: { short: [["boolean", "@", { cli: "--short, -s" }], "=", false] },
         output: "string"
       }
     }

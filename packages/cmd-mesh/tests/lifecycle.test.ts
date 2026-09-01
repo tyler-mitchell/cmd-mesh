@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { program } from "../src/index.js"
+import { program, toolkit } from "../src/index.js"
 
 // Lifecycle and process execution.
 //
@@ -7,6 +7,114 @@ import { program } from "../src/index.js"
 // a watch mode, a test harness importing the module — depends on
 // concurrent calls being independent and child output not being
 // truncated.
+
+describe("program resources", () => {
+  const makeTool = (log: Array<string>) =>
+    program({
+      name: "tool",
+      resources: {
+        a: {
+          acquire: () => {
+            log.push("acquire:a")
+            return "A"
+          },
+          release: () => {
+            log.push("release:a")
+          }
+        },
+        b: {
+          acquire: async () => {
+            log.push("acquire:b")
+            return "B"
+          },
+          release: async () => {
+            log.push("release:b")
+          }
+        }
+      },
+      commands: {
+        use: {
+          output: "string",
+          run: (_input, ctx) => ctx.resources.a.toLowerCase() + ctx.resources.b
+        },
+        boom: {
+          run: () => {
+            throw new Error("boom")
+          }
+        }
+      }
+    })
+
+  it("acquires before the handler and releases in reverse order after it", async () => {
+    const log: Array<string> = []
+    await expect(makeTool(log).use()).resolves.toBe("aB")
+    expect(log).toEqual(["acquire:a", "acquire:b", "release:b", "release:a"])
+  })
+
+  it("keeps a synchronous handler synchronous when every resource hook is synchronous", () => {
+    const log: Array<string> = []
+    const syncTool = program({
+      name: "sync-tool",
+      resources: {
+        value: {
+          acquire: () => {
+            log.push("acquire")
+            return "ready"
+          },
+          release: () => {
+            log.push("release")
+          }
+        }
+      },
+      commands: {
+        read: { output: "string", run: (_input, ctx) => ctx.resources.value }
+      }
+    })
+
+    expect(syncTool.read()).toBe("ready")
+    expect(log).toEqual(["acquire", "release"])
+  })
+
+  it("releases even when the handler throws", async () => {
+    const log: Array<string> = []
+    await expect(makeTool(log).boom()).rejects.toThrow(/boom/)
+    expect(log).toEqual(["acquire:a", "acquire:b", "release:b", "release:a"])
+  })
+
+  it("releases when the cli surface dispatches the handler", async () => {
+    const log: Array<string> = []
+    expect(await makeTool(log).cli.run(["use"])).toBe(0)
+    expect(log).toEqual(["acquire:a", "acquire:b", "release:b", "release:a"])
+  })
+
+  it("acquires and releases around an mcp tool call", async () => {
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js")
+    const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js")
+    const log: Array<string> = []
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    await makeTool(log).mcp.server().connect(serverTransport)
+    const client = new Client({ name: "witness", version: "0.0.0" })
+    await client.connect(clientTransport)
+    const result = await client.callTool({ name: "tool_use", arguments: {} })
+    expect((result.content as ReadonlyArray<{ text: string }>)[0]!.text).toContain("aB")
+    expect(log).toEqual(["acquire:a", "acquire:b", "release:b", "release:a"])
+    await client.close()
+  })
+
+  it("preserves a child program's resources when it is mounted", () => {
+    const child = program({
+      name: "child",
+      resources: {
+        token: { acquire: () => "child-token", release: () => undefined }
+      },
+      commands: {
+        read: { output: "string", run: (_input, ctx) => ctx.resources.token }
+      }
+    })
+    const parent = program({ name: "parent", commands: { child } })
+    expect(parent.child.read()).toBe("child-token")
+  })
+})
 
 const makeCounter = () =>
   program({
@@ -16,7 +124,7 @@ const makeCounter = () =>
     commands: {
       inc: {
         description: "return the number it was given",
-        input: { by: { type: "string.integer.parse = '1'", cli: "--by" } },
+        input: { by: [["string.integer.parse", "@", { cli: "--by" }], "=", "1"] },
         output: { value: "number" },
         run: async (input) => {
           await new Promise((resolve) => setTimeout(resolve, 1))
@@ -33,7 +141,7 @@ const shell = program({
   commands: {
     echo: {
       description: "echo through a child process",
-      input: { text: { type: "string", cli: "<text>" } },
+      input: { text: ["string", "@", { cli: "<text>" }] },
       run: async (_input, ctx) => {
         const result = await ctx.exec("printf", ["%s", _input.text])
         return { stdout: result.stdout, exitCode: result.exitCode }
@@ -95,7 +203,7 @@ describe("concurrent invocation", () => {
   it("keeps parallel calls of one command independent", async () => {
     const counter = makeCounter()
     const results = await Promise.all(
-      Array.from({ length: 50 }, (_, i) => counter.inc({ by: i }))
+      Array.from({ length: 50 }, (_, i) => counter.inc({ by: `${i}` }))
     )
     expect(results.map((r) => r.value)).toEqual(Array.from({ length: 50 }, (_, i) => i))
   })
@@ -192,17 +300,16 @@ describe("cancellation", () => {
     const runtime = ManagedRuntime.make(Exec.layer)
     const controller = new AbortController()
     const started = Date.now()
-    const { project, workspace } = await import("../src/index.js")
     const pending = runAbortable(
       runtime as never,
       invokeValues(
         compiled.children["wait"] as never,
         {},
         {
+          ...toolkit,
           surface: "call",
           exec: (bin, args, o) => runtime.runPromise(Exec.use((s) => s.exec(bin, args, o))),
-          project,
-          workspace
+          resources: {}
         }
       ),
       controller.signal

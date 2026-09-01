@@ -1,0 +1,47 @@
+{
+  "name": "repo-ops",
+  "version": "0.0.0",
+  "description": "The closed-distribution repository operations (Bumpy release procedure, CI runs, dependabot PRs) as mountable cmd-mesh modules.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tyler-mitchell/cmd-mesh.git",
+    "directory": "packages/repo-ops"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "files": [
+    "dist",
+    "skill-data",
+    "src"
+  ],
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json",
+    "prepare": "pnpm run build",
+    "test": "vitest run",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "check:pack": "pnpm run build && publint && attw --pack . --profile esm-only",
+    "check": "pnpm run typecheck && pnpm run test && pnpm run check:pack"
+  },
+  "dependencies": {
+    "cmd-mesh": "workspace:*"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "publint": "^0.3.24",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -30,7 +30,7 @@ describe("token and value boundaries agree", () => {
 
   it("agrees on parsed integers", async () => {
     const cli = await throughCli(deploy, ["push", "api", "--replicas", "7"])
-    expect(cli).toEqual(deploy.push({ service: "api", replicas: 7 }))
+    expect(cli).toEqual(deploy.push({ service: "api", replicas: "7" }))
   })
 
   it("agrees on enum members", async () => {
@@ -64,7 +64,7 @@ describe("token and value boundaries agree", () => {
       commands: {
         go: {
           description: "go",
-          input: { port: { type: type("string.integer.parse"), cli: "--port" } },
+          input: { "port?": [type("string.integer.parse"), "@", { cli: "--port" }] },
           output: { "port?": "number" },
           run: (input: { port?: number }) =>
             input.port === undefined ? {} : { port: input.port }
@@ -73,7 +73,7 @@ describe("token and value boundaries agree", () => {
     })
     const cli = await throughCli(inst, ["go", "--port", "8080"])
     expect(cli).toEqual({ port: 8080 })
-    expect(cli).toEqual(inst.go({ port: 8080 }))
+    expect(cli).toEqual(inst.go({ port: "8080" }))
   })
 
   it("agrees on structured parameters given as a JSON token", async () => {
@@ -263,18 +263,22 @@ describe("invocations stay isolated across a long-lived module", () => {
         tune: {
           description: "tune",
           input: {
-            opts: {
-              type: type({ retries: "number" }).default(() => ({ retries: 1 })),
-              cli: "--opts"
-            }
+            opts: [
+              [
+                type({ retries: "number" }),
+                "@",
+                { cli: "--opts" }
+              ],
+              "=",
+              () => ({ retries: 1 })
+            ]
           },
           output: { retries: "number" },
-          // Type-instance defaults are runtime-honored but statically
-          // optional (defaultness is not detectable on an instance) —
-          // documented bound, hence the `!`
-          run: (input: { readonly opts?: { retries: number } }) => {
-            const seen = input.opts!.retries
-            input.opts!.retries = 99
+          // a defaulted key is PRESENT for the handler: `.default()` is the
+          // ["=", value] tuple, so defaultness is now statically visible
+          run: (input) => {
+            const seen = input.opts.retries
+            input.opts.retries = 99
             return { retries: seen }
           }
         }
@@ -293,7 +297,7 @@ describe("invocations stay isolated across a long-lived module", () => {
       commands: {
         go: {
           description: "go",
-          input: { level: { type: "string.integer.parse = '2'", cli: "--level" } },
+          input: { level: [["string.integer.parse", "@", { cli: "--level" }], "=", "2"] },
           narrow: (input: { readonly level: number }, ctx) =>
             input.level >= 1 || ctx.mustBe("at least 1"),
           output: { level: "number" },
@@ -317,11 +321,12 @@ describe("failing morphs", () => {
         load: {
           description: "load",
           input: {
-            manifest: {
-              type: type("string").pipe((s, ctx) =>
+            "manifest?": [
+              type("string").pipe((s, ctx) =>
                 s.endsWith(".json") ? s : ctx.error("a .json manifest path")),
-              cli: "--manifest"
-            }
+              "@",
+              { cli: "--manifest" }
+            ]
           },
           run: (input: { readonly manifest?: unknown }) => input.manifest
         }
@@ -343,12 +348,13 @@ describe("failing morphs", () => {
         load: {
           description: "load",
           input: {
-            manifest: {
-              type: type("string").pipe(() => {
+            "manifest?": [
+              type("string").pipe(() => {
                 throw new Error("unreadable manifest")
               }),
-              cli: "--manifest"
-            }
+              "@",
+              { cli: "--manifest" }
+            ]
           },
           run: () => "never"
         }
@@ -367,8 +373,8 @@ describe("structured token errors name the inner path", () => {
       commands: {
         tune: {
           description: "tune",
-          input: { opts: { type: { retries: "number" }, cli: "--opts" } },
-          run: (input: { readonly opts?: { retries: number } }) => input.opts
+          input: { "opts?": [{ retries: "number" }, "@", { cli: "--opts" }] },
+          run: (input) => input.opts
         }
       }
     })
@@ -390,6 +396,14 @@ describe("environment fallback reaches the handler", () => {
     process.env["MESH_DEPTH"] = "5"
     const result = await throughCli(mesh, ["snapshot", "./public"])
     expect(result).toMatchObject({ depth: 5 })
+  })
+
+  it("does not reach a direct call — the fallback is cli machinery", async () => {
+    // CMSH1015 in the bundled errors reference rests on this: env cannot supply a value
+    // to an agent or a typed caller, only to the argv path
+    process.env["MESH_DEPTH"] = "5"
+    const result = await Promise.resolve(mesh.snapshot({ directory: "./public" }))
+    expect(result).toMatchObject({ depth: 2 })
   })
 
   it("prefers an explicit flag over the variable", async () => {

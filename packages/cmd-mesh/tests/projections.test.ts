@@ -62,6 +62,170 @@ describe("mcp tool identity", () => {
     const audit = deploy.mcp.tools.find((t) => t.name === "deploy_audit_log")!
     expect(audit.annotations).toEqual({ readOnlyHint: true, destructiveHint: false })
   })
+
+  it("projects safety into hint annotations, explicit annotations winning", () => {
+    const tool = program({
+      name: "t",
+      commands: {
+        look: { safety: "read", run: () => "x" },
+        wipe: { safety: "destructive", run: () => "x" },
+        tuned: { safety: "read", mcp: { annotations: { readOnlyHint: false } }, run: () => "x" },
+        plain: { run: () => "x" }
+      }
+    })
+    const byName = Object.fromEntries(tool.mcp.tools.map((t) => [t.name, t]))
+    expect(byName["t_look"]!.annotations).toEqual({ readOnlyHint: true, destructiveHint: false })
+    expect(byName["t_wipe"]!.annotations).toEqual({ readOnlyHint: false, destructiveHint: true })
+    expect(byName["t_tuned"]!.annotations).toEqual({ readOnlyHint: false, destructiveHint: false })
+    // a command that never declared its safety is unclassified, not
+    // destructive — and a client reads an ABSENT destructiveHint as true
+    expect(byName["t_plain"]!.annotations).toEqual({ readOnlyHint: false, destructiveHint: false })
+    expect(tool.spec.commands.find((c) => c.path.at(-1) === "wipe")!.safety).toBe("destructive")
+  })
+
+  it("rejects an unknown safety value as a declaration error", () => {
+    expect(() =>
+      program({
+        name: "bad",
+        commands: { x: { safety: "huge" as never, run: () => "x" } }
+      })
+    ).toThrow(/CMSH1010: safety must be .* \(fix: /)
+  })
+
+  it("projects declared examples into the description, schema, and spec", () => {
+    const tool = program({
+      name: "ex",
+      commands: {
+        greet: {
+          input: { who: ["string", "@", { cli: "<who>" }] },
+          mcp: {
+            examples: [
+              { args: { who: "world" }, description: "the canonical greeting" },
+              { args: { who: "agents" } }
+            ]
+          },
+          run: (input) => input.who
+        }
+      }
+    })
+    const greet = tool.mcp.tools.find((t) => t.name === "ex_greet")!
+    expect(greet.description).toContain("Examples:")
+    expect(greet.description).toContain("the canonical greeting")
+    expect((greet.inputSchema as { examples: ReadonlyArray<unknown> }).examples).toEqual([
+      { who: "world" },
+      { who: "agents" }
+    ])
+    expect(tool.spec.commands[0]!.mcpExamples).toEqual([
+      { args: { who: "world" }, description: "the canonical greeting" },
+      { args: { who: "agents" } }
+    ])
+  })
+
+  it("routes both commands when two flatten to one tool name", async () => {
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js")
+    const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js")
+    const app = program({
+      name: "coll",
+      version: "0.0.0",
+      commands: {
+        cache: {
+          description: "cache group",
+          commands: {
+            clear: { description: "nested", output: "string", run: () => "from nested" }
+          }
+        },
+        cache_clear: { description: "flat", output: "string", run: () => "from flat" }
+      }
+    })
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    await app.mcp.server().connect(serverTransport)
+    const client = new Client({ name: "witness", version: "0.0.0" })
+    await client.connect(clientTransport)
+
+    const names = (await client.listTools()).tools.map((t) => t.name).filter((n) => n.includes("cache"))
+    expect(new Set(names).size).toBe(names.length)
+    const answers = await Promise.all(
+      names.map(async (name) => {
+        const called = await client.callTool({ name, arguments: {} })
+        return (called.content as Array<{ text: string }>)[0]?.text
+      })
+    )
+    expect(new Set(answers)).toEqual(new Set(["from nested", "from flat"]))
+  })
+
+  it("does not hand a handler an argument the agent invented", async () => {
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js")
+    const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js")
+    const seen: Array<unknown> = []
+    const app = program({
+      name: "trust",
+      version: "0.0.0",
+      commands: {
+        greet: {
+          safety: "read",
+          input: { who: ["string", "@", { cli: "<who>" }] },
+          run: (input) => {
+            seen.push(input)
+            return input.who
+          }
+        }
+      }
+    })
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    await app.mcp.server().connect(serverTransport)
+    const client = new Client({ name: "witness", version: "0.0.0" })
+    await client.connect(clientTransport)
+    await client.callTool({ name: "trust_greet", arguments: { who: "ada", smuggled: "payload" } })
+    expect(seen[0]).toEqual({ who: "ada" })
+  })
+
+  it("serves the spec as a resource and a paired read tool over a live client", async () => {
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js")
+    const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js")
+    const app = program({
+      name: "live",
+      version: "9.9.9",
+      commands: {
+        greet: { safety: "read", input: { who: ["string", "@", { cli: "<who>" }] }, run: (input) => input.who }
+      }
+    })
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    await app.mcp.server().connect(serverTransport)
+    const client = new Client({ name: "witness", version: "0.0.0" })
+    await client.connect(clientTransport)
+
+    const resources = await client.listResources()
+    expect(resources.resources.map((r) => r.uri)).toEqual(["cmd-mesh://spec"])
+    const read = await client.readResource({ uri: "cmd-mesh://spec" })
+    const spec = JSON.parse((read.contents[0] as { text: string }).text)
+    expect(spec.version).toBe("9.9.9")
+    expect(spec.commands[0].path).toEqual(["live", "greet"])
+
+    const tools = await client.listTools()
+    const specTool = tools.tools.find((t) => t.name === "live_spec")!
+    expect(specTool.annotations).toEqual({ readOnlyHint: true, destructiveHint: false })
+    const called = await client.callTool({ name: "live_spec", arguments: {} })
+    expect((called.structuredContent as { spec: { version: string } }).spec.version).toBe("9.9.9")
+
+    const greeted = await client.callTool({ name: "live_greet", arguments: { who: "world" } })
+    expect((greeted.content as ReadonlyArray<{ text: string }>)[0]!.text).toContain("world")
+    await client.close()
+  })
+
+  it("rejects an example that does not satisfy the input schema", () => {
+    expect(() =>
+      program({
+        name: "bad",
+        commands: {
+          greet: {
+            input: { who: ["string", "@", { cli: "<who>" }] },
+            mcp: { examples: [{ args: { who: 7 } }] },
+            run: (input) => input.who
+          }
+        }
+      })
+    ).toThrow(/mcp\.examples\[0\]/)
+  })
 })
 
 describe("mcp input schemas", () => {
@@ -179,6 +343,18 @@ describe("mcp output schemas", () => {
     }
     expect(wrapped.properties?.["result"]?.type).toBe("number")
   })
+
+  it("wraps a primitive output whose custom predicate cannot project to JSON Schema", () => {
+    const opaqueString = type("string").narrow((value) => value.length > 0)
+    const opaque = program({
+      name: "opaque",
+      commands: {
+        read: { output: opaqueString, run: () => "value" }
+      }
+    })
+    const tool = opaque.mcp.tools.find((candidate) => candidate.name === "opaque_read")!
+    expect((tool.outputSchema as Schema).properties).toHaveProperty("result")
+  })
 })
 
 describe("per-parameter surface hiding (contract: 08-final grammar rules)", () => {
@@ -190,9 +366,17 @@ describe("per-parameter surface hiding (contract: 08-final grammar rules)", () =
       push: {
         description: "push",
         input: {
-          target: { type: "string", cli: "<target>" },
-          token: { type: "string", description: "registry token", mcp: { hidden: true }, cli: "--token" },
-          trace: { type: "boolean", description: "internal tracing", cli: { usage: "--trace", hidden: true } }
+          target: ["string", "@", { cli: "<target>" }],
+          "token?": ["string", "@", { description: "registry token", mcp: { hidden: true }, cli: "--token" }],
+          trace: [
+            [
+              "boolean",
+              "@",
+              { description: "internal tracing", cli: { usage: "--trace", hidden: true } }
+            ],
+            "=",
+            false
+          ]
         },
         output: { target: "string", authed: "boolean", traced: "boolean" },
         run: (input) => ({
@@ -215,6 +399,45 @@ describe("per-parameter surface hiding (contract: 08-final grammar rules)", () =
     expect(tool.cli.help(["push"])).toMatch(/--token/)
   })
 
+  it("rejects a required mcp-hidden parameter, which no agent could supply", () => {
+    expect(() =>
+      program({
+        name: "secretive",
+        version: "0.0.0",
+        commands: {
+          push: {
+            description: "push",
+            input: {
+              target: ["string", "@", { cli: "<target>" }],
+              // no `?` and no default: required, and hidden from mcp
+              token: ["string", "@", { mcp: { hidden: true }, cli: "--token" }]
+            },
+            output: { ok: "boolean" },
+            run: () => ({ ok: true })
+          }
+        }
+      })
+    ).toThrow(/CMSH1015/)
+  })
+
+  it("allows a required hidden parameter when the whole command is off mcp", () => {
+    expect(() =>
+      program({
+        name: "secretive2",
+        version: "0.0.0",
+        commands: {
+          push: {
+            description: "push",
+            mcp: { hidden: true },
+            input: { token: ["string", "@", { mcp: { hidden: true }, cli: "--token" }] },
+            output: { ok: "boolean" },
+            run: () => ({ ok: true })
+          }
+        }
+      })
+    ).not.toThrow()
+  })
+
   it("drops a cli-hidden parameter from help and completion, not from parsing", async () => {
     expect(tool.cli.help(["push"])).not.toMatch(/--trace/)
     await expect(tool.cli.complete(["push", "x", "--"])).resolves.not.toContain("--trace")
@@ -231,8 +454,8 @@ describe("per-parameter surface hiding (contract: 08-final grammar rules)", () =
         commands: {
           go: {
             description: "go",
-            input: { dir: { type: "string", cli: { usage: "<dir>", hidden: true } } },
-            run: (input: { dir: string }) => input.dir
+            input: { dir: ["string", "@", { cli: { usage: "<dir>", hidden: true } }] },
+            run: (input) => input.dir
           }
         }
       })
@@ -254,11 +477,11 @@ describe("scoped arktype vocabulary as parameter types", () => {
         push: {
           description: "push",
           input: {
-            env: { type: vocabulary.Environment, cli: "--env" },
-            replicas: { type: vocabulary.Replicas, cli: "--replicas" }
+            "env?": [vocabulary.Environment, "@", { cli: "--env" }],
+            "replicas?": [vocabulary.Replicas, "@", { cli: "--replicas" }]
           },
           output: { env: "string" },
-          run: (input: { readonly env?: string }) => ({ env: input.env ?? "none" })
+          run: (input) => ({ env: input.env ?? "none" })
         }
       }
     })
@@ -293,9 +516,9 @@ describe("static suggestions beside enumerable literals", () => {
         use: {
           description: "use",
           input: {
-            preset: { type: "'fast' | 'slow'", suggest: ["fast", "custom"], cli: "--preset" }
+            "preset?": ["'fast' | 'slow'", "@", { suggest: ["fast", "custom"], cli: "--preset" }]
           },
-          run: (input: { readonly preset?: string }) => input.preset ?? "none"
+          run: (input) => input.preset ?? "none"
         }
       }
     })
@@ -318,9 +541,9 @@ describe("suggestion generators", () => {
         focus: {
           description: "focus a workspace package",
           input: {
-            pkg: { type: "string", suggest: workspacePackages, cli: "<pkg>" }
+            pkg: ["string", "@", { suggest: workspacePackages, cli: "<pkg>" }]
           },
-          run: (input: { readonly pkg: string }) => input.pkg
+          run: (input) => input.pkg
         }
       }
     })
@@ -336,19 +559,22 @@ describe("suggestion generators", () => {
         checkout: {
           description: "checkout",
           input: {
-            branch: {
-              type: "string",
-              suggest: Object.assign(
-                () => {
-                  throw new Error("git broke")
-                },
-                {}
-              ) as () => ReadonlyArray<string>,
-              cli: "<branch>"
-            },
-            fallback: { type: "string", suggest: ["main", "develop"], cli: "--from" }
+            branch: [
+              "string",
+              "@",
+              {
+                suggest: Object.assign(
+                  () => {
+                    throw new Error("git broke")
+                  },
+                  {}
+                ) as () => ReadonlyArray<string>,
+                cli: "<branch>"
+              }
+            ],
+            "fallback?": ["string", "@", { suggest: ["main", "develop"], cli: "--from" }]
           },
-          run: (input: { readonly branch: string }) => input.branch
+          run: (input) => input.branch
         }
       }
     })
@@ -375,7 +601,7 @@ describe("suggestion generators", () => {
           commands: {
             focus: {
               description: "focus",
-              input: { name: { type: "string", suggest: gen, cli: "<name>" } },
+              input: { name: ["string", "@", { suggest: gen, cli: "<name>" }] },
               run: (input: { readonly name: string }) => input.name
             }
           }
@@ -445,9 +671,9 @@ const root = compileCommand("tool", ["tool"], {
     release: {
       description: "bump",
       input: {
-        bump: { type: "'patch' | 'minor' | 'major'", cli: "<bump>" },
-        pkg: { type: "string = './package.json'", suggest: "filepaths", cli: "--pkg" },
-        dryRun: { type: "boolean", cli: "--dry-run, -n" }
+        bump: ["'patch' | 'minor' | 'major'", "@", { cli: "<bump>" }],
+        pkg: [["string", "@", { suggest: "filepaths", cli: "--pkg" }], "=", "./package.json"],
+        dryRun: [["boolean", "@", { cli: "--dry-run, -n" }], "=", false]
       },
       output: { from: "string", to: "string" },
       run: () => ({ from: "0.0.0", to: "0.0.1" })
@@ -515,16 +741,20 @@ describe("arktype meta descriptions", () => {
       serve: {
         description: "serve",
         input: {
-          port: { type: type("string.integer.parse").describe("a port to listen on"), cli: "--port" },
-          host: {
-            type: type("string").describe("falls behind the descriptor"),
-            description: "the descriptor wins",
-            cli: "--host"
-          },
-          plain: { type: "string", cli: "--plain" }
+          "port?": [type("string.integer.parse").describe("a port to listen on"), "@", { cli: "--port" }],
+          // an outer annotation overrides one carried by the inner type
+          "host?": [
+            type("string").describe("falls behind the outer annotation"),
+            "@",
+            { description: "the outer annotation wins", cli: "--host" }
+          ],
+          "plain?": ["string", "@", { cli: "--plain" }]
         },
         output: { "port?": "number" },
-        run: (input: { port?: number }) => (input.port === undefined ? {} : { port: input.port })
+        // annotated: a Type instance inside a "@" tuple does not carry its
+        // inference through — see docs/internal/backlog.md
+        run: (input: { readonly port?: number }) =>
+          input.port === undefined ? {} : { port: input.port }
       }
     }
   })
@@ -534,9 +764,9 @@ describe("arktype meta descriptions", () => {
     expect(help).toMatch(/a port to listen on/)
   })
 
-  it("prefers an explicit descriptor description", () => {
+  it("prefers an outer annotation over one the inner type carries", () => {
     const help = meta.cli.help(["serve"])
-    expect(help).toMatch(/the descriptor wins/)
+    expect(help).toMatch(/the outer annotation wins/)
     expect(help).not.toMatch(/falls behind/)
   })
 

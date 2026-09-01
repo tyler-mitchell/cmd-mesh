@@ -1,7 +1,7 @@
 {
   "name": "cmd-mesh",
   "version": "0.5.0",
-  "description": "Fig-rich, ArkType-typed command mesh: one declarative program model, invocable as a CLI, as an MCP server, or as plain typed functions.",
+  "description": "ArkType-typed command mesh: one declarative program model, invocable as a CLI, as an MCP server, or as plain typed functions.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -11,13 +11,17 @@
   "files": [
     "CHANGELOG.md",
     "dist",
+    "docs",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "skills",
+    "src"
   ],
   "type": "module",
   "sideEffects": false,
   "exports": {
     ".": {
+      "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
@@ -27,22 +31,25 @@
   },
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
-    "check": "pnpm run typecheck && pnpm run test && pnpm run test:types && pnpm run check:pack",
+    "check": "pnpm run typecheck && pnpm run test && pnpm run test:cost && pnpm run test:types && pnpm run check:pack",
     "check:pack": "pnpm run build && publint && attw --pack . --profile esm-only",
     "prepack": "pnpm run build",
     "prepare": "pnpm run build",
     "test": "vitest run",
-    "test:types": "tsx contract.attest.ts",
+    "test:cost": "vitest run --config vitest.cost.config.ts",
+    "test:types": "tsx contract.attest.ts && tsx typed-functions.attest.ts",
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@ark/util": "0.56.2",
     "@bomb.sh/tab": "^0.0.22",
     "@clack/prompts": "^1.7.0",
     "@effect/platform-node": "catalog:",
     "@modelcontextprotocol/sdk": "catalog:",
     "arktype": "catalog:",
     "effect": "catalog:",
-    "package-management": "^0.1.0"
+    "nostics": "^1.2.0",
+    "package-management": "^0.2.0"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
