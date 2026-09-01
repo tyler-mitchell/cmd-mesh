@@ -39,16 +39,19 @@ const review = program({
     list: {
       description: "list the promotion PR and its unresolved Codex review threads",
       safety: "read",
+      input: {
+        head: [["string", "@", { description: "PR head branch", cli: "--head" }], "=", "main"]
+      },
       output: text,
       cli: { render: printText },
-      run: async (_input, ctx) => {
+      run: async (input, ctx) => {
         const repository = (await captured(ctx, "gh", [
           "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"
         ])).text
         const [owner, name] = repository.split("/")
         if (owner === undefined || name === undefined) throw new Error(`invalid GitHub repository: ${repository}`)
         const pull = (await captured(ctx, "gh", [
-          "pr", "view", "main", "--json", "number,state,mergeStateStatus,headRefOid,reviews",
+          "pr", "view", input.head, "--json", "number,state,mergeStateStatus,headRefOid,reviews",
           "--jq",
           `{number,state,mergeStateStatus,headRefOid,codexReviews:[.reviews[] | select(.author.login | test("codex"; "i")) | {state,submittedAt}]}`
         ])).text
