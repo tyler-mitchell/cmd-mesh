@@ -78,7 +78,7 @@ const review = program({
           "-F", `name=${name}`,
           "-F", `number=${number}`,
           "--jq",
-          `.data.repository.pullRequest.reviewThreads.nodes | map(select(.isResolved | not) | . as $thread | .comments.nodes[] | select(.author.login | test("codex"; "i")) | {thread:$thread.id,path,line,title:(try (.body | capture("</sub></sub>  (?<title>[^*]+)\\*\\*").title) catch "review finding")})`
+          `.data.repository.pullRequest.reviewThreads.nodes | map(select(.isResolved | not) | . as $thread | .comments.nodes[] | select(.author.login | test("codex"; "i")) | {thread:$thread.id,path,line,title:(.body | split("\\n") | map(select(length > 0)) | .[0] | split("  ") | .[-1])})`
         ])).text
         return { text: JSON.stringify({ pull: JSON.parse(pull), unresolved: JSON.parse(threads) }) }
       }
