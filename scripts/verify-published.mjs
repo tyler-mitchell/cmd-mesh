@@ -1,6 +1,14 @@
 // the release probe: one real cmd-mesh operation from a clean consumer
 // where the exact published version is installed. plain node, no build.
-import { program } from "cmd-mesh";
+import { fileURLToPath } from "node:url";
+import { program, readFile } from "cmd-mesh";
+
+const skill = readFile(
+  fileURLToPath(new URL("../skills/cmd-mesh/SKILL.md", import.meta.resolve("cmd-mesh"))),
+);
+if (!skill.includes("name: cmd-mesh") || !skill.includes("Create a CLI by default")) {
+  throw new Error("the installed package does not contain the CLI-first cmd-mesh Agent Skill");
+}
 
 const probe = program({
   name: "probe",
