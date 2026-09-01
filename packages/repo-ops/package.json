@@ -1,6 +1,6 @@
 {
   "name": "repo-ops",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The closed-distribution repository operations (Bumpy release procedure, CI runs, dependabot PRs) as mountable cmd-mesh modules.",
   "license": "MIT",
   "repository": {

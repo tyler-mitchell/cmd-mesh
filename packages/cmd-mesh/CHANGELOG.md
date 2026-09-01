@@ -4,6 +4,47 @@
 
 
 
+
+## 1.0.0
+<sub>2026-09-01</sub>
+
+- *(major)*
+  Added a shared toolkit for files, paths, configuration, dependencies, typed dynamic imports, module resolution, projects, and workspaces. Hand-built `Ctx` values must spread the exported `toolkit` object.
+- *(major)*
+  Replaced workspace-only ArkType metadata defaults with native default tuples in declarations, generated code, and documentation. `CMSH1016` rejects metadata that looks like an applied default before it becomes a required parameter.
+- *(minor)*
+  Added ExecOptions.preferLocal: prepend the enclosing workspace's node_modules/.bin to PATH so workspace-local binaries resolve regardless of how the process was started; a no-op outside any repository.
+- *(minor)*
+  Added program-level resources: declared acquire/release pairs run around every handler invocation on all three surfaces — acquired before the handler, typed on ctx.resources, released in reverse order whether the handler succeeds or throws.
+- *(minor)*
+  Added the command safety taxonomy: `safety: "read" | "action" | "destructive"` on internal and external commands, validated at compile time, exposed in the spec, and projected to MCP tool annotations with both hints always explicit (`readOnlyHint` and `destructiveHint`) so clients never fall back to their destructive-by-default assumption. Every repo-ops operation now declares its safety.
+- *(minor)*
+  Added a version-matched Agent Skill at `skills/cmd-mesh/SKILL.md` with complete CLI-first code, progressive references, and explicit MCP opt-in. The MCP projection also gained `mcp.server()`, the `cmd-mesh://spec` resource, and a paired `<name>_spec` tool.
+- *(minor)*
+  Declaration validation now emits coded diagnostics: every `InvalidDeclaration` issue line carries a stable `CMSH1xxx` code and a fix hint, built on `nostics` at the validation boundary while the tagged error classes remain the error channel. The errors reference lives at `docs/errors.md` in the package.
+- *(minor)*
+  An incorrect parameter or command field is now a declaration error (`CMSH1013`). Before, it had no effect and gave no message. TypeScript does not find all of these fields: it does not report a field whose type is a union with a primitive, which is the type of a parameter. Thus `cli: { complete: "filepaths" }` and `sugest: "folders"` both compiled without an error. A JavaScript caller has no check. The interpreter now gives the name of the unknown field and the names of the correct fields. The command case is more important: `mcp: { hiden: true }` kept a command visible to agents. An unknown `suggest` source is also an error now (`CMSH1014`); before, it gave no candidates and no message.
+- *(minor)*
+  A required parameter that is hidden from mcp is now a declaration error (`CMSH1015`). The tool schema omits the parameter, so an agent cannot supply it and every call fails validation; the `env` fallback does not help, because it runs on the cli path only. Declare a default, make the parameter optional, or hide the whole command from mcp.
+- *(minor)*
+  Added numeric parameters that accept CLI text and MCP numbers through one ArkType union without weakening prompt validation.
+- *(patch)*
+  Guided invocation no longer accepts an empty submission for a required positional. The prompt read the flag-only `required` field, which a positional never sets, so `<entry>` was offered as skippable. The command line then failed validation after the walk. The prompt now uses the same requiredness rule as the spec: a positional is optional only when its usage says so.
+- *(patch)*
+  Every declaration issue now carries a link to its section in the errors reference. The link was computed for each code but discarded before the message was built, so a reader saw the code with no route to the page that explains it.
+- *(patch)*
+  The README, the reference, and the bundled agent skill now teach that a bare ArkType definition is a complete parameter: `input: { force: "boolean" }` derives the flag `--force` from the key. The shipped code always accepted this, but every example used the `{ type, cli }` descriptor, so readers concluded the descriptor was mandatory.
+- *(patch)*
+  An mcp tool call now carries only the parameters its command declares. An argument that no parameter declares reached the handler untouched, so an agent could put any key it invented into handler input; the cli already rejects an undeclared flag.
+- *(patch)*
+  An `ExternalExit` from a streamed command no longer ends in a dangling colon. A child run with `stdio: "inherit"` writes its own stderr to the terminal, so the captured text is empty and the message read `pnpm exited with 1:` with nothing after it. Captured stderr is also trimmed now.
+- *(patch)*
+  `CMSH1013` now checks a parameter's `mcp` object too. A command's `mcp` block was checked and a parameter's was not, so `mcp: { hiden: true }` on a parameter passed silently and left the parameter advertised in the agent-facing schema — the exact case the diagnostic exists to catch.
+- *(patch)*
+  Stopped program declarations from attaching unused terminal listeners by providing only the Effect process services they use.
+- *(patch)*
+  Fixed release-blocking runtime, MCP projection, config-key, generated-identifier, and package-content defects. Added compact review-thread commands for release work.
+
 ## 0.5.0
 <sub>2026-08-29</sub>
 
