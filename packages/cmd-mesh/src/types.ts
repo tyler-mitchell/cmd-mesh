@@ -41,10 +41,11 @@ export interface CliParameterConfig {
  * ArkType property definition: `["string", "@", { cli: "<who>" }]`.
  * ArkType owns the domain, optionality, defaults and morphs; this
  * package owns only what argv and agents need on top. */
-// ArkType already carries `description`, `examples`, `deprecated` and
-// `default`; those are not redeclared. Everything below is a fact ArkType
-// cannot know: how the value reaches the program, and which surfaces show
-// it. NAME UNSETTLED for `argv` — see docs/internal/backlog.md.
+// ArkType already carries `description`, `examples`, and `deprecated`.
+// Its `default` metadata is a JSON Schema annotation, so CMSH1016 directs
+// callers to ArkType's native `"="` tuple instead. Everything below is a
+// fact ArkType cannot know: how the value reaches the program, and which
+// surfaces show it. NAME UNSETTLED for `argv` — see docs/internal/backlog.md.
 declare global {
   interface ArkEnv {
     meta(): {
