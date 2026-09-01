@@ -357,9 +357,13 @@ describe("per-parameter surface hiding (contract: 08-final grammar rules)", () =
           target: ["string", "@", { cli: "<target>" }],
           "token?": ["string", "@", { description: "registry token", mcp: { hidden: true }, cli: "--token" }],
           trace: [
-            "boolean",
-            "@",
-            { description: "internal tracing", cli: { usage: "--trace", hidden: true }, default: false }
+            [
+              "boolean",
+              "@",
+              { description: "internal tracing", cli: { usage: "--trace", hidden: true } }
+            ],
+            "=",
+            false
           ]
         },
         output: { target: "string", authed: "boolean", traced: "boolean" },
@@ -656,8 +660,8 @@ const root = compileCommand("tool", ["tool"], {
       description: "bump",
       input: {
         bump: ["'patch' | 'minor' | 'major'", "@", { cli: "<bump>" }],
-        pkg: ["string", "@", { suggest: "filepaths", cli: "--pkg", default: "./package.json" }],
-        dryRun: ["boolean", "@", { cli: "--dry-run, -n", default: false }]
+        pkg: [["string", "@", { suggest: "filepaths", cli: "--pkg" }], "=", "./package.json"],
+        dryRun: [["boolean", "@", { cli: "--dry-run, -n" }], "=", false]
       },
       output: { from: "string", to: "string" },
       run: () => ({ from: "0.0.0", to: "0.0.1" })

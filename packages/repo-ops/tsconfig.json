@@ -1,5 +1,5 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
   "extends": "../../tsconfig.base.json",
-  "include": ["src"]
+  "include": ["src", "tests/help-parse.emit.test.ts", "tests/help-parse.live.test.ts", "tests/help-parse.test.ts"]
 }

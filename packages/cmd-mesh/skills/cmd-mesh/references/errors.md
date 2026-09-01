@@ -161,7 +161,7 @@ runs on the cli path only.
 ```ts
 token: ["string", "@", { mcp: { hidden: true } }]                 // ✗ tool is uncallable
 "token?": ["string", "@", { mcp: { hidden: true } }]              // ✓ optional
-token: ["string", "@", { default: "", mcp: { hidden: true } }]    // ✓ defaulted
+token: [["string", "@", { mcp: { hidden: true } }], "=", ""]    // ✓ defaulted
 ```
 
 To keep a required parameter and still hide the work from agents, hide

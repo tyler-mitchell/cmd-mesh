@@ -51,13 +51,7 @@ describe("a misspelled metadata key is rejected", () => {
 
   it("accepts every key the model does know", () => {
     expect(bad({
-      x: ["string", "@", {
-        cli: { usage: "--x", env: "X", hidden: true },
-        mcp: { hidden: true },
-        suggest: "filepaths",
-        description: "d",
-        default: "v"
-      }]
+      x: [["string", "@", { cli: { usage: "--x", env: "X", hidden: true }, mcp: { hidden: true }, suggest: "filepaths", description: "d" }], "=", "v"]
     })).not.toThrow()
   })
 })

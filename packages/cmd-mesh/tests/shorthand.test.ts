@@ -15,7 +15,7 @@ const tool = program({
     commit: {
       input: {
         message: ["string", "@", { cli: "--message, -m" }],
-        all: ["boolean", "@", { cli: "--all, -a", default: false }]
+        all: [["boolean", "@", { cli: "--all, -a" }], "=", false]
       },
       run: (input) => ({ message: input.message, all: input.all })
     },
@@ -39,7 +39,7 @@ const tool = program({
       run: (input) => input.conf.retries
     },
     status: {
-      input: { short: ["boolean", "@", { cli: "--short", default: false }] },
+      input: { short: [["boolean", "@", { cli: "--short" }], "=", false] },
       run: (input) => input.short
     }
   }

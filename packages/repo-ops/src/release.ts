@@ -62,7 +62,7 @@ export const createRelease = (packageName: string) =>
         safety: "action",
         mcp: { hidden: true },
         input: {
-          args: ["string[]", "@", { description: "bumpy add arguments", cli: "[...args]", default: () => [] }]
+          args: [["string[]", "@", { description: "bumpy add arguments", cli: "[...args]" }], "=", () => []]
         },
         run: (input, ctx) => streamed(ctx, "bumpy", ["add", ...input.args])
       },
@@ -171,9 +171,13 @@ export const createRelease = (packageName: string) =>
             { description: "probe module run from the scratch consumer", suggest: "filepaths", cli: "--probe" }
           ],
           attempts: [
-            "string.integer.parse",
-            "@",
-            { description: "registry propagation retries", default: "10" }
+            [
+              "string.integer.parse",
+              "@",
+              { description: "registry propagation retries" }
+            ],
+            "=",
+            "10"
           ]
         },
         output: { verified: "string" },
@@ -205,9 +209,13 @@ export const createRelease = (packageName: string) =>
         safety: "action",
         input: {
           merge: [
-            "boolean",
-            "@",
-            { description: "merge-pull when histories diverged", cli: "--merge", default: false }
+            [
+              "boolean",
+              "@",
+              { description: "merge-pull when histories diverged", cli: "--merge" }
+            ],
+            "=",
+            false
           ]
         },
         output: text,

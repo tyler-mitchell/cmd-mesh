@@ -18,8 +18,8 @@ describe("argv reconstruction", () => {
       status: {
         description: "working tree status",
         input: {
-          short: ["boolean", "@", { cli: "--short, -s", default: false }],
-          branch: ["boolean", "@", { cli: "--branch, -b", default: false }]
+          short: [["boolean", "@", { cli: "--short, -s" }], "=", false],
+          branch: [["boolean", "@", { cli: "--branch, -b" }], "=", false]
         },
         output: "string"
       },
@@ -27,14 +27,14 @@ describe("argv reconstruction", () => {
         description: "resolve a revision",
         input: {
           rev: ["string", "@", { cli: "<rev>" }],
-          verify: ["boolean", "@", { cli: "--verify", default: false }]
+          verify: [["boolean", "@", { cli: "--verify" }], "=", false]
         },
         output: "string"
       },
       "rev-parse": {
         description: "resolve a revision, spelled as the binary spells it",
         input: {
-          verify: ["boolean", "@", { cli: "--verify", default: false }],
+          verify: [["boolean", "@", { cli: "--verify" }], "=", false],
           rev: ["string", "@", { cli: "<rev>" }]
         },
         output: "string"
@@ -54,7 +54,7 @@ describe("argv reconstruction", () => {
         mark: {
           description: "echo argv",
           input: {
-            tag: ["string[]", "@", { cli: "--tag <tags...>", default: () => [] }],
+            tag: [["string[]", "@", { cli: "--tag <tags...>" }], "=", () => []],
             item: ["string", "@", { cli: "<item>" }]
           },
           output: "string"
@@ -91,8 +91,8 @@ describe("argv reconstruction", () => {
         run: {
           description: "echo argv",
           input: {
-            branch: ["boolean", "@", { cli: "--branch", default: false }],
-            short: ["boolean", "@", { cli: "--short", default: false }]
+            branch: [["boolean", "@", { cli: "--branch" }], "=", false],
+            short: [["boolean", "@", { cli: "--short" }], "=", false]
           },
           output: "string"
         }
@@ -222,7 +222,7 @@ describe("mounted modules through the parent cli", () => {
           commands: {
             up: {
               description: "bring up",
-              input: { detach: ["boolean", "@", { cli: "--detach, -d", default: false }] },
+              input: { detach: [["boolean", "@", { cli: "--detach, -d" }], "=", false] },
               output: "string"
             }
           }
@@ -259,7 +259,7 @@ describe("mounted modules through the parent cli", () => {
           description: "destructive wipe",
           cli: { examples: ["backup wipe --confirm"] },
           mcp: { annotations: { destructiveHint: true } },
-          input: { confirm: ["boolean", "@", { cli: "--confirm", default: false }] },
+          input: { confirm: [["boolean", "@", { cli: "--confirm" }], "=", false] },
           output: "string"
         }
       }
@@ -283,12 +283,12 @@ describe("global versus command options (level = placement)", () => {
     commands: {
       status: {
         description: "working tree status",
-        input: { short: ["boolean", "@", { cli: "--short", default: false }] },
+        input: { short: [["boolean", "@", { cli: "--short" }], "=", false] },
         output: "string"
       },
       log: {
         description: "commit log",
-        input: { count: ["string.integer.parse", "@", { cli: "-n", default: "2" }] },
+        input: { count: [["string.integer.parse", "@", { cli: "-n" }], "=", "2"] },
         output: "string"
       }
     }
@@ -325,7 +325,7 @@ describe("per-invocation execution options", () => {
       commands: {
         "rev-parse": {
           description: "resolve",
-          input: { toplevel: ["boolean", "@", { cli: "--show-toplevel", default: false }] },
+          input: { toplevel: [["boolean", "@", { cli: "--show-toplevel" }], "=", false] },
           output: "string"
         }
       }
@@ -496,7 +496,7 @@ describe("externals mounted in a program", () => {
     commands: {
       status: {
         description: "working tree status",
-        input: { short: ["boolean", "@", { cli: "--short, -s", default: false }] },
+        input: { short: [["boolean", "@", { cli: "--short, -s" }], "=", false] },
         output: "string"
       }
     }

@@ -211,7 +211,7 @@ describe("parent flags before the subcommand (citty resolveSubCommand)", () => {
       commands: {
         emit: {
           description: "emit",
-          input: { json: ["boolean", "@", { cli: "--json", default: false }] },
+          input: { json: [["boolean", "@", { cli: "--json" }], "=", false] },
           output: { asJson: "boolean" },
           run: (input) => ({ asJson: input.json })
         }
@@ -233,7 +233,7 @@ describe("parent flags before the subcommand (citty resolveSubCommand)", () => {
       version: "0.0.0",
       description: "root flags reach children",
       input: {
-        registry: ["string", "@", { cli: "--registry", default: "https://npm.dev" }]
+        registry: [["string", "@", { cli: "--registry" }], "=", "https://npm.dev"]
       },
       commands: {
         add: {
@@ -368,7 +368,7 @@ describe("root run beside subcommands", () => {
     version: "1.0.0",
     description: "format, with a check mode as a child",
     input: {
-      write: ["boolean", "@", { cli: "--write", default: false }]
+      write: [["boolean", "@", { cli: "--write" }], "=", false]
     },
     output: { via: "string", write: "boolean" },
     run: (input) => ({ via: "root", write: input.write }),
@@ -413,7 +413,7 @@ describe("default subcommand (citty main)", () => {
     commands: {
       dev: {
         description: "start dev mode",
-        input: { watch: ["boolean", "@", { cli: "--watch", default: false }] },
+        input: { watch: [["boolean", "@", { cli: "--watch" }], "=", false] },
         output: { via: "string", watch: "boolean" },
         run: (input) => ({ via: "dev", watch: input.watch })
       },

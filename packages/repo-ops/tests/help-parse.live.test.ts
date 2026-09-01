@@ -5,7 +5,7 @@ import {
   parseHelpFlags,
   parseHelpPositionals,
   parseHelpSubcommands
-} from "./help-parse.js"
+} from "../src/help-parse.js"
 
 // The fixtures in help-parse.test.ts were transcribed BY the same
 // understanding that wrote the parser, so they can agree with a bug.

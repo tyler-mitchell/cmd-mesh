@@ -38,13 +38,16 @@ export const docs = program({
           }
         ],
         lines: [
-          "string.integer.parse | number.integer",
-          "@",
-          {
-            description: "a positive line count",
-            default: "20",
-            cli: "--lines, -n"
-          }
+          [
+            "string.integer.parse | number.integer",
+            "@",
+            {
+              description: "a positive line count",
+              cli: "--lines, -n"
+            }
+          ],
+          "=",
+          "20"
         ]
       },
       output: {
@@ -100,8 +103,8 @@ Each `input` or `output` value is an ArkType definition. Put CLI and MCP binding
 input: {
   verbose: "boolean",
   file: ["string", "@", { cli: "<file>", suggest: "filepaths" }],
-  format: ["'json' | 'text'", "@", { cli: "--format, -f", default: "text" }],
-  count: ["string.integer.parse | number.integer", "@", { cli: "--count", default: "10" }],
+  format: [["'json' | 'text'", "@", { cli: "--format, -f" }], "=", "text"],
+  count: [["string.integer.parse | number.integer", "@", { cli: "--count" }], "=", "10"],
   "label?": ["string", "@", { cli: "--label" }]
 }
 ```
@@ -114,7 +117,7 @@ Use these rules:
 - Use `"<...names>"` with an array definition for a required variadic value.
 - Use `"[...names]"` with an array definition for an optional variadic value.
 - Use `string.integer.parse | number.integer` for a number that arrives from CLI text or MCP JSON.
-- Put defaults in ArkType metadata. The default must match the input side of a morph.
+- Put defaults in ArkType's native `[definition, "=", value]` tuple. The value must match the input side of a morph.
 - Do not create a second parameter descriptor model.
 
 ## Declare safety and output
@@ -143,7 +146,7 @@ export const git = external({
       description: "show working tree status",
       safety: "read",
       input: {
-        short: ["boolean", "@", { cli: "--short, -s", default: false }],
+        short: [["boolean", "@", { cli: "--short, -s" }], "=", false],
         "pathspec?": ["string[]", "@", { cli: "[...pathspec]" }]
       },
       output: "string"
@@ -219,10 +222,14 @@ Use all context members from their owning boundary:
 
 - Use `ctx.exec` for child processes. It returns `stdout`, `stderr`, and `exitCode`.
 - Use `ctx.getPath` for package, workspace, Git, current-directory, and user-home paths.
+- Use the focused folder helpers when only a package, workspace, Git, or named-package root is needed.
 - Use `ctx.readFile`, `ctx.readFileSafely`, and `ctx.writeFile` for text files.
 - Use `ctx.modifyJSON` and `ctx.modifyJSONFile` for comment-preserving JSON or JSONC edits.
 - Use `ctx.resolveConfigSource`, `ctx.modifyConfig`, and `ctx.modifyConfigFile` for JSON, JSONC, JSON5, YAML, or TOML.
 - Use `ctx.getConfigFormat` and `ctx.isWritable` for file capability checks.
+- Use the dependency predicates to distinguish a declared dependency from an installed module.
+- Use `ctx.importer` or `ctx.importMap` with `ctx.definePackage` for typed import and optional install-on-missing behavior.
+- Use the module resolvers to locate packages or candidate module identifiers without importing them.
 - Use `ctx.project(source)` for one package manifest, package manager, TypeScript paths, and ignore patterns.
 - Use `ctx.workspace` for the workspace root, package list, package graph, package names, and project lookup.
 - Use `ctx.resources` for resources declared on the program.
@@ -239,6 +246,10 @@ const source = toolkit.readFile("package.json")
 toolkit.writeFile("tmp/report.txt", source)
 toolkit.modifyJSONFile("tsconfig.json", {
   "compilerOptions.strict": { value: true }
+})
+
+const modules = await toolkit.importMap({
+  prettier: toolkit.definePackage({ name: "prettier", dev: true })
 })
 ```
 

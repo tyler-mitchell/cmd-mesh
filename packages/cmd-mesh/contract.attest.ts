@@ -29,14 +29,18 @@ try {
         input: {
           service: ["string", "@", { cli: "<service>" }],
           env: [
-            "'staging' | 'production'",
-            "@",
-            { cli: { usage: "--env, -e", env: "DEPLOY_ENV" }, default: "staging" }
+            [
+              "'staging' | 'production'",
+              "@",
+              { cli: { usage: "--env, -e", env: "DEPLOY_ENV" } }
+            ],
+            "=",
+            "staging"
           ],
-          replicas: ["string.integer.parse", "@", { cli: "--replicas", default: "2" }],
-          force: ["boolean", "@", { cli: "--force, -f", default: false }],
+          replicas: [["string.integer.parse", "@", { cli: "--replicas" }], "=", "2"],
+          force: [["boolean", "@", { cli: "--force, -f" }], "=", false],
           "message?": ["string", "@", { cli: "--message, -m" }],
-          token: ["string", "@", { cli: "--token", mcp: { hidden: true }, default: "" }]
+          token: [["string", "@", { cli: "--token", mcp: { hidden: true } }], "=", ""]
         },
         run: (input) => {
           // a bare handler: every type below comes from the declaration alone
@@ -123,7 +127,7 @@ try {
     commands: {
       status: {
         description: "working tree status",
-        input: { short: ["boolean", "@", { cli: "--short, -s", default: false }] },
+        input: { short: [["boolean", "@", { cli: "--short, -s" }], "=", false] },
         output: "string"
       },
       revParse: {
@@ -173,7 +177,7 @@ try {
     // in `validateIndexOneExpression`; the "@" branch has no equivalent.
     program({
       name: "bad4",
-      commands: { c: { input: { n: ["string.integer.parse", "@", { default: 1 }] } } }
+      commands: { c: { input: { n: [["string.integer.parse", "@", {}], "=", 1] } } }
     })
     // an external's declaration is validated the same way a program's is
     external({

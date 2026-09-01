@@ -86,7 +86,7 @@ const makeCounter = () =>
     commands: {
       inc: {
         description: "return the number it was given",
-        input: { by: ["string.integer.parse", "@", { cli: "--by", default: "1" }] },
+        input: { by: [["string.integer.parse", "@", { cli: "--by" }], "=", "1"] },
         output: { value: "number" },
         run: async (input) => {
           await new Promise((resolve) => setTimeout(resolve, 1))

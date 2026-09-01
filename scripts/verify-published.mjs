@@ -18,9 +18,13 @@ const probe = program({
       input: {
         who: ["string", "@", { cli: "<who>" }],
         times: [
-          "string.integer.parse | number.integer",
-          "@",
-          { default: "1", cli: "--times" },
+          [
+            "string.integer.parse | number.integer",
+            "@",
+            { cli: "--times" },
+          ],
+          "=",
+          "1"
         ],
       },
       output: { message: "string", times: "number" },

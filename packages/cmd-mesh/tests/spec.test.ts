@@ -150,7 +150,7 @@ describe("spec keeps its JSON promise for every default", () => {
         since: {
           description: "since",
           input: {
-            from: ["string.date.iso.parse", "@", { cli: "--from", default: "2024-01-05T00:00:00.000Z" }]
+            from: [["string.date.iso.parse", "@", { cli: "--from" }], "=", "2024-01-05T00:00:00.000Z"]
           },
           output: { ok: "boolean" },
           run: () => ({ ok: true })

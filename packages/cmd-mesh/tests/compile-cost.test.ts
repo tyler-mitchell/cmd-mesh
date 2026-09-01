@@ -12,13 +12,17 @@ const command = (n: number) => ({
   input: {
     entry: ["string", "@", { cli: "<entry>" }],
     port: [
-      "string.integer.parse",
-      "@",
-      { cli: { usage: "--port, -p", env: `X_${n}_PORT` }, default: "3000" }
+      [
+        "string.integer.parse",
+        "@",
+        { cli: { usage: "--port, -p", env: `X_${n}_PORT` } }
+      ],
+      "=",
+      "3000"
     ],
-    level: ["'debug' | 'info' | 'warn'", "@", { default: "info" }],
-    tags: ["string[]", "@", { cli: "--tag <tags...>", default: () => [] }],
-    verbose: ["boolean", "@", { cli: "--verbose, -v", default: false }]
+    level: [["'debug' | 'info' | 'warn'", "@", {}], "=", "info"],
+    tags: [["string[]", "@", { cli: "--tag <tags...>" }], "=", () => []],
+    verbose: [["boolean", "@", { cli: "--verbose, -v" }], "=", false]
   },
   output: { url: "string", tags: "string[]" },
   run: (input: { entry: string; port: number; tags: string[] }) => ({

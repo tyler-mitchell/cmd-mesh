@@ -1,7 +1,7 @@
 // the shared example program: a small dev tool exercising every contract
 // surface — used by demo.ts, bin.ts, and the test suite. It is also what
-// a reader copies, so it declares `safety` on every command and keeps a
-// default in the parameter's own metadata.
+// a reader copies, so it declares `safety` on every command and uses
+// ArkType's native default tuples.
 import { external, program } from "../src/index.js";
 
 export const git = external({
@@ -11,8 +11,8 @@ export const git = external({
       description: "working tree status",
       safety: "read",
       input: {
-        short: ["boolean", "@", { cli: "--short, -s", default: false }],
-        branch: ["boolean", "@", { cli: "--branch, -b", default: false }],
+        short: [["boolean", "@", { cli: "--short, -s" }], "=", false],
+        branch: [["boolean", "@", { cli: "--branch, -b" }], "=", false],
       },
       output: "string",
     },
@@ -38,15 +38,15 @@ export const mesh = program({
           },
         ],
         depth: [
-          "string.integer.parse | number.integer",
-          "@",
-          {
-            description: "a traversal depth",
-            cli: { usage: "--depth, -d", env: "MESH_DEPTH" },
-            default: "2",
-          },
+          [
+            "string.integer.parse | number.integer",
+            "@",
+            { description: "a traversal depth", cli: { usage: "--depth, -d", env: "MESH_DEPTH" } },
+          ],
+          "=",
+          "2"
         ],
-        verbose: ["boolean", "@", { cli: "--verbose, -v", default: false }],
+        verbose: [["boolean", "@", { cli: "--verbose, -v" }], "=", false],
         "signCert?": "string",
         // object ArkType defs are first-class: real object on the
         // call/mcp surface, JSON token on the cli
@@ -68,9 +68,13 @@ export const mesh = program({
       input: {
         entries: ["string[] >= 1", "@", { cli: "<...entries>" }],
         outDir: [
-          "string",
-          "@",
-          { description: "an output directory", default: "dist" },
+          [
+            "string",
+            "@",
+            { description: "an output directory" },
+          ],
+          "=",
+          "dist"
         ],
       },
       output: { bundled: "string[]", into: "string" },

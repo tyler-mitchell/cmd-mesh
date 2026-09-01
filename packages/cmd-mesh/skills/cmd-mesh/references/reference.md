@@ -51,7 +51,7 @@ fallback, a suggestion source.
 ```ts
 input: {
   directory: ["string", "@", { cli: "<directory>", suggest: "folders" }],
-  depth: ["string.integer.parse", "@", { cli: "--depth, -d", default: "2" }],
+  depth: [["string.integer.parse", "@", { cli: "--depth, -d" }], "=", "2"],
   "note?": "string"
 }
 ```
@@ -75,7 +75,7 @@ its input domain accepts.
 | `cli` | the argv notation, or `{ usage, env, hidden }` — env is the fallback (argv > env > default) |
 | `mcp: { hidden }` | drop the parameter from the mcp tool schema; it still validates if supplied. The parameter must be optional or defaulted, or no agent can call the tool (CMSH1015) |
 | `suggest` | `"folders"` · `"filepaths"` · a const generator `(ctx: SuggestContext) => Promise<string[]>` |
-| `description` · `examples` · `default` · `deprecated` | ArkType's own metadata, read directly |
+| `description` · `examples` · `deprecated` | ArkType's own metadata, read directly |
 
 A `description` is ArkType's expected-value phrase. It renders as `<key> must be <description> (was …)`.
 Write what a caller must send. Use `"a commit count"` so a failed call tells an agent how
@@ -161,9 +161,22 @@ run: async ({ packageName }, ctx) => {
 
 | member | meaning |
 | --- | --- |
+| `ctx.definePackage` | Describe a package for typed dynamic import and optional install-on-missing behavior |
 | `ctx.exec` | Spawn one child process through Effect's scoped process service |
+| `ctx.findDependencyInPackageJson` | Find dependency entries across selected dependency groups in a supplied manifest |
+| `ctx.findResolvedModulePath` | Resolve the first available module identifier from a candidate list |
 | `ctx.getConfigFormat` | Infer a supported configuration format from a file extension |
+| `ctx.getFolderByPackageName` | Find a workspace package directory from its manifest name |
+| `ctx.getGitRootFolder` | Find the enclosing Git worktree root |
+| `ctx.getPackageFolder` | Find the nearest package directory |
 | `ctx.getPath` | Resolve package, workspace, Git, current-directory, or user-home paths |
+| `ctx.getWorkspaceFolder` | Find the workspace root, with a Git-root fallback |
+| `ctx.importMap` | Import a keyed module record and install missing described packages by default |
+| `ctx.importer` | Import an ordered module tuple and install missing described packages by default |
+| `ctx.isConfigFormat` | Test whether a string names a supported configuration format |
+| `ctx.isDependencyInPackageJson` | Test a supplied manifest for a dependency in selected dependency groups |
+| `ctx.isPackageDependency` | Test the nearest manifest for one or more dependencies |
+| `ctx.isPackageModuleFound` | Test whether package resolution can find a package |
 | `ctx.isWritable` | Test whether the process can write a path |
 | `ctx.modifyConfig` | Edit JSON, JSONC, JSON5, YAML, or TOML in memory |
 | `ctx.modifyConfigFile` | Edit a JSON, JSONC, JSON5, YAML, or TOML file |
@@ -173,6 +186,9 @@ run: async ({ packageName }, ctx) => {
 | `ctx.readFile` | Read a text file and throw when it is absent |
 | `ctx.readFileSafely` | Read a text file or return `undefined` when it is absent |
 | `ctx.resolveConfigSource` | Parse or serialize a supported configuration source |
+| `ctx.resolveModule` | Await a module and unwrap its default export when present |
+| `ctx.resolveModulePath` | Resolve a module identifier or module-relative path |
+| `ctx.resolvePackageModulePath` | Resolve a package through its manifest or public entry |
 | `ctx.workspace` | Read the enclosing workspace and its packages |
 | `ctx.writeFile` | Write a text file and create missing parent directories |
 | `ctx.resources` | Access the resources acquired for this invocation |
@@ -208,6 +224,26 @@ toolkit.writeFile("tmp/README.md", text)
 ```
 
 `toolkit` is the stateless part of `Ctx`. cmd-mesh spreads this object into every handler and suggestion context.
+
+### Dependencies and dynamic modules
+
+```ts
+const declared = ctx.isPackageDependency(["typescript", "vitest"])
+const installed = ctx.isPackageModuleFound("vitest")
+const resolved = ctx.resolvePackageModulePath("vitest")
+
+const [prettier] = await ctx.importer([
+  ctx.definePackage({ name: "prettier", dev: true })
+])
+
+const modules = await ctx.importMap({
+  prettier: ctx.definePackage({ name: "prettier", dev: true })
+})
+```
+
+`isPackageDependency` examines the nearest package manifest. `isPackageModuleFound` examines module resolution. These answers can differ.
+
+`importer` retains tuple order. `importMap` retains record keys. Both install missing described packages unless their options disable installation.
 
 ### `ctx.exec`
 

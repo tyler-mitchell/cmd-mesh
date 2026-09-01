@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process"
 import { mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { afterAll, describe, expect, it } from "vitest"
-import { declareExternal, parseHelpFlags } from "./help-parse.js"
+import { declareExternal, parseHelpFlags } from "../src/help-parse.js"
 
 // A generator is only useful if what it emits is REAL cmd-mesh source.
 // So this writes the draft to disk, typechecks it with the project's own

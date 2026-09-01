@@ -21,6 +21,3 @@ catalog:
 
 minimumReleaseAgeExclude:
   - package-management
-
-patchedDependencies:
-  arktype: patches/arktype.patch

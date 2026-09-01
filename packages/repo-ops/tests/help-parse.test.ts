@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { declareExternal, declareFlag, flagKey, parseHelpFlags } from "./help-parse.js"
+import { declareExternal, declareFlag, flagKey, parseHelpFlags } from "../src/help-parse.js"
 
 // Verbatim from the binaries themselves, not hand-written to suit the
 // parser: `git status -h` and `pnpm add --help` on this machine.
@@ -132,7 +132,7 @@ describe("emitting declaration source", () => {
   it("declares a boolean flag with a default, so it is not required", () => {
     const verbose = parseHelpFlags(gitStatus).find((f) => f.long === "verbose")!
     expect(declareFlag(verbose)).toBe(
-      `  "verbose": ["boolean", "@", { description: "be verbose", cli: "--verbose, -v", default: false }]`
+      `  "verbose": [["boolean", "@", { description: "be verbose", cli: "--verbose, -v" }], "=", false]`
     )
   })
 
@@ -156,7 +156,7 @@ describe("emitting declaration source", () => {
   it("never drafts a flag the caller would be forced to pass", () => {
     const required = parseHelpFlags(gitStatus)
       .map(declareFlag)
-      .filter((source) => !source.includes("?") && !source.includes("default"))
+      .filter((source) => !source.includes("?") && !source.includes(', "=", false]'))
     expect(required).toEqual([])
   })
 
@@ -164,6 +164,6 @@ describe("emitting declaration source", () => {
     const porcelain = parseHelpFlags(gitStatus).find((f) => f.long === "porcelain")!
     const source = declareFlag(porcelain)
     expect(source).toContain(`["string", "@"`)
-    expect(source).not.toContain("default")
+    expect(source).not.toContain(', "=",')
   })
 })

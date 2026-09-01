@@ -9,8 +9,21 @@ const documentedCtxMembers = [
       "project",
       "workspace",
       "resources",
+      "definePackage",
+      "findDependencyInPackageJson",
+      "findResolvedModulePath",
       "getConfigFormat",
+      "getFolderByPackageName",
+      "getGitRootFolder",
+      "getPackageFolder",
       "getPath",
+      "getWorkspaceFolder",
+      "importMap",
+      "importer",
+      "isConfigFormat",
+      "isDependencyInPackageJson",
+      "isPackageDependency",
+      "isPackageModuleFound",
       "isWritable",
       "modifyConfig",
       "modifyConfigFile",
@@ -19,6 +32,9 @@ const documentedCtxMembers = [
       "readFile",
       "readFileSafely",
       "resolveConfigSource",
+      "resolveModule",
+      "resolveModulePath",
+      "resolvePackageModulePath",
       "writeFile"
 ] as const satisfies ReadonlyArray<keyof Ctx>
 
@@ -41,7 +57,7 @@ const tool = program({
   version: "1.0.0",
   cli: { default: "dev" },
   input: {
-    logLevel: ["'debug' | 'info'", "@", { cli: "--log-level", default: "info" }]
+    logLevel: [["'debug' | 'info'", "@", { cli: "--log-level" }], "=", "info"]
   },
   commands: {
     dev: {
@@ -50,21 +66,15 @@ const tool = program({
       input: {
         entry: ["string", "@", { cli: "<entry>" }],
         "out?": ["string", "@", { cli: "[out]" }],
-        files: ["string[]", "@", { cli: "[...files]", default: () => [] }],
-        port: ["string.integer.parse", "@", {
-          cli: { usage: "--port, -p", env: "TOOL_PORT" },
-          default: "3000"
-        }],
-        tag: ["string[]", "@", { cli: "--tag <tags...>", default: () => [] }],
+        files: [["string[]", "@", { cli: "[...files]" }], "=", () => []],
+        port: [["string.integer.parse", "@", { cli: { usage: "--port, -p", env: "TOOL_PORT" } }], "=", "3000"],
+        tag: [["string[]", "@", { cli: "--tag <tags...>" }], "=", () => []],
         "token?": ["string", "@", { cli: { usage: "--token", hidden: true }, mcp: { hidden: true } }],
         "level?": "'debug' | 'info' | 'warn'",
         // the reference's numeric-parameter idiom: argv carries a
         // string, an agent's JSON carries a number, both reach the
         // handler as a number
-        retries: ["string.integer.parse | number.integer", "@", {
-          cli: "--retries",
-          default: "0"
-        }],
+        retries: [["string.integer.parse | number.integer", "@", { cli: "--retries" }], "=", "0"],
         // the reference lists these as ArkType's own metadata, "read
         // directly" — so they must reach the projected schema
         "profile?": ["string", "@", {

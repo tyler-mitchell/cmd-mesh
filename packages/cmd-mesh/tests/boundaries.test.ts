@@ -264,9 +264,13 @@ describe("invocations stay isolated across a long-lived module", () => {
           description: "tune",
           input: {
             opts: [
-              type({ retries: "number" }),
-              "@",
-              { cli: "--opts", default: () => ({ retries: 1 }) }
+              [
+                type({ retries: "number" }),
+                "@",
+                { cli: "--opts" }
+              ],
+              "=",
+              () => ({ retries: 1 })
             ]
           },
           output: { retries: "number" },
@@ -293,7 +297,7 @@ describe("invocations stay isolated across a long-lived module", () => {
       commands: {
         go: {
           description: "go",
-          input: { level: ["string.integer.parse", "@", { cli: "--level", default: "2" }] },
+          input: { level: [["string.integer.parse", "@", { cli: "--level" }], "=", "2"] },
           narrow: (input: { readonly level: number }, ctx) =>
             input.level >= 1 || ctx.mustBe("at least 1"),
           output: { level: "number" },

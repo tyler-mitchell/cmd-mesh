@@ -7,6 +7,7 @@ import type { Toolkit } from "./toolkit.js"
 // definitions; argv-specific config sits under `cli`, mcp-specific under
 // `mcp`. see ideations/08-final.ts for the adopted contract.
 
+/** Capabilities for one dynamic suggestion request. `words` contains the canonical command words collected so far. */
 export interface SuggestContext extends Toolkit {
   exec(bin: string, args: ReadonlyArray<string>, options?: ExecOptions): Promise<ExecResult>
   readonly words: ReadonlyArray<string>
@@ -215,10 +216,13 @@ export interface WithResources<R> {
   readonly resources: AcquiredResources<R>
 }
 
-/** interpreter-owned capabilities handed to handlers. not user DI.
- * `project` and `workspace` are package-management's own consumer
- * surfaces, exposed whole — mediated here so handlers stay mockable
- * (hand a fake ctx) and auditable per invocation. */
+/**
+ * Capabilities for one handler invocation.
+ *
+ * The stateless members come from the exported `toolkit` object. `exec`,
+ * `surface`, and `resources` belong to the current invocation. Hand-built
+ * test values can spread `toolkit` and replace only those three members.
+ */
 export interface Ctx extends Toolkit {
   exec(bin: string, args: ReadonlyArray<string>, options?: ExecOptions): Promise<ExecResult>
   readonly surface: Surface

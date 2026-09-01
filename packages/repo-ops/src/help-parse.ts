@@ -145,11 +145,12 @@ export const declarePositional = (positional: HelpPositional): string => {
   const key = flagKey(positional.name)
   const notation = positional.variadic ? `[...${key}]` : `[${key}]`
   const type = positional.variadic ? `"string[]"` : `"string"`
-  const meta = positional.variadic
-    ? `cli: ${JSON.stringify(notation)}, default: () => []`
-    : `cli: ${JSON.stringify(notation)}`
+  const annotated = `[${type}, "@", { cli: ${JSON.stringify(notation)} }]`
   const optional = positional.variadic ? "" : "?"
-  return `  ${JSON.stringify(`${key}${optional}`)}: [${type}, "@", { ${meta} }]`
+  const definition = positional.variadic
+    ? `[${annotated}, "=", () => []]`
+    : annotated
+  return `  ${JSON.stringify(`${key}${optional}`)}: ${definition}`
 }
 
 /** a subcommand line in a binary's top-level help:
@@ -270,14 +271,17 @@ export const declareFlag = (flag: HelpFlag): string => {
     : `--${flag.long}, -${flag.short}`
   const meta = [
     ...(flag.description === "" ? [] : [`description: ${JSON.stringify(flag.description)}`]),
-    `cli: ${JSON.stringify(usage)}`,
-    ...(flag.value === undefined ? [`default: false`] : [])
+    `cli: ${JSON.stringify(usage)}`
   ].join(", ")
   const type = flag.value === undefined ? `"boolean"` : `"string"`
-  // every drafted flag is optional: a boolean gets `default: false`, and
-  // a valued one gets `?`. Help text never says a flag is mandatory, so
+  // every drafted flag is optional: a boolean gets ArkType's native
+  // false default, and a valued one gets `?`. Help text never says a flag is mandatory, so
   // emitting a required parameter makes the command uncallable — which
   // is exactly what the first real run of this generator did.
   const optional = flag.value === undefined ? "" : "?"
-  return `  ${JSON.stringify(`${key}${optional}`)}: [${type}, "@", { ${meta} }]`
+  const annotated = `[${type}, "@", { ${meta} }]`
+  const definition = flag.value === undefined
+    ? `[${annotated}, "=", false]`
+    : annotated
+  return `  ${JSON.stringify(`${key}${optional}`)}: ${definition}`
 }

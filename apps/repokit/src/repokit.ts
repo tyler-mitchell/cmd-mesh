@@ -107,9 +107,13 @@ export const repokit = program({
         // a union over both boundaries: argv only ever carries strings,
         // while an agent sending JSON naturally sends a number
         commits: [
-          "string.integer.parse | number.integer",
-          "@",
-          { description: "a count of recent commits", default: "10" }
+          [
+            "string.integer.parse | number.integer",
+            "@",
+            { description: "a count of recent commits" }
+          ],
+          "=",
+          "10"
         ]
       },
       output: { branch: "string", recent: "string[]", dirty: "string[]" },
@@ -151,11 +155,15 @@ export const repokit = program({
             cli: "<filter>"
           }
         ],
-        script: ["string", "@", { description: "script to run", default: "typecheck" }],
+        script: [["string", "@", { description: "script to run" }], "=", "typecheck"],
         timeout: [
-          "string.integer.parse | number.integer",
-          "@",
-          { description: "a timeout in milliseconds", default: "600000" }
+          [
+            "string.integer.parse | number.integer",
+            "@",
+            { description: "a timeout in milliseconds" }
+          ],
+          "=",
+          "600000"
         ]
       },
       output: { filter: "string", script: "string" },

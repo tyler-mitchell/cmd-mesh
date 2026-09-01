@@ -23,7 +23,7 @@ const git = external({
     status: {
       description: "working tree status",
       safety: "read",
-      input: { short: ["boolean", "@", { cli: "--short, -s", default: false }] },
+      input: { short: [["boolean", "@", { cli: "--short, -s" }], "=", false] },
       output: "string"
     }
   }
@@ -38,15 +38,19 @@ const mesh = program({
       safety: "action",
       input: {
         // a parameter IS an ArkType definition; surface bindings ride in
-        // its metadata, so ArkType owns the domain, optionality and defaults
+        // its metadata, so ArkType owns the domain and optionality
         directory: ["string", "@", { suggest: "folders", cli: "<directory>" }],
         // a union over both boundaries: argv carries "4", an agent sends 4
         depth: [
-          "string.integer.parse | number.integer",
-          "@",
-          { cli: { usage: "--depth, -d", env: "MESH_DEPTH" }, default: "2" }
+          [
+            "string.integer.parse | number.integer",
+            "@",
+            { cli: { usage: "--depth, -d", env: "MESH_DEPTH" } }
+          ],
+          "=",
+          "2"
         ],
-        verbose: ["boolean", "@", { cli: "--verbose, -v", default: false }]
+        verbose: [["boolean", "@", { cli: "--verbose, -v" }], "=", false]
       },
       run: (input) => ({ snapped: input.directory, depth: input.depth })
       //     ^ inferred: { directory: string; depth: number; verbose: boolean }
@@ -267,12 +271,15 @@ toolkit.writeFile("tmp/report.txt", "ready\n")
 toolkit.modifyJSONFile("tsconfig.json", {
   "compilerOptions.strict": { value: true }
 })
+toolkit.isPackageDependency("typescript")
+toolkit.resolvePackageModulePath("typescript")
 //   ^ comment-preserving JSONC edits, dot paths, sequential-edit safe
 ```
 
 The bundled [handler context reference](./skills/cmd-mesh/references/reference.md#ctx)
 lists every `ctx` member. It covers `ctx.exec`, files, paths, configuration,
-projects, workspaces, resources, and entry surfaces.
+dependencies, dynamic imports, projects, workspaces, resources, and entry
+surfaces.
 
 ## Testing a mesh program
 

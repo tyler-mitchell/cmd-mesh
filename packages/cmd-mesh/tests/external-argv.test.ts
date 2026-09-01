@@ -10,13 +10,13 @@ const git = external({
   input: { "repo?": ["string", "@", { cli: "-C" }] },
   commands: {
     status: {
-      input: { short: ["boolean", "@", { cli: "--short, -s", default: false }] },
+      input: { short: [["boolean", "@", { cli: "--short, -s" }], "=", false] },
       output: "string"
     },
     commit: {
       input: {
         message: ["string", "@", { cli: "--message, -m" }],
-        all: ["boolean", "@", { cli: "--all, -a", default: false }]
+        all: [["boolean", "@", { cli: "--all, -a" }], "=", false]
       },
       output: "string"
     },
@@ -24,7 +24,7 @@ const git = external({
       input: {
         "remote?": ["string", "@", { cli: "[remote]" }],
         "branch?": ["string", "@", { cli: "[branch]" }],
-        force: ["boolean", "@", { cli: "--force", default: false }]
+        force: [["boolean", "@", { cli: "--force" }], "=", false]
       },
       output: "string"
     },

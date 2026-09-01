@@ -25,22 +25,22 @@ export const external = program({
       input: {
         bin: ["string", "@", { description: "the binary to read", cli: "<bin>" }],
         commands: [
-          "string[]",
-          "@",
-          {
-            description: "subcommands to draft; omitted, the binary's own help is asked",
-            cli: "[...commands]",
-            default: () => []
-          }
+          [
+            "string[]",
+            "@",
+            { description: "subcommands to draft; omitted, the binary's own help is asked", cli: "[...commands]" }
+          ],
+          "=",
+          () => []
         ],
         depth: [
-          "string.integer.parse | number.integer",
-          "@",
-          {
-            description: "a depth of subcommands to follow",
-            cli: "--depth, -d",
-            default: "1"
-          }
+          [
+            "string.integer.parse | number.integer",
+            "@",
+            { description: "a depth of subcommands to follow", cli: "--depth, -d" }
+          ],
+          "=",
+          "1"
         ],
         out: [
           "string",

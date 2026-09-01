@@ -12,8 +12,8 @@ export const git = external({
       description: "working tree status",
       safety: "read",
       input: {
-        short: ["boolean", "@", { cli: "--short, -s", default: false }],
-        branch: ["boolean", "@", { cli: "--branch, -b", default: false }]
+        short: [["boolean", "@", { cli: "--short, -s" }], "=", false],
+        branch: [["boolean", "@", { cli: "--branch, -b" }], "=", false]
       },
       output: "string"
     },
@@ -21,7 +21,7 @@ export const git = external({
       description: "commit history",
       safety: "read",
       input: {
-        oneline: ["boolean", "@", { cli: "--oneline", default: false }],
+        oneline: [["boolean", "@", { cli: "--oneline" }], "=", false],
         // a description lands in "count must be ...", so it names the
         // value to send rather than the parameter's purpose
         "count?": [
@@ -36,7 +36,7 @@ export const git = external({
       description: "changes against the index or a ref",
       safety: "read",
       input: {
-        staged: ["boolean", "@", { cli: "--staged", default: false }],
+        staged: [["boolean", "@", { cli: "--staged" }], "=", false],
         "path?": ["string", "@", { cli: "[path]" }]
       },
       output: "string"
@@ -55,7 +55,7 @@ export const git = external({
       input: {
         // no `?` and no default: required
         message: ["string", "@", { description: "commit message", cli: "--message, -m" }],
-        all: ["boolean", "@", { description: "stage tracked changes first", cli: "--all, -a", default: false }]
+        all: [["boolean", "@", { description: "stage tracked changes first", cli: "--all, -a" }], "=", false]
       },
       output: "string"
     },
@@ -72,10 +72,10 @@ export const git = external({
       description: "pull a ref",
       safety: "action",
       input: {
-        ffOnly: ["boolean", "@", { cli: "--ff-only", default: false }],
+        ffOnly: [["boolean", "@", { cli: "--ff-only" }], "=", false],
         // the merge-pull pair, for histories that diverged
-        noRebase: ["boolean", "@", { cli: "--no-rebase", default: false }],
-        noEdit: ["boolean", "@", { cli: "--no-edit", default: false }],
+        noRebase: [["boolean", "@", { cli: "--no-rebase" }], "=", false],
+        noEdit: [["boolean", "@", { cli: "--no-edit" }], "=", false],
         "remote?": ["string", "@", { cli: "[remote]" }],
         "branch?": ["string", "@", { cli: "[branch]" }]
       },

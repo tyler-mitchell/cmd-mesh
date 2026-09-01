@@ -45,15 +45,12 @@ const tool = program({
       description: "bundle",
       input: {
         entry: ["string", "@", { cli: "<entry>" }],
-        port: ["string.integer.parse", "@", { cli: "--port, -p", default: "3000" }],
+        port: [["string.integer.parse", "@", { cli: "--port, -p" }], "=", "3000"],
         // the numeric idiom the reference teaches: a prompt only ever
         // yields a string, so the union must not weaken its validation
-        retries: ["string.integer.parse | number.integer", "@", {
-          cli: "--retries",
-          default: "0"
-        }],
-        level: ["'debug' | 'info'", "@", { default: "info" }],
-        verbose: ["boolean", "@", { cli: "--verbose, -v", default: false }]
+        retries: [["string.integer.parse | number.integer", "@", { cli: "--retries" }], "=", "0"],
+        level: [["'debug' | 'info'", "@", {}], "=", "info"],
+        verbose: [["boolean", "@", { cli: "--verbose, -v" }], "=", false]
       },
       output: {
         entry: "string",
