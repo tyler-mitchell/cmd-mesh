@@ -1,10 +1,32 @@
-import { readFileSync } from "node:fs"
 import { afterEach, describe, expect, it } from "vitest"
-import { ExecFailure, program, project, workspace } from "../src/index.js"
+import { ExecFailure, getPath, program, readFile, toolkit } from "../src/index.js"
 import type { Ctx, ParameterSpec } from "../src/index.js"
 import { captureCli, captureJson } from "./fixtures/capture.js"
 
-// One program exercising every claim docs/reference.md makes about a
+const documentedCtxMembers = [
+  "exec",
+  "surface",
+      "project",
+      "workspace",
+      "resources",
+      "getConfigFormat",
+      "getPath",
+      "isWritable",
+      "modifyConfig",
+      "modifyConfigFile",
+      "modifyJSON",
+      "modifyJSONFile",
+      "readFile",
+      "readFileSafely",
+      "resolveConfigSource",
+      "writeFile"
+] as const satisfies ReadonlyArray<keyof Ctx>
+
+const ctxCoverage: Exclude<keyof Ctx, typeof documentedCtxMembers[number]> extends never
+  ? true
+  : never = true
+
+// One program exercising every claim the bundled reference makes about a
 // declaration: notation forms, env fallback, defaults, aliases, the
 // default child, hidden parameters, render hooks, completion, and the
 // numeric-parameter union. A row in that document without a case here
@@ -135,9 +157,9 @@ describe("the README reference program", () => {
   // here. That claim was written twice by hand and was wrong twice, so
   // it is checked instead of trusted: the reference is the input.
   it("has a case for every metadata row the reference documents", () => {
-    // package-management's readFile is not in the released 0.1.0 yet
-    const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf-8")
-    const reference = read("../docs/reference.md")
+    const reference = readFile(
+      getPath("<package_folder>/skills/cmd-mesh/references/reference.md")
+    )
     const table = reference.slice(
       reference.indexOf("| metadata | meaning |"),
       reference.indexOf("| notation | meaning |")
@@ -153,9 +175,20 @@ describe("the README reference program", () => {
       .map((match) => match[1]!)
     expect(documented.length).toBeGreaterThan(4)
 
-    const source = read("./reference.test.ts")
+    const source = readFile(getPath("<package_folder>/tests/reference.test.ts"))
     const missing = documented.filter((key) => !source.includes(`${key}:`))
     expect(missing, "documented in reference.md, never declared here").toEqual([])
+  })
+
+  it("documents every handler context member", () => {
+    const reference = readFile(
+      getPath("<package_folder>/skills/cmd-mesh/references/reference.md")
+    )
+    const missing = documentedCtxMembers.filter(
+      (member) => !reference.includes(`| \`ctx.${member}\``)
+    )
+    expect(ctxCoverage).toBe(true)
+    expect(missing, "public Ctx member missing from the bundled reference").toEqual([])
   })
 
   // The notation table's sibling check. Asserted against the COMPILED
@@ -286,15 +319,13 @@ describe("unit-testing a handler that execs", () => {
   it("runs against a fake ctx, recording the exec call", async () => {
     const calls: Array<ReadonlyArray<string>> = []
     const fake: Ctx = {
+      ...toolkit,
       surface: "call",
       resources: {},
       exec: async (bin, args) => {
         calls.push([bin, ...args])
         return { stdout: "a.ts\nb.ts\n", stderr: "", exitCode: 0 }
-      },
-      // a fake mocks what the test controls; the rest passes through
-      project,
-      workspace
+      }
     }
     expect(await list({ dir: "src" }, fake)).toEqual({ files: ["a.ts", "b.ts"] })
     expect(calls).toEqual([["git", "ls-files", "src"]])

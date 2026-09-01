@@ -8,8 +8,12 @@ const probe = program({
     greet: {
       description: "greet someone",
       input: {
-        who: { type: "string", cli: "<who>" },
-        times: { type: "string.integer.parse = '1'" },
+        who: ["string", "@", { cli: "<who>" }],
+        times: [
+          "string.integer.parse | number.integer",
+          "@",
+          { default: "1", cli: "--times" },
+        ],
       },
       output: { message: "string", times: "number" },
       run: (input) => ({ message: `hello ${input.who}`, times: input.times }),

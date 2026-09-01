@@ -7,18 +7,17 @@ section for that code:
 
 ```
 invalid declaration:
-  tool broken · bad: CMSH1001: ParseError: 'not.a.keyword' is unresolvable (fix: Use a resolvable ArkType definition.) https://github.com/tyler-mitchell/cmd-mesh/blob/main/packages/cmd-mesh/docs/errors.md#cmsh1001
-  tool broken: CMSH1006: flag --same is claimed by flag and other (fix: Rename one of the flags or aliases.) https://github.com/tyler-mitchell/cmd-mesh/blob/main/packages/cmd-mesh/docs/errors.md#cmsh1006
+  tool broken · bad: CMSH1001: ParseError: 'not.a.keyword' is unresolvable (fix: Use a resolvable ArkType definition.) https://github.com/tyler-mitchell/cmd-mesh/blob/main/packages/cmd-mesh/skills/cmd-mesh/references/errors.md#cmsh1001
+  tool broken: CMSH1006: flag --same is claimed by flag and other (fix: Rename one of the flags or aliases.) https://github.com/tyler-mitchell/cmd-mesh/blob/main/packages/cmd-mesh/skills/cmd-mesh/references/errors.md#cmsh1006
 ```
 
 ## CMSH1001
 
-An ArkType definition did not parse — a parameter `type`, an `output`
-contract, or the assembled command schema.
+An ArkType definition did not parse. The error can identify an input, an output, or the assembled command schema.
 
 ```ts
-input: { bad: { type: "not.a.keyword" } }  // ✗ unresolvable keyword
-input: { bad: { type: "string.numeric" } } // ✓
+input: { bad: "not.a.keyword" }            // ✗ unresolvable keyword
+input: { bad: "string.numeric.parse" }     // ✓
 ```
 
 Fix: use a resolvable ArkType definition.
@@ -29,8 +28,8 @@ A positional parameter compiled to a boolean. Booleans are flag
 presence; a positional slot has no presence semantics.
 
 ```ts
-flag: { type: "boolean", cli: "<flag>" }   // ✗
-flag: { type: "boolean", cli: "--flag" }   // ✓
+flag: ["boolean", "@", { cli: "<flag>" }]  // ✗
+flag: ["boolean", "@", { cli: "--flag" }]  // ✓
 ```
 
 ## CMSH1003
@@ -39,8 +38,8 @@ flag: { type: "boolean", cli: "--flag" }   // ✓
 is flag machinery.
 
 ```ts
-entry: { type: "string", cli: { usage: "<entry>", env: "TOOL_ENTRY" } }  // ✗
-entry: { type: "string", cli: { usage: "--entry", env: "TOOL_ENTRY" } }  // ✓
+entry: ["string", "@", { cli: { usage: "<entry>", env: "TOOL_ENTRY" } }]  // ✗
+entry: ["string", "@", { cli: { usage: "--entry", env: "TOOL_ENTRY" } }]  // ✓
 ```
 
 ## CMSH1004
@@ -61,8 +60,8 @@ Presence is a boolean flag's value.
 Two parameters claim the same flag token, aliases included.
 
 ```ts
-first: { type: "string", cli: "--same" },
-second: { type: "string", cli: "--same" }   // ✗ both claim --same
+first: ["string", "@", { cli: "--same" }],
+second: ["string", "@", { cli: "--same" }]  // ✗ both claim --same
 ```
 
 ## CMSH1007
@@ -71,8 +70,8 @@ A variadic positional appears before another positional. The variadic
 consumes every remaining token, so it must be last.
 
 ```ts
-files: { type: "string", cli: "[...files]" },
-out: { type: "string", cli: "[out]" }        // ✗ unreachable
+files: ["string[]", "@", { cli: "[...files]" }],
+out: ["string", "@", { cli: "[out]" }]        // ✗ unreachable
 ```
 
 ## CMSH1008
@@ -96,7 +95,7 @@ Examples are advertised to agents; a lying example is a declaration
 error.
 
 ```ts
-input: { who: { type: "string", cli: "<who>" } },
+input: { who: ["string", "@", { cli: "<who>" }] },
 mcp: { examples: [{ args: { who: 7 } }] }    // ✗ who must be a string
 ```
 
@@ -143,10 +142,10 @@ string value must be a named source. An unknown name gives no candidates
 and shows no error.
 
 ```ts
-paths: { type: "string", suggest: "flepaths" }              // ✗ lists nothing
-paths: { type: "string", suggest: "filepaths" }             // ✓ files and folders
-paths: { type: "string", suggest: "folders" }               // ✓ folders only
-paths: { type: "string", suggest: ["src", "test"] }         // ✓ a static list
+paths: ["string", "@", { suggest: "flepaths" }]              // ✗ lists nothing
+paths: ["string", "@", { suggest: "filepaths" }]             // ✓ files and folders
+paths: ["string", "@", { suggest: "folders" }]               // ✓ folders only
+paths: ["string", "@", { suggest: ["src", "test"] }]         // ✓ a static list
 ```
 
 The named sources are `filepaths` and `folders`. For other candidates,
@@ -160,9 +159,9 @@ and every call fails validation. The `env` fallback does not help: it
 runs on the cli path only.
 
 ```ts
-token: { type: "string", required: true, mcp: { hidden: true } }   // ✗ tool is uncallable
-token: { type: "string", mcp: { hidden: true } }                   // ✓ optional
-token: { type: "string = ''", mcp: { hidden: true } }              // ✓ defaulted
+token: ["string", "@", { mcp: { hidden: true } }]                 // ✗ tool is uncallable
+"token?": ["string", "@", { mcp: { hidden: true } }]              // ✓ optional
+token: ["string", "@", { default: "", mcp: { hidden: true } }]    // ✓ defaulted
 ```
 
 To keep a required parameter and still hide the work from agents, hide

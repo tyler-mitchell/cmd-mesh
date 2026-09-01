@@ -40,8 +40,8 @@ import type { ExternalContracts, McpServerConfig } from "./types.js"
 import { buildMcpServer, collectTools, inputSchema, serveMcp } from "./mcp.js"
 import { Predicate } from "effect"
 import { renderHelp, renderResult, usageLine } from "./render.js"
-import { project, workspace } from "package-management"
 import { deepFrozen, specOf } from "./spec.js"
+import { toolkit } from "./toolkit.js"
 import type {
   Ctx,
   ExternalCallOptions,
@@ -71,11 +71,9 @@ const makeCtx = (
   surface: Surface,
   resources: Readonly<globalThis.Record<string, unknown>> = {}
 ): Ctx => ({
+  ...toolkit,
   surface,
   exec: (bin, args, options) => runtime.runPromise(Exec.use((s) => s.exec(bin, args, options))),
-  // the library functions themselves — nothing constructed until called
-  project,
-  workspace,
   resources
 })
 
@@ -202,7 +200,7 @@ const completeEffect = (
       onNone: () => Effect.succeed([] as ReadonlyArray<string>),
       onSome: (generator) =>
         Effect.tryPromise(async () =>
-          generator({ exec: makeCtx(runtime, "call").exec, words, project, workspace })
+          generator({ ...toolkit, exec: makeCtx(runtime, "call").exec, words })
         ).pipe(
           Effect.orElseSucceed(() => [] as ReadonlyArray<string>)
         )
@@ -566,7 +564,7 @@ export const program = <
             : runtime.runPromise(
               promptArgv(
                 compiled,
-                (words) => ({ exec: makeCtx(runtime, "cli").exec, words, project, workspace }),
+                (words) => ({ ...toolkit, exec: makeCtx(runtime, "cli").exec, words }),
                 path ?? []
               ).pipe(
                 Effect.flatMap((argv) => runCli(runtime, compiled, version, specs, argv)),

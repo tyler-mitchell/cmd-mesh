@@ -395,7 +395,7 @@ describe("environment fallback reaches the handler", () => {
   })
 
   it("does not reach a direct call — the fallback is cli machinery", async () => {
-    // docs/errors.md CMSH1015 rests on this: env cannot supply a value
+    // CMSH1015 in the bundled errors reference rests on this: env cannot supply a value
     // to an agent or a typed caller, only to the argv path
     process.env["MESH_DEPTH"] = "5"
     const result = await Promise.resolve(mesh.snapshot({ directory: "./public" }))

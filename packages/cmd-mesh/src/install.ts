@@ -1,10 +1,6 @@
 import { Array, Option, Predicate } from "effect"
 import type { McpServerConfig } from "./types.js"
-// package-management owns file and config concerns, and now carries
-// `readFile` and a `modifyConfigFile` that covers toml — neither is in
-// the released 0.1.0 yet, so this reads directly until that ships.
-import { readFileSync } from "node:fs"
-import { createFile, getPath, modifyJSONFile } from "package-management"
+import { createFile, getPath, modifyJSONFile, readFile } from "package-management"
 
 // Registering a stdio server differs between clients only in the file
 // it lives in, the key it sits under, and the format — so the clients
@@ -271,7 +267,7 @@ export const uninstallMcpClient = (name: string, client: McpClientId): boolean =
   const file = pathOf(spec, spec.file)
   if (!exists(file)) return false
   if (spec.format === "toml") {
-    const source = readFileSync(file, "utf-8")
+    const source = readFile(file)
     const without = withoutTomlTable(source, `[${spec.key}.${name}]`)
     if (without === source) return false
     createFile(file, without)
@@ -297,7 +293,7 @@ export const installMcpClient = (
   const file = pathOf(spec, spec.file)
   const settings = server === undefined ? {} : clientSettings[client](server)
   if (spec.format === "toml") {
-    const source = exists(file) ? readFileSync(file, "utf-8") : ""
+    const source = exists(file) ? readFile(file) : ""
     createFile(file, withTomlTable(source, tomlTable(spec.key, name, invocation, settings)))
     return file
   }

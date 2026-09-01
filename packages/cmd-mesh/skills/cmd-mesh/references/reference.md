@@ -1,7 +1,6 @@
 # Reference
 
-Lookup tables for the whole surface. The [README](../README.md) teaches;
-this page lists.
+The [README](../../../README.md) teaches the main workflow. This page lists the complete public contract.
 
 ## Module surface
 
@@ -25,20 +24,20 @@ this page lists.
 | --- | --- |
 | `description` | one line, shown in help, tools, and prompts |
 | `safety` | `"read"` (no side effects) · `"action"` (mutates) · `"destructive"` (hard to reverse). Projects to MCP `readOnlyHint`/`destructiveHint`, both always explicit; appears in the spec; verification probes may invoke only `read` |
-| `input` | parameter map; keys are ArkType definitions or descriptors |
+| `input` | Parameter map. Values are ArkType definitions with optional surface metadata |
 | `narrow` | cross-field invariant enforced on both boundaries |
 | `output` | ArkType output contract → MCP `outputSchema` + `structuredContent` |
-| `run` | the handler; receives parsed canonical values and `ctx` |
-| `commands` | child commands; a mounted module nests under its key |
+| `run` | The handler receives parsed canonical values and `ctx` |
+| `commands` | Child commands. A mounted module nests under its key |
 | `cli.alias` | alternative command names |
 | `cli.examples` | invocation lines for the help Examples section |
 | `cli.default` | child that runs when the group is invoked bare |
-| `cli.hidden` / `mcp.hidden` | per-surface omission; parsing and validation still apply |
-| `cli.render` | human-only presentation; `--json` and MCP unaffected |
+| `cli.hidden` / `mcp.hidden` | Per-surface omission. Parsing and validation still apply |
+| `cli.render` | Human-only presentation. `--json` and MCP are unchanged |
 | `mcp.server` | program level only: how a client should RUN the server — `env`, `toolTimeoutMs`, `startupTimeoutMs`, `eager` (connect at startup), `sandbox` (restrict filesystem and network), `prompts` (values the client asks for instead of reading from the environment, referenced from `env` as `${input:<id>}`). Declared once in these units and projected into each client's own spelling by `mcp install`; a client with no equivalent receives nothing for it |
 | `mcp.name` | overrides the derived flattened tool name |
-| `mcp.annotations` | verbatim MCP tool annotations; win over safety-derived hints |
-| `mcp.examples` | `{ args, description? }[]` — schema-validated at compile time; projected into the tool description, JSON-Schema `examples`, and the spec |
+| `mcp.annotations` | Verbatim MCP tool annotations that override safety-derived hints |
+| `mcp.examples` | `{ args, description? }[]`, validated at compile time and projected into tool descriptions, JSON Schema, and the specification |
 | `successCodes` | external commands: exit codes that count as success |
 
 ## Parameters
@@ -78,9 +77,8 @@ its input domain accepts.
 | `suggest` | `"folders"` · `"filepaths"` · a const generator `(ctx: SuggestContext) => Promise<string[]>` |
 | `description` · `examples` · `default` · `deprecated` | ArkType's own metadata, read directly |
 
-A `description` is ArkType's EXPECTED-value phrase, not a docstring: it
-renders as `<key> must be <description> (was …)`. Write what a caller
-should send — `"a commit count"` — so a failed call tells an agent how
+A `description` is ArkType's expected-value phrase. It renders as `<key> must be <description> (was …)`.
+Write what a caller must send. Use `"a commit count"` so a failed call tells an agent how
 to fix itself. `"limit to n commits"` becomes `count must be limit to n
 commits`, which teaches nothing.
 
@@ -138,12 +136,163 @@ own `input` and `output`.
 
 ## ctx
 
+Every handler receives the capabilities for its current invocation:
+
+```ts
+run: async ({ packageName }, ctx) => {
+  const root = ctx.workspace.workspaceRootDir()
+  const current = ctx.project("<package_folder>")
+  const manager = await current.findPackageManager()
+  const result = await ctx.exec(manager.id, ["why", packageName], {
+    cwd: root,
+    preferLocal: true,
+    stdin: "ignore",
+    timeoutMs: 30_000,
+    successCodes: [0]
+  })
+
+  return {
+    packageName: current.packageName ?? "unknown",
+    surface: ctx.surface,
+    report: result.stdout
+  }
+}
+```
+
 | member | meaning |
 | --- | --- |
-| `ctx.exec(bin, args, options?)` | Effect process spawner behind a promise. Options: `cwd`, `env`, `timeoutMs`, `stdio: "inherit"`, `stdin: "ignore"` (the child sees end-of-input at once, instead of waiting on a pipe nothing writes to), `successCodes`, `preferLocal` (prepend the workspace `node_modules/.bin`; a no-op outside a repository) |
-| `ctx.project` / `ctx.workspace` | `package-management`'s consumer surfaces, whole |
-| `ctx.resources` | acquired program resources, typed from the declaration |
-| `ctx.surface` | `"call"` · `"cli"` · `"mcp"` |
+| `ctx.exec` | Spawn one child process through Effect's scoped process service |
+| `ctx.getConfigFormat` | Infer a supported configuration format from a file extension |
+| `ctx.getPath` | Resolve package, workspace, Git, current-directory, or user-home paths |
+| `ctx.isWritable` | Test whether the process can write a path |
+| `ctx.modifyConfig` | Edit JSON, JSONC, JSON5, YAML, or TOML in memory |
+| `ctx.modifyConfigFile` | Edit a JSON, JSONC, JSON5, YAML, or TOML file |
+| `ctx.modifyJSON` | Edit JSON or JSONC in memory while retaining untouched text |
+| `ctx.modifyJSONFile` | Edit a JSON or JSONC file while retaining untouched text |
+| `ctx.project` | Read one package and its package-manager capabilities |
+| `ctx.readFile` | Read a text file and throw when it is absent |
+| `ctx.readFileSafely` | Read a text file or return `undefined` when it is absent |
+| `ctx.resolveConfigSource` | Parse or serialize a supported configuration source |
+| `ctx.workspace` | Read the enclosing workspace and its packages |
+| `ctx.writeFile` | Write a text file and create missing parent directories |
+| `ctx.resources` | Access the resources acquired for this invocation |
+| `ctx.surface` | Identify the entry path: `"call"`, `"cli"`, or `"mcp"` |
+
+### File, path, and configuration operations
+
+```ts
+const packageFile = ctx.getPath("<package_folder>/package.json")
+const source = ctx.readFile(packageFile)
+
+ctx.writeFile("tmp/package-copy.json", source)
+
+ctx.modifyJSONFile(packageFile, {
+  "scripts.check": { value: "pnpm run typecheck && pnpm run test" }
+})
+
+const data = ctx.resolveConfigSource({ filepath: packageFile }, "data")
+const format = ctx.getConfigFormat(packageFile)
+```
+
+`ctx.modifyJSON` and `ctx.modifyJSONFile` edit only the changed JSON or JSONC text. Comments, key order, and surrounding whitespace remain.
+
+`ctx.modifyConfig` and `ctx.modifyConfigFile` use the same edit vocabulary for five formats. YAML and TOML edits parse and serialize the complete file, so comments do not remain.
+
+Use the same functions outside a handler:
+
+```ts
+import { toolkit } from "cmd-mesh"
+
+const text = toolkit.readFile("README.md")
+toolkit.writeFile("tmp/README.md", text)
+```
+
+`toolkit` is the stateless part of `Ctx`. cmd-mesh spreads this object into every handler and suggestion context.
+
+### `ctx.exec`
+
+```ts
+const result = await ctx.exec(bin, args, options)
+```
+
+The function returns:
+
+```ts
+interface ExecResult {
+  readonly stdout: string
+  readonly stderr: string
+  readonly exitCode: number
+}
+```
+
+| option | meaning |
+| --- | --- |
+| `cwd` | Run the child in this directory |
+| `env` | Add or replace environment variables while retaining the parent environment |
+| `stdio: "capture"` | Collect stdout and stderr in the result. This value is the default |
+| `stdio: "inherit"` | Stream the child to the terminal. The result contains empty output strings |
+| `stdin: "pipe"` | Keep the input pipe open. This value is the default |
+| `stdin: "ignore"` | Give the child end-of-input immediately |
+| `timeoutMs` | Stop the child after this duration and throw `ExecFailure` |
+| `successCodes` | Throw `ExternalExit` when the exit code is outside this set |
+| `preferLocal` | Prepend the workspace `node_modules/.bin` directory to `PATH` |
+
+Without `successCodes`, every exit code is data. Inspect `result.exitCode` in the handler.
+
+With `successCodes`, an exit code outside the set throws `ExternalExit`. A spawn or timeout error throws `ExecFailure`.
+
+### `ctx.project`
+
+```ts
+const current = ctx.project("<package_folder>")
+const byName = ctx.project({ packageName: "cmd-mesh" })
+```
+
+| member | meaning |
+| --- | --- |
+| `packageJson` | The package manifest read at construction time |
+| `getPackageJson()` | Read the package manifest again |
+| `packageJsonPath` | The absolute manifest path |
+| `packageName` | The manifest name |
+| `projectDir` | The absolute package directory |
+| `findPackageManager()` | Find the active package manager |
+| `detectPackageManagers()` | Find available package managers |
+| `detectLockfilePackageManagers()` | Find package managers from lockfiles |
+| `detectGlobalPackageManagers()` | Find package managers installed globally |
+| `globalVersions()` | Read global package-manager versions |
+| `mapPackageManagers()` | Apply one operation to the permitted package managers |
+| `filterPackageManagers()` | Keep package managers that satisfy a predicate |
+| `findDependencyInPackageJson()` | Find dependency entries and their dependency groups |
+| `isDependencyInPackageJson()` | Test whether the manifest declares a dependency |
+| `tsconfig.paths` | TypeScript path aliases from the package configuration |
+| `gitignore.patterns` | Ignore patterns that apply to the package |
+| `gitignore.data` | Parsed ignore data |
+
+The package manager value owns install, remove, script, and command operations. Use it instead of spelling package-manager commands by hand.
+
+### `ctx.workspace`
+
+```ts
+const root = ctx.workspace.workspaceRootDir()
+const packages = ctx.workspace.packageList({ includeRoot: true })
+const graph = ctx.workspace.packageGraph()
+const names = ctx.workspace.packageNames()
+const packageProject = ctx.workspace.getProject({ packageName: "cmd-mesh" })
+```
+
+| member | meaning |
+| --- | --- |
+| `workspaceRootDir()` | Return the workspace root, with the Git root as fallback |
+| `packageList()` | Return package information as a list |
+| `packageGraph()` | Return package information by package name |
+| `packageNames()` | Return package names |
+| `getProject()` | Return the same project interface as `ctx.project` |
+
+### `ctx.resources` and `ctx.surface`
+
+`ctx.resources` has the values from the program's `resources` declaration. The type follows the resource keys.
+
+`ctx.surface` is `"call"`, `"cli"`, or `"mcp"`. Keep handler behavior independent of this value unless the entry path changes the required result.
 
 ## Argv conventions
 

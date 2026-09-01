@@ -230,7 +230,7 @@ const uniquelyNamed = (tools: ReadonlyArray<NamedTool>): ReadonlyArray<NamedTool
   )
 
 // A handler receives the parameters its command declares. An agent may
-// send any key it invents. See docs/reference.md.
+// send any key it invents. See skills/cmd-mesh/references/reference.md.
 const declaredArguments = (cmd: CompiledCommand, args: unknown): unknown =>
   Predicate.isObject(args)
     ? Record.filter(

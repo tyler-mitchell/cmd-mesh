@@ -5,6 +5,15 @@ declaration: plain typed functions, a full CLI, an MCP server for
 agents, and a machine-readable spec. External binaries wrap into the
 same model.
 
+## Install
+
+```sh
+pnpm add cmd-mesh
+```
+
+cmd-mesh requires Node.js 22 or later. Create a CLI by default. Start or
+register MCP only when the application requires an MCP server.
+
 ```ts
 import { external, program } from "cmd-mesh"
 
@@ -68,15 +77,33 @@ mesh.spec  // the whole surface as one JSON descriptor — doc generators
 ```
 
 A parameter is an ArkType definition. `verbose: "boolean"` is complete on
-its own — the flag `--verbose` comes from the key. The `{ type, cli }`
-form above adds what a key cannot express: a short alias, a positional
-slot, an env fallback, a suggestion source.
+its own. The flag `--verbose` comes from the key. The `"@"` metadata tuple
+adds a short alias, a positional slot, an environment fallback, or suggestions.
 
 The complete lookup tables — every command field, parameter form, ctx
 member, exit code, and argv convention — live in
-[docs/reference.md](./docs/reference.md). The package ships an agent
-skill at `skill-data/core/SKILL.md`; agents discover usage from the
-installed tarball.
+[the bundled reference](./skills/cmd-mesh/references/reference.md).
+
+## Install the agent skill
+
+The npm package includes an Agent Skills-compatible guide at
+`skills/cmd-mesh/SKILL.md`. Its description triggers when a user asks an
+agent to use `cmd-mesh`, build a typed CLI, or expose commands through MCP.
+
+Install the package first. Then install its version-matched skill into the
+current repository:
+
+```sh
+pnpm dlx skills add ./node_modules/cmd-mesh/skills/cmd-mesh -y
+```
+
+The command creates `.agents/skills/cmd-mesh`. Codex and other compatible
+agents load the skill from that standard project location. The skill starts
+with a complete program and links to the detailed references in the same
+package.
+
+The skill treats CLI creation as the default. It does not start an MCP server
+or edit an MCP client configuration unless the user explicitly requests MCP.
 
 ## Safety is a contract
 
@@ -89,7 +116,7 @@ safety: "destructive"  // hard to reverse — agent clients prompt first
 Safety validates at compile time, appears in the spec, and projects to
 MCP `readOnlyHint`/`destructiveHint` with both hints always explicit —
 clients treat an absent `destructiveHint` as true, so partial hints
-would read as destructive. Verification probes invoke only `read`
+can read as destructive. Verification probes invoke only `read`
 commands.
 
 ## Agents plan from the spec
@@ -154,10 +181,10 @@ Re-run it whenever that invocation goes stale — a moved project or a new
 interpreter — and the existing entry is replaced in place, comments and
 neighbouring servers untouched.
 
-Bare `mcp install` only ever picks a client whose config lives in this
+Bare `mcp install` only picks a client whose configuration lives in this
 project. Windsurf and Codex keep theirs in your home directory, so they
-are named outright rather than detected — a project command should not
-edit settings outside the project on its own.
+are named directly. A project command must not edit settings outside the
+project on its own.
 
 Before wiring a client, run the server by hand — `mesh mcp` reads
 JSON-RPC on stdin, and closing stdin exits `0`. A client that starts
@@ -228,16 +255,24 @@ run: async (input, ctx) => {
 }
 ```
 
-The same library's path-anchored utilities re-export from `cmd-mesh`
-directly for use outside any invocation:
+The exported `toolkit` is the stateless part of every handler context. Use it
+outside an invocation:
 
 ```ts
-import { getPath, modifyJSONFile } from "cmd-mesh"
+import { toolkit } from "cmd-mesh"
 
-getPath("<workspace_folder>/node_modules/.bin")   // absolute local-bin path
-modifyJSONFile("tsconfig.json", { "compilerOptions.strict": { value: true } })
+toolkit.getPath("<workspace_folder>/node_modules/.bin")
+toolkit.readFile("package.json")
+toolkit.writeFile("tmp/report.txt", "ready\n")
+toolkit.modifyJSONFile("tsconfig.json", {
+  "compilerOptions.strict": { value: true }
+})
 //   ^ comment-preserving JSONC edits, dot paths, sequential-edit safe
 ```
+
+The bundled [handler context reference](./skills/cmd-mesh/references/reference.md#ctx)
+lists every `ctx` member. It covers `ctx.exec`, files, paths, configuration,
+projects, workspaces, resources, and entry surfaces.
 
 ## Testing a mesh program
 
@@ -254,14 +289,22 @@ and never calls `process.exit`. A handler is a plain function and `Ctx`
 is structural, so hoist it and test against a hand-built ctx:
 
 ```ts
+import { toolkit } from "cmd-mesh"
 import type { Ctx } from "cmd-mesh"
 
 const list = async (input: { readonly dir: string }, ctx: Ctx) => {
   const result = await ctx.exec("git", ["ls-files", input.dir])
   return { files: result.stdout.split("\n").filter(Boolean) }
 }
-// in the declaration: run: list
-// in the test: await list({ dir: "src" }, { surface: "call", exec: fakeExec })
+
+const fake: Ctx = {
+  ...toolkit,
+  surface: "call",
+  resources: {},
+  exec: async () => ({ stdout: "src/index.ts\n", stderr: "", exitCode: 0 })
+}
+
+await list({ dir: "src" }, fake)
 ```
 
 The MCP surface tests the same way over an in-memory pair:

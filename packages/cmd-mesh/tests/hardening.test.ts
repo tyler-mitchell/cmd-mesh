@@ -17,7 +17,10 @@ describe("the errors reference", () => {
     const { readFile } = await import("node:fs/promises")
     const { diagnostics } = await import("../src/diagnostics.js")
     const { getPath } = await import("../src/index.js")
-    const page = await readFile(getPath("<package_folder>/docs/errors.md"), "utf8")
+    const page = await readFile(
+      getPath("<package_folder>/skills/cmd-mesh/references/errors.md"),
+      "utf8"
+    )
     const codes = Object.keys(diagnostics).filter((key) => key.startsWith("CMSH"))
     expect(codes.length).toBeGreaterThan(0)
     const undocumented = codes.filter((code) => !page.includes(`## ${code}`))

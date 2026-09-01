@@ -1,4 +1,4 @@
-import { NodeServices } from "@effect/platform-node"
+import { NodeChildProcessSpawner, NodeFileSystem, NodePath } from "@effect/platform-node"
 import { Array, Context, Effect, Fiber, Layer, Stream } from "effect"
 import { getPath, getWorkspaceFolder } from "package-management"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
@@ -96,5 +96,11 @@ export class Exec extends Context.Service<Exec, {
 
       return Exec.of({ exec })
     })
-  ).pipe(Layer.provide(NodeServices.layer))
+  ).pipe(
+    Layer.provide(
+      NodeChildProcessSpawner.layer.pipe(
+        Layer.provide(Layer.merge(NodeFileSystem.layer, NodePath.layer))
+      )
+    )
+  )
 }

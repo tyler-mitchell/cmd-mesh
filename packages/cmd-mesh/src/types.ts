@@ -1,22 +1,15 @@
 import type { requiredKeyOf, unionToTuple } from "@ark/util"
 import type { distill, type } from "arktype"
-import type { project, workspace } from "package-management"
+import type { Toolkit } from "./toolkit.js"
 
 // ─── declaration model ──────────────────────────────────────────────────────
 // the consumer-authored data. parameters are ArkType property-position
 // definitions; argv-specific config sits under `cli`, mcp-specific under
 // `mcp`. see ideations/08-final.ts for the adopted contract.
 
-export interface SuggestContext {
+export interface SuggestContext extends Toolkit {
   exec(bin: string, args: ReadonlyArray<string>, options?: ExecOptions): Promise<ExecResult>
   readonly words: ReadonlyArray<string>
-  /** repository resolution — package-management's `project(...)` verbatim:
-   * `ctx.project("<package_folder>")` answers manifest, dependency, and
-   * package-manager questions for the invocation's repository */
-  readonly project: typeof project
-  /** workspace enumeration — `ctx.workspace.packageNames()` is the
-   * canonical monorepo completion source */
-  readonly workspace: typeof workspace
 }
 
 /** a Fig-style generator: computes suggestions on demand, with process
@@ -226,11 +219,9 @@ export interface WithResources<R> {
  * `project` and `workspace` are package-management's own consumer
  * surfaces, exposed whole — mediated here so handlers stay mockable
  * (hand a fake ctx) and auditable per invocation. */
-export interface Ctx {
+export interface Ctx extends Toolkit {
   exec(bin: string, args: ReadonlyArray<string>, options?: ExecOptions): Promise<ExecResult>
   readonly surface: Surface
-  readonly project: typeof project
-  readonly workspace: typeof workspace
   /** the program's acquired resources for this invocation; empty when
    * the declaration has none */
   readonly resources: Readonly<globalThis.Record<string, unknown>>

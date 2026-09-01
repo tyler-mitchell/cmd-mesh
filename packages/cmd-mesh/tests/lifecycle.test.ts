@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { program } from "../src/index.js"
+import { program, toolkit } from "../src/index.js"
 
 // Lifecycle and process execution.
 //
@@ -262,17 +262,15 @@ describe("cancellation", () => {
     const runtime = ManagedRuntime.make(Exec.layer)
     const controller = new AbortController()
     const started = Date.now()
-    const { project, workspace } = await import("../src/index.js")
     const pending = runAbortable(
       runtime as never,
       invokeValues(
         compiled.children["wait"] as never,
         {},
         {
+          ...toolkit,
           surface: "call",
           exec: (bin, args, o) => runtime.runPromise(Exec.use((s) => s.exec(bin, args, o))),
-          project,
-          workspace,
           resources: {}
         }
       ),

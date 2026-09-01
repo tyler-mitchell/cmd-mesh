@@ -7,7 +7,7 @@ import { defineDiagnostics } from "nostics"
 
 export const diagnostics = defineDiagnostics({
   docsBase: (code) =>
-    `https://github.com/tyler-mitchell/cmd-mesh/blob/main/packages/cmd-mesh/docs/errors.md#${code.toLowerCase()}`,
+    `https://github.com/tyler-mitchell/cmd-mesh/blob/main/packages/cmd-mesh/skills/cmd-mesh/references/errors.md#${code.toLowerCase()}`,
   codes: {
     CMSH1001: {
       why: (p: { error: string }) => p.error,

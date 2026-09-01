@@ -476,7 +476,7 @@ describe("external declaration validation", () => {
         name: "tool",
         commands: { add: { input: { paths: ["string", "@", { suggest: "flepaths", cli: "<paths>" }] } } }
       })
-    ).toThrow(/docs\/errors\.md#cmsh1014/)
+    ).toThrow(/skills\/cmd-mesh\/references\/errors\.md#cmsh1014/)
   })
 
   it("rejects a misspelled metadata key", () => {

@@ -538,7 +538,7 @@ const collectCommand = (
   // once. a root narrow travels with the root's options — an invariant
   // over program-level values holds wherever they are supplied.
   // a handler receives its declared input and nothing else; agent-supplied
-  // keys are stripped at the boundary. See docs/reference.md.
+  // keys are stripped at the boundary. See skills/cmd-mesh/references/reference.md.
   const valueType = withNarrow(withNarrow(assembly.schemaType, inheritedNarrow), decl.narrow)
   // only the PROGRAM root's input propagates (path length 1) — mirrors
   // externals, where only binary-root globals join every command.

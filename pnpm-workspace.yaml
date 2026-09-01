@@ -20,7 +20,7 @@ catalog:
   vitest: ^4.1.11
 
 minimumReleaseAgeExclude:
-  - package-management@0.1.0
+  - package-management
 
 patchedDependencies:
   arktype: patches/arktype.patch

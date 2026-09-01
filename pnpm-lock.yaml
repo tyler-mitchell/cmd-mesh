@@ -109,8 +109,8 @@ importers:
         specifier: ^1.2.0
         version: 1.2.0
       package-management:
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: ^0.2.0
+        version: 0.2.0
     devDependencies:
       '@arethetypeswrong/cli':
         specifier: ^0.18.5
@@ -839,6 +839,9 @@ packages:
   confbox@0.1.8:
     resolution: {integrity: sha512-RMtmw0iFkeR4YV+fUOSucriAQNb9g8zFR52MWCtl+cCZOFRNL6zeB395vPzFhEjjn4fMxXudmELnl/KF/WrK6w==}
 
+  confbox@0.2.4:
+    resolution: {integrity: sha512-ysOGlgTFbN2/Y6Cg3Iye8YKulHw+R2fNXHrgSmXISQdMnomY6eNDprVdW9R5xBguEqI954+S6709UyiO7B+6OQ==}
+
   content-disposition@1.1.0:
     resolution: {integrity: sha512-5jRCH9Z/+DRP7rkvY83B+yGIGX96OYdJmzngqnw2SBSxqCFPd0w2km3s5iawpGX8krnwSGmF0FW5Nhr0Hfai3g==}
     engines: {node: '>=18'}
@@ -1521,8 +1524,8 @@ packages:
     resolution: {integrity: sha512-wPrq66Llhl7/4AGC6I+cqxT07LhXvWL08LNXz1fENOw0Ap4sRZZ/gZpTTJ5jpurzzzfS2W/Ge9BY3LgLjCShcw==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
 
-  package-management@0.1.0:
-    resolution: {integrity: sha512-VOrXSxygnSIcxm3nbYc/Y6Hd6Jui9S2BnaEcCEGezwK/hPZlicsvBnxBk1myTXMdsBp0tvPnMEZBWm1Dxjk+9g==}
+  package-management@0.2.0:
+    resolution: {integrity: sha512-A9NThqw+FJ6AbjWZzKshI9tIs4pI3pk+iUyWfaDmpNepl1GsRm1X8JVTSVj8l08mdrFeWoMx3mzIMejyXxhidw==}
     engines: {node: '>=22'}
 
   package-manager-detector@1.8.0:
@@ -2653,6 +2656,8 @@ snapshots:
 
   confbox@0.1.8: {}
 
+  confbox@0.2.4: {}
+
   content-disposition@1.1.0: {}
 
   content-type@1.0.5: {}
@@ -3260,9 +3265,10 @@ snapshots:
     dependencies:
       p-limit: 4.0.0
 
-  package-management@0.1.0:
+  package-management@0.2.0:
     dependencies:
       async-cache-fn: 0.0.3
+      confbox: 0.2.4
       execa: 10.0.1
       find-up: 8.0.0
       globby: 16.2.4
