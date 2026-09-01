@@ -13,6 +13,7 @@
   },
   "type": "module",
   "files": [
+    "CHANGELOG.md",
     "dist",
     "skill-data",
     "src"
